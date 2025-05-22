@@ -4,6 +4,9 @@ from flask_cors import CORS
 import os
 import re
 from dotenv import load_dotenv
+import firebase_admin
+from firebase_admin import credentials, firestore
+import json # Import json to parse the service account key string
 
     # Load environment variables from .env file
 load_dotenv()
@@ -11,24 +14,37 @@ load_dotenv()
 app = Flask(__name__)
 
     # Configure CORS to allow requests from your frontend's Render URL
-    # Replace 'https://tiny-tutor-app-frontend.onrender.com' with your actual frontend URL if it changes.
-    # We also allow your local development server (http://localhost:5173) for testing.
 CORS(app, resources={r"/*": {"origins": [
         "https://tiny-tutor-app-frontend.onrender.com",
         "http://localhost:5173"
-    ]}}, supports_credentials=True) # Enable CORS with credentials support
+    ]}}, supports_credentials=True)
 
     # In a real application, use a strong, randomly generated secret key
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default_secret_key_for_dev')
 
-    # In-memory user store (for demonstration purposes)
-    # In a real application, you would use a database (e.g., PostgreSQL, MongoDB)
-users = {} # {username: {email: "email", password: "hashed_password", tier: "free"}}
+    # --- Firebase Initialization ---
+    # For local development, load from file. For Render, load from environment variable.
+    # It's safer to load from an environment variable in production.
+service_account_key_string = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY')
+
+if service_account_key_string:
+        # If running on Render or similar environment, load key from environment variable
+        cred = credentials.Certificate(json.loads(service_account_key_string))
+else:
+        # If running locally, load key from the JSON file
+        # Ensure 'firebase-service-account.json' is in the same directory as app.py
+        try:
+            cred = credentials.Certificate("firebase-service-account.json")
+        except FileNotFoundError:
+            print("ERROR: firebase-service-account.json not found. Please ensure it's in the backend directory or set FIREBASE_SERVICE_ACCOUNT_KEY env var.")
+            exit(1) # Exit if key file is not found locally
+
+firebase_admin.initialize_app(cred)
+db = firestore.client() # Get a Firestore client
 
     # --- Utility Functions ---
 def is_valid_email(email):
         """Validates an email address format."""
-        # A simple regex for email validation
         return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 def is_valid_password(password):
@@ -53,15 +69,29 @@ def signup():
         if not is_valid_password(password):
             return jsonify({"error": "Password must be at least 6 characters long"}), 400
 
-        if username in users:
-            return jsonify({"error": "Username already exists"}), 409 # Conflict
-        if any(user_data['email'] == email for user_data in users.values()):
-            return jsonify({"error": "Email already registered"}), 409 # Conflict
+        users_ref = db.collection('users')
 
-        # In a real app, hash the password before storing (e.g., using bcrypt)
-        users[username] = {"email": email, "password": password, "tier": "free"}
-        print(f"User {username} signed up. Current users: {users}") # Debug print
-        return jsonify({"message": "User registered successfully"}), 201 # Created
+        # Check if username already exists
+        if users_ref.document(username).get().exists:
+            return jsonify({"error": "Username already exists"}), 409
+
+        # Check if email already exists (query across documents)
+        # Note: Firestore queries on non-indexed fields can be slow or require index creation.
+        # For 'email', you might need to create a composite index in Firebase Console if this query becomes complex.
+        if users_ref.where('email', '==', email).get():
+            return jsonify({"error": "Email already registered"}), 409
+
+        try:
+            users_ref.document(username).set({
+                "email": email,
+                "password": password, # In a real app, hash the password (e.g., using bcrypt)
+                "tier": "free"
+            })
+            print(f"User {username} signed up and stored in Firestore.")
+            return jsonify({"message": "User registered successfully"}), 201
+        except Exception as e:
+            print(f"Error during signup: {e}")
+            return jsonify({"error": "Failed to register user"}), 500
 
 @app.route('/login', methods=['POST'])
 def login():
@@ -72,29 +102,34 @@ def login():
         if not username or not password:
             return jsonify({"error": "Missing username or password"}), 400
 
-        user = users.get(username)
-        if user and user['password'] == password: # In real app, compare hashed passwords
-            session['username'] = username
-            session['tier'] = user['tier'] # Store tier in session
-            print(f"User {username} logged in. Session: {session}") # Debug print
-            return jsonify({"message": "Login successful", "username": username, "tier": user['tier']}), 200
+        user_doc = db.collection('users').document(username).get()
+
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            if user_data['password'] == password: # In real app, compare hashed passwords
+                session['username'] = username
+                session['tier'] = user_data.get('tier', 'free')
+                print(f"User {username} logged in from Firestore. Session: {session}")
+                return jsonify({"message": "Login successful", "username": username, "tier": session['tier']}), 200
+            else:
+                return jsonify({"error": "Invalid username or password"}), 401
         else:
-            return jsonify({"error": "Invalid username or password"}), 401 # Unauthorized
+            return jsonify({"error": "Invalid username or password"}), 401
 
 @app.route('/logout', methods=['POST'])
 def logout():
         session.pop('username', None)
         session.pop('tier', None)
-        print("User logged out. Session cleared.") # Debug print
+        print("User logged out. Session cleared.")
         return jsonify({"message": "Logged out successfully"}), 200
 
 @app.route('/status', methods=['GET'])
 def status():
         if 'username' in session:
-            print(f"Status check: User {session['username']} is logged in with tier {session.get('tier')}.") # Debug print
+            print(f"Status check: User {session['username']} is logged in with tier {session.get('tier')}.")
             return jsonify({"logged_in": True, "username": session['username'], "tier": session.get('tier', 'free')}), 200
         else:
-            print("Status check: User is not logged in.") # Debug print
+            print("Status check: User is not logged in.")
             return jsonify({"logged_in": False}), 200
 
 @app.route('/protected', methods=['GET'])
@@ -105,8 +140,5 @@ def protected():
             return jsonify({"error": "Unauthorized"}), 401
 
 if __name__ == '__main__':
-        # In a production environment, you would typically use a production-ready WSGI server
-        # like Gunicorn or uWSGI, and not run app.run() directly.
-        # For local development:
         app.run(debug=True, port=5000)
     
