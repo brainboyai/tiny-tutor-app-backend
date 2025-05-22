@@ -6,7 +6,8 @@ import re
 from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
-import json # Import json to parse the service account key string
+import json
+import base64 # <--- NEW: Import base64 module
 
     # Load environment variables from .env file
 load_dotenv()
@@ -23,20 +24,24 @@ CORS(app, resources={r"/*": {"origins": [
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default_secret_key_for_dev')
 
     # --- Firebase Initialization ---
-    # For local development, load from file. For Render, load from environment variable.
-    # It's safer to load from an environment variable in production.
-service_account_key_string = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY')
+    # Render will provide FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 as an environment variable.
+    # Locally, it will fall back to reading the JSON file.
+service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64') # <--- NEW: Changed env var name
 
-if service_account_key_string:
-        # If running on Render or similar environment, load key from environment variable
-        cred = credentials.Certificate(json.loads(service_account_key_string))
+if service_account_key_base64:
+        # <--- NEW LOGIC: Decode the Base64 string and then load as JSON
+        try:
+            decoded_key = base64.b64decode(service_account_key_base64).decode('utf-8')
+            cred = credentials.Certificate(json.loads(decoded_key))
+        except Exception as e:
+            print(f"ERROR: Failed to decode or parse FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: {e}")
+            exit(1) # Exit if environment variable is malformed
 else:
-        # If running locally, load key from the JSON file
-        # Ensure 'firebase-service-account.json' is in the same directory as app.py
+        # <--- LOCAL DEVELOPMENT LOGIC: If env var not set, load from local JSON file
         try:
             cred = credentials.Certificate("firebase-service-account.json")
         except FileNotFoundError:
-            print("ERROR: firebase-service-account.json not found. Please ensure it's in the backend directory or set FIREBASE_SERVICE_ACCOUNT_KEY env var.")
+            print("ERROR: firebase-service-account.json not found. Please ensure it's in the backend directory or set FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 env var for deployment.")
             exit(1) # Exit if key file is not found locally
 
 firebase_admin.initialize_app(cred)
