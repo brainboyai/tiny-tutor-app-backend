@@ -7,42 +7,38 @@ from dotenv import load_dotenv
 import firebase_admin
 from firebase_admin import credentials, firestore
 import json
-import base64 # <--- NEW: Import base64 module
+import base64
 
     # Load environment variables from .env file
 load_dotenv()
 
 app = Flask(__name__)
 
-    # Configure CORS to allow requests from your frontend's Render URL
+    # Configure CORS to allow requests ONLY from your Render frontend URL and local development
 CORS(app, resources={r"/*": {"origins": [
-        "https://tiny-tutor-app-frontend.onrender.com",
-        "http://localhost:5173"
+        "https://tiny-tutor-app-frontend.onrender.com",  # Your frontend on Render
+        "http://localhost:5173"                          # Your local development frontend
     ]}}, supports_credentials=True)
 
     # In a real application, use a strong, randomly generated secret key
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default_secret_key_for_dev')
 
     # --- Firebase Initialization ---
-    # Render will provide FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 as an environment variable.
-    # Locally, it will fall back to reading the JSON file.
-service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64') # <--- NEW: Changed env var name
+service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 
 if service_account_key_base64:
-        # <--- NEW LOGIC: Decode the Base64 string and then load as JSON
         try:
             decoded_key = base64.b64decode(service_account_key_base64).decode('utf-8')
             cred = credentials.Certificate(json.loads(decoded_key))
         except Exception as e:
             print(f"ERROR: Failed to decode or parse FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: {e}")
-            exit(1) # Exit if environment variable is malformed
+            exit(1)
 else:
-        # <--- LOCAL DEVELOPMENT LOGIC: If env var not set, load from local JSON file
         try:
             cred = credentials.Certificate("firebase-service-account.json")
         except FileNotFoundError:
             print("ERROR: firebase-service-account.json not found. Please ensure it's in the backend directory or set FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 env var for deployment.")
-            exit(1) # Exit if key file is not found locally
+            exit(1)
 
 firebase_admin.initialize_app(cred)
 db = firestore.client() # Get a Firestore client
@@ -81,8 +77,6 @@ def signup():
             return jsonify({"error": "Username already exists"}), 409
 
         # Check if email already exists (query across documents)
-        # Note: Firestore queries on non-indexed fields can be slow or require index creation.
-        # For 'email', you might need to create a composite index in Firebase Console if this query becomes complex.
         if users_ref.where('email', '==', email).get():
             return jsonify({"error": "Email already registered"}), 409
 
