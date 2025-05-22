@@ -27,19 +27,19 @@ users = {} # {username: {email: "email", password: "hashed_password", tier: "fre
 
 # --- Utility Functions ---
 def is_valid_email(email):
-"""Validates an email address format."""
+    """Validates an email address format."""
 # A simple regex for email validation
-return re.match(r"[^@]+@[^@]+\.[^@]+", email)
+    return re.match(r"[^@]+@[^@]+\.[^@]+", email)
 
 def is_valid_password(password):
-"""Validates password strength."""
-return len(password) >= 6 # Minimum 6 characters
+    """Validates password strength."""
+    return len(password) >= 6 # Minimum 6 characters
 
 # --- Routes ---
 
 @app.route('/signup', methods=['POST'])
 def signup():
-data = request.get_json()
+    data = request.get_json()
 username = data.get('username')
 email = data.get('email')
 password = data.get('password')
@@ -65,7 +65,7 @@ return jsonify({"message": "User registered successfully"}), 201 # Created
 
 @app.route('/login', methods=['POST'])
 def login():
-data = request.get_json()
+    data = request.get_json()
 username = data.get('username')
 password = data.get('password')
 
@@ -90,22 +90,22 @@ return jsonify({"message": "Logged out successfully"}), 200
 
 @app.route('/status', methods=['GET'])
 def status():
-if 'username' in session:
-print(f"Status check: User {session['username']} is logged in with tier {session.get('tier')}.") # Debug print
+    if 'username' in session:
+        print(f"Status check: User {session['username']} is logged in with tier {session.get('tier')}.") # Debug print
 return jsonify({"logged_in": True, "username": session['username'], "tier": session.get('tier', 'free')}), 200
 else:
-print("Status check: User is not logged in.") # Debug print
-return jsonify({"logged_in": False}), 200
+    print("Status check: User is not logged in.") # Debug print
+    return jsonify({"logged_in": False}), 200
 
-@app.route('/protected', methods=['GET'])
-def protected():
-if 'username' in session:
-return jsonify({"message": f"Welcome, {session['username']}! This is a protected resource for {session.get('tier')} users."}), 200
-else:
-return jsonify({"error": "Unauthorized"}), 401
+    @app.route('/protected', methods=['GET'])
+    def protected():
+        if 'username' in session:
+    return jsonify({"message": f"Welcome, {session['username']}! This is a protected resource for {session.get('tier')} users."}), 200
+    else:
+    return jsonify({"error": "Unauthorized"}), 401
 
-if __name__ == '__main__':
+    if __name__ == '__main__':
 # In a production environment, you would typically use a production-ready WSGI server
 # like Gunicorn or uWSGI, and not run app.run() directly.
 # For local development:
-app.run(debug=True, port=5000)
+        app.run(debug=True, port=5000)
