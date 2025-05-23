@@ -8,7 +8,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import base64
-import requests # <--- NEW: Import requests library for making HTTP calls
+import requests
 
     # Load environment variables from .env file
 load_dotenv()
@@ -23,6 +23,11 @@ CORS(app, resources={r"/*": {"origins": [
 
     # In a real application, use a strong, randomly generated secret key
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default_secret_key_for_dev')
+
+    # <--- NEW: Session cookie configuration for cross-site requests over HTTPS
+app.config['SESSION_COOKIE_SAMESITE'] = 'None'
+app.config['SESSION_COOKIE_SECURE'] = True
+    # --- END NEW ---
 
     # --- Firebase Initialization ---
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
@@ -45,7 +50,6 @@ firebase_admin.initialize_app(cred)
 db = firestore.client() # Get a Firestore client
 
     # --- Gemini API Configuration ---
-    # Retrieve Gemini API Key from environment variables
 GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
 if not GEMINI_API_KEY:
         print("WARNING: GEMINI_API_KEY environment variable not set. AI explanation feature will not work.")
@@ -147,7 +151,7 @@ def protected():
         else:
             return jsonify({"error": "Unauthorized"}), 401
 
-@app.route('/generate_explanation', methods=['POST']) # <--- NEW: AI Explanation Route
+@app.route('/generate_explanation', methods=['POST'])
 def generate_explanation():
         if 'username' not in session:
             return jsonify({"error": "Unauthorized. Please log in."}), 401
@@ -179,13 +183,11 @@ def generate_explanation():
                 ]
             }
 
-            # Make the request to the Gemini API
             response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=payload)
-            response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+            response.raise_for_status()
 
             gemini_result = response.json()
 
-            # Extract the generated text
             if gemini_result and 'candidates' in gemini_result and len(gemini_result['candidates']) > 0:
                 explanation = gemini_result['candidates'][0]['content']['parts'][0]['text']
                 return jsonify({"explanation": explanation}), 200
