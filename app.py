@@ -158,15 +158,15 @@ def login():
 
 @app.route('/logout', methods=['POST'])
 @jwt_required
-    def logout():
+def logout():
         # For JWT, logout is usually handled client-side by deleting the token.
         # This endpoint can be used for server-side cleanup if needed, but for now, it's mostly a placeholder.
         return jsonify({"message": "Logged out successfully"}), 200
 
 
-    @app.route('/generate_explanation', methods=['POST'])
-    @jwt_required # Protect this route with JWT
-    def generate_explanation():
+@app.route('/generate_explanation', methods=['POST'])
+@jwt_required # Protect this route with JWT
+def generate_explanation():
         data = request.get_json()
         question = data.get('question')
         content_type = data.get('content_type', 'explain') # Default to 'explain'
@@ -241,7 +241,7 @@ def login():
             return jsonify({"error": "An unexpected error occurred."}), 500
 
 
-    if __name__ == '__main__':
+if __name__ == '__main__':
         # When running locally, set JWT_SECRET_KEY in your .env file
         # For Render, set it as an environment variable in your service settings
         app.run(debug=True, port=5000)
