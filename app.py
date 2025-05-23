@@ -177,7 +177,11 @@ def generate_explanation():
         user_tier = request.user.get('tier', 'basic') # Access user data from the request object
 
         GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-        GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
+        # For Gemini 1.5 Flash
+        GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent"
+
+        # If you prefer Gemini 1.5 Pro (more powerful, potentially higher cost/latency)
+        # GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent"
 
         if not GEMINI_API_KEY:
             print("GEMINI_API_KEY is not set.")
