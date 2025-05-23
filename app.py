@@ -24,10 +24,9 @@ CORS(app, resources={r"/*": {"origins": [
     # In a real application, use a strong, randomly generated secret key
 app.secret_key = os.getenv('FLASK_SECRET_KEY', 'default_secret_key_for_dev')
 
-    # <--- NEW: Session cookie configuration for cross-site requests over HTTPS
+    # Session cookie configuration for cross-site requests over HTTPS
 app.config['SESSION_COOKIE_SAMESITE'] = 'None'
 app.config['SESSION_COOKIE_SECURE'] = True
-    # --- END NEW ---
 
     # --- Firebase Initialization ---
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
@@ -172,12 +171,13 @@ def generate_explanation():
             params = {
                 'key': GEMINI_API_KEY
             }
+            # <--- MODIFIED PROMPT: Requesting a 3-sentence explanation with keywords
             payload = {
                 "contents": [
                     {
                         "role": "user",
                         "parts": [
-                            {"text": f"Explain the following concept in simple terms, suitable for a student: {question}"}
+                            {"text": f"Provide a simple, 3-sentence explanation of the concept '{question}'. Ensure the explanation includes key terms and clearly defines the concept for a student."}
                         ]
                     }
                 ]
