@@ -234,7 +234,7 @@ def generate_explanation():
                     {
                         "role": "user",
                         "parts": [
-                            {"text": f"Provide a simple, 3-sentence explanation of the concept '{question}'. Ensure the explanation includes key terms and clearly defines the concept for a student."}
+                            {"text": f"Provide a simple, 2-sentence explanation of the concept '{question}'. Ensure the explanation includes key terms and clearly defines the concept for a student."}
                         ]
                     }
                 ]
