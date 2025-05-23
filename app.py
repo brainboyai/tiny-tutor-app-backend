@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, request, jsonify # Removed 'session'
+from flask import Flask, request, jsonify
 from flask_cors import CORS
 import os
 import re
@@ -9,259 +9,234 @@ from firebase_admin import credentials, firestore
 import json
 import base64
 import requests
-import jwt # Import PyJWT
-from datetime import datetime, timedelta # For token expiry
+import jwt
+from datetime import datetime, timedelta
+from functools import wraps # Import wraps for decorator
 
-    # Load environment variables from .env file
+# Load environment variables from .env file
 load_dotenv()
 
 app = Flask(__name__)
 
-    # Configure CORS to allow requests ONLY from your Render frontend URL and local development
+# Configure CORS to allow requests ONLY from your Render frontend URL and local development
 CORS(app, resources={r"/*": {"origins": [
-        "https://tiny-tutor-app-frontend.onrender.com",  # Your frontend on Render
-        "http://localhost:5173"                          # Your local development frontend
-    ]}}, supports_credentials=True) # supports_credentials can be removed if not using cookies at all, but keep for now just in case of other needs.
+    "https://tiny-tutor-app-frontend.onrender.com",  # Your frontend on Render
+    "http://localhost:5173"                          # Your local development frontend
+]}}, supports_credentials=True)
 
-    # JWT Configuration
+# JWT Configuration
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'super-secret-jwt-key') # IMPORTANT: Use a very strong, random key
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24) # Token expiry time
 
-    # --- Firebase Initialization ---
+# --- Firebase Initialization ---
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 
 if service_account_key_base64:
-        try:
-            decoded_key = base64.b64decode(service_account_key_base64).decode('utf-8')
-            cred = credentials.Certificate(json.loads(decoded_key))
-        except Exception as e:
-            print(f"ERROR: Failed to decode or parse FIREBASE_SERVICE_ACCOUNT_KEY_BASE64: {e}")
-            exit(1)
+    try:
+        decoded_key = base64.b64decode(service_account_key_base64).decode('utf-8')
+        cred = credentials.Certificate(json.loads(decoded_key))
+        if not firebase_admin._apps: # Initialize only if not already initialized
+            firebase_admin.initialize_app(cred)
+        db = firestore.client()
+        print("Firebase initialized successfully.")
+    except Exception as e:
+        print(f"Error initializing Firebase: {e}")
+        db = None
 else:
-        try:
-            cred = credentials.Certificate("firebase-service-account.json")
-        except FileNotFoundError:
-            print("ERROR: firebase-service-account.json not found. Please ensure it's in the backend directory or set FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 env var for deployment.")
-            exit(1)
+    print("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 environment variable not set. Firebase not initialized.")
+    db = None
 
-firebase_admin.initialize_app(cred)
-db = firestore.client() # Get a Firestore client
+# Gemini API Configuration
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent"
 
-    # --- Gemini API Configuration ---
-GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
-if not GEMINI_API_KEY:
-        print("WARNING: GEMINI_API_KEY environment variable not set. AI explanation feature will not work.")
-
-GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
-
-    # --- Utility Functions ---
-def is_valid_email(email):
-        """Validates an email address format."""
-        return re.match(r"[^@]+@[^@]+\.[^@]+", email)
-
-def is_valid_password(password):
-        """Validates password strength."""
-        return len(password) >= 6 # Minimum 6 characters
-
-def create_jwt_token(username, tier):
-        """Creates a JWT token."""
-        payload = {
-            'username': username,
-            'tier': tier,
-            'exp': datetime.utcnow() + app.config['JWT_ACCESS_TOKEN_EXPIRES'] # Token expiry
-        }
-        return jwt.encode(payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
-
-def decode_jwt_token(token):
-        """Decodes and validates a JWT token."""
-        try:
-            payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
-            return payload
-        except jwt.ExpiredSignatureError:
-            return {'error': 'Token has expired'}
-        except jwt.InvalidTokenError:
-            return {'error': 'Invalid token'}
-
-    # Decorator for protecting routes with JWT
+# --- JWT Authentication Decorator ---
 def jwt_required(f):
-        from functools import wraps
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            auth_header = request.headers.get('Authorization')
-            if not auth_header:
-                print("JWT_REQUIRED: Authorization header missing.")
-                return jsonify({"error": "Authorization token is missing"}), 401
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        token = None
+        if 'Authorization' in request.headers:
+            auth_header = request.headers['Authorization']
+            if auth_header.startswith('Bearer '):
+                token = auth_header.split(' ')[1]
 
-            try:
-                token = auth_header.split(" ")[1] # Expects "Bearer <token>"
-                payload = decode_jwt_token(token)
-                if 'error' in payload:
-                    print(f"JWT_REQUIRED: Token error: {payload['error']}")
-                    return jsonify({"error": payload['error']}), 401
-                
-                request.user = payload # Attach user info to request object
-            except IndexError:
-                print("JWT_REQUIRED: Token format invalid (not 'Bearer <token>').")
-                return jsonify({"error": "Token format is 'Bearer <token>'"}), 401
-            except Exception as e:
-                print(f"JWT_REQUIRED: Unexpected error decoding token: {e}")
-                return jsonify({"error": "Invalid token"}), 401
-            return f(*args, **kwargs)
-        return decorated_function
+        if not token:
+            return jsonify({"error": "Authentication token is missing!"}), 401
+        try:
+            # Decode the token using your secret key
+            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+            # You can add more validation here if needed, e.g., check user existence in DB
+            request.user = data # Attach user payload to request
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired!"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Token is invalid!"}), 401
+        return f(*args, **kwargs)
+    return decorated_function
 
+# --- Routes ---
 
-    # --- Routes ---
+@app.route('/')
+def home():
+    return "Tiny Tutor Backend is running!"
 
 @app.route('/signup', methods=['POST'])
 def signup():
-        data = request.get_json()
-        username = data.get('username')
-        email = data.get('email')
-        password = data.get('password')
+    if not db:
+        return jsonify({"error": "Firebase not initialized. Cannot sign up."}), 500
 
-        if not username or not email or not password:
-            return jsonify({"error": "Missing username, email, or password"}), 400
+    data = request.get_json()
+    username = data.get('username')
+    email = data.get('email')
+    password = data.get('password')
 
-        if not is_valid_email(email):
-            return jsonify({"error": "Invalid email format"}), 400
+    if not all([username, email, password]):
+        return jsonify({"error": "Missing username, email, or password"}), 400
 
-        if not is_valid_password(password):
-            return jsonify({"error": "Password must be at least 6 characters long"}), 400
+    # Basic validation for email format
+    if not re.match(r"[^@]+@[^@]+\.[^@]+", email):
+        return jsonify({"error": "Invalid email format"}), 400
 
-        users_ref = db.collection('users')
+    # Check if username or email already exists
+    users_ref = db.collection('users')
+    existing_username = users_ref.where('username', '==', username).limit(1).get()
+    existing_email = users_ref.where('email', '==', email).limit(1).get()
 
-        # Check if username already exists
-        if users_ref.document(username).get().exists:
-            return jsonify({"error": "Username already exists"}), 409
+    if len(existing_username) > 0:
+        return jsonify({"error": "Username already exists"}), 409
+    if len(existing_email) > 0:
+        return jsonify({"error": "Email already registered"}), 409
 
-        # Check if email already exists (query across documents)
-        if users_ref.where('email', '==', email).get():
-            return jsonify({"error": "Email already registered"}), 409
-
-        try:
-            users_ref.document(username).set({
-                "email": email,
-                "password": password, # In a real app, hash the password (e.g., using bcrypt)
-                "tier": "free"
-            })
-            print(f"User {username} signed up and stored in Firestore.")
-            return jsonify({"message": "User registered successfully"}), 201
-        except Exception as e:
-            print(f"Error during signup: {e}")
-            return jsonify({"error": "Failed to register user"}), 500
+    try:
+        # In a real app, hash the password before storing!
+        # For simplicity in this tutorial, we store it plain. DO NOT DO THIS IN PRODUCTION.
+        users_ref.add({
+            'username': username,
+            'email': email,
+            'password': password, # In production, hash this password!
+            'tier': 'free', # Default tier
+            'created_at': firestore.SERVER_TIMESTAMP
+        })
+        return jsonify({"message": "User registered successfully"}), 201
+    except Exception as e:
+        print(f"Error during signup: {e}")
+        return jsonify({"error": "Internal server error during registration"}), 500
 
 @app.route('/login', methods=['POST'])
 def login():
-        data = request.get_json()
-        username = data.get('username')
-        password = data.get('password')
+    if not db:
+        return jsonify({"error": "Firebase not initialized. Cannot log in."}), 500
 
-        if not username or not password:
-            return jsonify({"error": "Missing username or password"}), 400
+    data = request.get_json()
+    username = data.get('username')
+    password = data.get('password')
 
-        user_doc = db.collection('users').document(username).get()
+    if not all([username, password]):
+        return jsonify({"error": "Missing username or password"}), 400
 
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            if user_data['password'] == password: # In real app, compare hashed passwords
-                tier = user_data.get('tier', 'free')
-                access_token = create_jwt_token(username, tier) # Generate JWT
-                print(f"User {username} logged in. JWT generated.")
-                return jsonify({
-                    "message": "Login successful",
-                    "username": username,
-                    "tier": tier,
-                    "access_token": access_token # Send token to frontend
-                }), 200
-            else:
-                return jsonify({"error": "Invalid username or password"}), 401
-        else:
-            return jsonify({"error": "Invalid username or password"}), 401
+    users_ref = db.collection('users')
+    query = users_ref.where('username', '==', username).limit(1).get()
+
+    if not query:
+        return jsonify({"error": "Invalid username or password"}), 401
+
+    user_doc = query[0]
+    user_data = user_doc.to_dict()
+
+    if user_data and user_data['password'] == password: # In production, verify hashed password
+        # Generate JWT
+        expires_delta = app.config['JWT_ACCESS_TOKEN_EXPIRES']
+        expires = datetime.now(tz=None) + expires_delta
+        # The payload should contain minimal, non-sensitive user info
+        identity = {
+            'username': user_data['username'],
+            'tier': user_data['tier'],
+            'exp': expires.timestamp() # Expiration timestamp
+        }
+        access_token = jwt.encode(identity, app.config['JWT_SECRET_KEY'], algorithm="HS256")
+
+        return jsonify({
+            "message": "Login successful",
+            "access_token": access_token
+        }), 200
+    else:
+        return jsonify({"error": "Invalid username or password"}), 401
 
 @app.route('/logout', methods=['POST'])
-@jwt_required # Protect logout with JWT, though it's optional for a simple logout
+@jwt_required # Protect logout if it needs server-side processing (e.g., token invalidation)
 def logout():
-        # With JWTs, logout is purely a client-side action (deleting the token)
-        # This endpoint can be used to invalidate tokens on a blacklist if needed,
-        # but for simple cases, it's just a formality.
-        print(f"User {request.user['username']} effectively logged out (token deleted client-side).")
-        return jsonify({"message": "Logged out successfully"}), 200
+    # For JWT, logout is primarily client-side token removal.
+    # This endpoint can be used for server-side logging or invalidation if implemented.
+    return jsonify({"message": "Logged out successfully"}), 200
 
-@app.route('/status', methods=['GET'])
-@jwt_required # Protect status check
-def status():
-        # If jwt_required passed, request.user contains the decoded token payload
-        print(f"Status check: User {request.user['username']} is logged in with tier {request.user['tier']}.")
-        return jsonify({"logged_in": True, "username": request.user['username'], "tier": request.user['tier']}), 200
-
-@app.route('/check_session', methods=['GET'])
-@jwt_required # Protect this debugging endpoint
-def check_session():
-        print(f"Backend /check_session: User {request.user['username']} is in session.")
-        return jsonify({"logged_in": True, "username": request.user['username'], "tier": request.user['tier']}), 200
-
-@app.route('/protected', methods=['GET'])
-@jwt_required # Apply JWT protection
-def protected():
-        return jsonify({"message": f"Welcome, {request.user['username']}! This is a protected resource for {request.user['tier']} users."}), 200
-
+# NEW: Modified generate_explanation endpoint to handle different content types
 @app.route('/generate_explanation', methods=['POST'])
-@jwt_required # Apply JWT protection
+@jwt_required # Ensure this route is protected by JWT
 def generate_explanation():
-        # With jwt_required, we are guaranteed a valid user in request.user
-        username = request.user['username']
-        tier = request.user['tier']
-        print(f"Backend /generate_explanation: User {username} ({tier}) is authorized via JWT.")
-
+    try:
         data = request.get_json()
         question = data.get('question')
+        # Get the content_type from the request, default to 'explain'
+        content_type = data.get('content_type', 'explain')
 
         if not question:
-            return jsonify({"error": "No question provided"}), 400
+            return jsonify({"error": "Question is required"}), 400
 
-        if not GEMINI_API_KEY:
-            return jsonify({"error": "AI service not configured. Missing API Key."}), 500
+        # Define prompts based on content_type
+        # You can adjust these prompts to get the desired AI output
+        prompts = {
+            'explain': f"Provide a concise and easy-to-understand explanation of the concept '{question}'. Ensure the explanation includes key terms and clearly defines the concept for a student. Keep it around 3-5 paragraphs.",
+            'fact': f"Provide 3-5 interesting and lesser-known facts about '{question}'. Each fact should be a concise sentence or two.",
+            'quiz': f"Generate a a single multiple-choice quiz question about '{question}' with 4 options (A, B, C, D) and specify the correct answer. Format the output clearly like this:\n\nQuestion: [Your question here]\nA) [Option A]\nB) [Option B]\nC) [Option C]\nD) [Option D]\nCorrect Answer: [A, B, C, or D]",
+            'deep': f"Provide a detailed, in-depth explanation of '{question}', including its advanced concepts, historical context, and potential future implications. Aim for a comprehensive academic-level overview, around 5-8 paragraphs.",
+            'image': "This feature will generate an image soon. For now, imagine a visual representation of the concept.", # Placeholder for image
+        }
 
-        try:
-            headers = {
-                'Content-Type': 'application/json',
-            }
-            params = {
-                'key': GEMINI_API_KEY
-            }
-            payload = {
-                "contents": [
-                    {
-                        "role": "user",
-                        "parts": [
-                            {"text": f"Provide a simple, 2-sentence explanation of the concept '{question}'. Ensure the explanation includes key terms and clearly defines the concept for a student."}
-                        ]
-                    }
-                ]
-            }
+        prompt_text = prompts.get(content_type)
+        if not prompt_text:
+            return jsonify({"error": "Invalid content type specified"}), 400
 
-            response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=payload)
-            response.raise_for_status()
+        # For 'image' type, we just return the placeholder directly without calling Gemini
+        if content_type == 'image':
+            return jsonify({"explanation": prompt_text}), 200
 
-            gemini_result = response.json()
+        # Gemini API call for other types
+        headers = {
+            "Content-Type": "application/json",
+        }
+        params = {
+            "key": os.getenv("GEMINI_API_KEY")
+        }
+        payload = {
+            "contents": [
+                {
+                    "parts": [
+                        {"text": prompt_text}
+                    ]
+                }
+            ]
+        }
 
-            if gemini_result and 'candidates' in gemini_result and len(gemini_result['candidates']) > 0:
-                explanation = gemini_result['candidates'][0]['content']['parts'][0]['text']
-                return jsonify({"explanation": explanation}), 200
-            else:
-                print(f"Gemini API returned no candidates or unexpected structure: {gemini_result}")
-                return jsonify({"error": "Failed to generate explanation. Please try again."}), 500
+        response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=payload)
+        response.raise_for_status() # Raise HTTPError for bad responses (4xx or 5xx)
 
-        except requests.exceptions.RequestException as e:
-            print(f"Error calling Gemini API: {e}")
-            return jsonify({"error": f"Failed to connect to AI service: {e}"}), 500
-        except Exception as e:
-            print(f"An unexpected error occurred during explanation generation: {e}")
-            return jsonify({"error": "An unexpected error occurred."}), 500
+        gemini_result = response.json()
+
+        if gemini_result and 'candidates' in gemini_result and len(gemini_result['candidates']) > 0:
+            explanation = gemini_result['candidates'][0]['content']['parts'][0]['text']
+            return jsonify({"explanation": explanation}), 200
+        else:
+            print(f"Gemini API returned no candidates or unexpected structure for {content_type}: {gemini_result}")
+            return jsonify({"error": f"Failed to generate {content_type}. Please try again."}), 500
+
+    except requests.exceptions.RequestException as e:
+        print(f"Error calling Gemini API for {content_type}: {e}")
+        return jsonify({"error": f"Failed to connect to AI service for {content_type}: {e}"}), 500
+    except Exception as e:
+        print(f"An unexpected error occurred during {content_type} generation: {e}")
+        return jsonify({"error": "An unexpected error occurred."}), 500
 
 
 if __name__ == '__main__':
-        # When running locally, set JWT_SECRET_KEY in your .env file
-        # For Render, set it as an environment variable in your service settings
-        app.run(debug=True, port=5000)
-    
+    # When running locally, set JWT_SECRET_KEY and GEMINI_API_KEY in your .env file
+    # For Render, set them as environment variables in your service settings
+    app.run(debug=True, port=5000)
