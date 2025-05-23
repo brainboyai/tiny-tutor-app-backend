@@ -8,6 +8,7 @@ import firebase_admin
 from firebase_admin import credentials, firestore
 import json
 import base64
+import requests # <--- NEW: Import requests library for making HTTP calls
 
     # Load environment variables from .env file
 load_dotenv()
@@ -42,6 +43,14 @@ else:
 
 firebase_admin.initialize_app(cred)
 db = firestore.client() # Get a Firestore client
+
+    # --- Gemini API Configuration ---
+    # Retrieve Gemini API Key from environment variables
+GEMINI_API_KEY = os.getenv('GEMINI_API_KEY')
+if not GEMINI_API_KEY:
+        print("WARNING: GEMINI_API_KEY environment variable not set. AI explanation feature will not work.")
+
+GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent"
 
     # --- Utility Functions ---
 def is_valid_email(email):
@@ -137,6 +146,60 @@ def protected():
             return jsonify({"message": f"Welcome, {session['username']}! This is a protected resource for {session.get('tier')} users."}), 200
         else:
             return jsonify({"error": "Unauthorized"}), 401
+
+@app.route('/generate_explanation', methods=['POST']) # <--- NEW: AI Explanation Route
+def generate_explanation():
+        if 'username' not in session:
+            return jsonify({"error": "Unauthorized. Please log in."}), 401
+
+        data = request.get_json()
+        question = data.get('question')
+
+        if not question:
+            return jsonify({"error": "No question provided"}), 400
+
+        if not GEMINI_API_KEY:
+            return jsonify({"error": "AI service not configured. Missing API Key."}), 500
+
+        try:
+            headers = {
+                'Content-Type': 'application/json',
+            }
+            params = {
+                'key': GEMINI_API_KEY
+            }
+            payload = {
+                "contents": [
+                    {
+                        "role": "user",
+                        "parts": [
+                            {"text": f"Explain the following concept in simple terms, suitable for a student: {question}"}
+                        ]
+                    }
+                ]
+            }
+
+            # Make the request to the Gemini API
+            response = requests.post(GEMINI_API_URL, headers=headers, params=params, json=payload)
+            response.raise_for_status() # Raise an HTTPError for bad responses (4xx or 5xx)
+
+            gemini_result = response.json()
+
+            # Extract the generated text
+            if gemini_result and 'candidates' in gemini_result and len(gemini_result['candidates']) > 0:
+                explanation = gemini_result['candidates'][0]['content']['parts'][0]['text']
+                return jsonify({"explanation": explanation}), 200
+            else:
+                print(f"Gemini API returned no candidates or unexpected structure: {gemini_result}")
+                return jsonify({"error": "Failed to generate explanation. Please try again."}), 500
+
+        except requests.exceptions.RequestException as e:
+            print(f"Error calling Gemini API: {e}")
+            return jsonify({"error": f"Failed to connect to AI service: {e}"}), 500
+        except Exception as e:
+            print(f"An unexpected error occurred during explanation generation: {e}")
+            return jsonify({"error": "An unexpected error occurred."}), 500
+
 
 if __name__ == '__main__':
         app.run(debug=True, port=5000)
