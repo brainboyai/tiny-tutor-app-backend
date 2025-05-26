@@ -208,7 +208,7 @@ def login():
 @app.route('/generate_explanation', methods=['POST'])
 @token_required
 def generate_explanation():
-    if not db: # Ensure db is checked early
+    if not db: # Ensure db is checked earlyy
         return jsonify({"error": "Database not initialized. Cannot process."}), 500
     if not GEMINI_API_KEY: # Ensure GEMINI_API_KEY is checked early
         return jsonify({"error": "Gemini API key not configured."}), 500
