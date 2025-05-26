@@ -72,7 +72,7 @@ def generate_gemini_content(concept: str, mode: str, existing_explanation: str =
         return "AI service is not available."
     prompt = ""
     if mode == "explain":
-        prompt = f"Explain the concept of '{concept}' in 2-4 concise sentences. If relevant, identify up to 3 key sub-topics within your explanation and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
+        prompt = f"Explain the concept of '{concept}' in 2-3 concise sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2-3 key words or sub-topics within your explanation that deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
     elif mode == "fact":
         prompt = f"Provide a single, concise, interesting, and verifiable fact about '{concept}'."
     elif mode == "quiz":
