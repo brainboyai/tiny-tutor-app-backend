@@ -209,6 +209,9 @@ def login():
 # ... (other imports and setup remain the same) ...
 # Ensure db and GEMINI_API_KEY are checked at the beginning of relevant routes
 
+# app.py
+# ... (other imports and setup remain the same) ...
+
 @app.route('/generate_explanation', methods=['POST'])
 @token_required
 def generate_explanation():
@@ -229,71 +232,65 @@ def generate_explanation():
     sanitized_word_id = sanitize_word_for_id(question)
     word_doc_ref = db.collection('users').document(user_id).collection('word_history').document(sanitized_word_id)
     
-    current_full_cache_for_word = {}
-    word_doc_snapshot_initial = word_doc_ref.get()
-    if word_doc_snapshot_initial.exists:
-        current_full_cache_for_word = word_doc_snapshot_initial.to_dict().get('generated_content_cache', {})
-        if not isinstance(current_full_cache_for_word, dict): # Ensure it's a dict
-            current_full_cache_for_word = {}
-
+    # Fetch current cache from DB once at the beginning
+    current_db_cache_for_word = {}
+    word_doc_snapshot = word_doc_ref.get()
+    is_new_word_entry = not word_doc_snapshot.exists
+    
+    if word_doc_snapshot.exists:
+        word_data_from_db = word_doc_snapshot.to_dict()
+        current_db_cache_for_word = word_data_from_db.get('generated_content_cache', {})
+        if not isinstance(current_db_cache_for_word, dict):
+            current_db_cache_for_word = {}
 
     # 1. Check cache if not forcing refresh
     if not force_refresh:
-        cached_content_for_mode = current_full_cache_for_word.get(mode)
+        cached_content_for_mode = current_db_cache_for_word.get(mode)
         if cached_content_for_mode:
             app.logger.info(f"Returning cached '{mode}' for '{question}' for user '{user_id}'.")
+            # Update last_explored_at for this interaction, but don't modify other cache fields
             word_doc_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP}, merge=True)
             return jsonify({
                 "question": question,
                 "mode": mode,
                 "content": cached_content_for_mode,
-                "full_cache": current_full_cache_for_word, # Send existing full cache
+                "full_cache": current_db_cache_for_word, # Send existing full cache from DB
                 "source": "cache"
             }), 200
-        # If mode not in cache, and not force_refresh, backend will proceed to generate IF it's a valid generation mode.
-        # The frontend's stricter logic will prevent this call for simple mode toggles.
 
-    # Handle placeholder modes (these should ideally also check cache if they were fully implemented and could be "refreshed")
-    if mode == "image": # This section remains as is
-        # For consistency, if this mode had caching, you'd return its cached content and full_cache here too.
-        # Since it's a placeholder, we just return the placeholder.
-        # To allow "refresh" to work on this, it would need to go through the generation pipeline.
-        # For now, if force_refresh is true for image/deep, it will fall through.
-        # If you want "image" and "deep" to NEVER hit Gemini even on refresh, handle them before Gemini call.
-        if not force_refresh : # Only return placeholder if not forcing a (future) generation
-            return jsonify({
-                "question": question, "mode": mode,
-                "content": f"Image generation feature coming soon! You can imagine an image of '{question}'.",
-                "full_cache": current_full_cache_for_word
-            }), 200
-    if mode == "deep":
-        if not force_refresh:
-            return jsonify({
-                "question": question, "mode": mode,
-                "content": f"In-depth explanation feature coming soon! We're working on providing more detailed insights for '{question}'.",
-                "full_cache": current_full_cache_for_word
-            }), 200
-    
-    # If mode is image or deep and force_refresh is true, it will attempt generation below.
-    # If these modes should never generate, add an explicit block:
-    if mode in ["image", "deep"] and force_refresh: # Or just mode in ["image", "deep"]
-        # Simulate generation for placeholder modes if refreshed, or return error
-        # For now, let's assume refresh on these placeholders means "try to get it if it were real"
-        # but since they are not, we can return the placeholder again or an error.
-        # To prevent Gemini call for these:
+    # Handle placeholder modes explicitly to prevent Gemini calls for them
+    if mode in ["image", "deep"]:
         placeholder_content = ""
-        if mode == "image": placeholder_content = f"Image generation feature coming soon! (Refreshed placeholder for '{question}')"
-        if mode == "deep": placeholder_content = f"In-depth explanation feature coming soon! (Refreshed placeholder for '{question}')"
+        if mode == "image": placeholder_content = f"Image generation feature coming soon for '{question}'."
+        if mode == "deep": placeholder_content = f"In-depth explanation feature coming soon for '{question}'."
         
-        # Update cache for these placeholder "refreshes" if desired, or just return
-        # word_doc_ref.set({f'generated_content_cache.{mode}': placeholder_content, 'last_explored_at': firestore.SERVER_TIMESTAMP}, merge=True)
-        # updated_cache_after_placeholder = word_doc_ref.get().to_dict().get('generated_content_cache', {})
+        # If force_refresh, we might "log" it as refreshed, but still return placeholder
+        if force_refresh:
+            placeholder_content += " (Placeholder refreshed)"
+            app.logger.info(f"Placeholder for '{mode}' for '{question}' (user '{user_id}') refreshed.")
+        
+        # Update the local cache copy that will be saved
+        # This ensures if user refreshes 'image', it's "cached" as the placeholder
+        updated_cache_for_response = dict(current_db_cache_for_word) # Make a copy
+        updated_cache_for_response[mode] = placeholder_content
 
+        # Save this placeholder to DB if it's a forced refresh or if it's new for this mode
+        if force_refresh or mode not in current_db_cache_for_word:
+            db_update_payload = {
+                'word': question, 'sanitized_word': sanitized_word_id,
+                'last_explored_at': firestore.SERVER_TIMESTAMP,
+                'generated_content_cache': updated_cache_for_response,
+                'modes_generated': firestore.ArrayUnion([mode])
+            }
+            if is_new_word_entry:
+                db_update_payload['first_explored_at'] = firestore.SERVER_TIMESTAMP
+                db_update_payload['is_favorite'] = False
+            word_doc_ref.set(db_update_payload, merge=True)
+        
         return jsonify({
             "question": question, "mode": mode, "content": placeholder_content,
-            "full_cache": current_full_cache_for_word # Or updated_cache_after_placeholder
+            "full_cache": updated_cache_for_response # Return the cache including this placeholder
         }), 200
-
 
     # 2. If not cached (for this mode) or force_refresh is true, proceed to generate for valid AI modes
     prompt_text = ""
@@ -304,10 +301,8 @@ def generate_explanation():
     elif mode == "quiz":
         prompt_text = f"Create a simple multiple-choice quiz question about '{question}'. Provide the question, three incorrect options (A, B, C), and one correct option (D). Format it as: Question: [Your question]? A) [Option A] B) [Option B] C) [Option C] D) [Option D] Correct: D"
     else:
-        # Should not be reached if frontend logic for mode toggles is strict
-        # and image/deep are handled above.
         app.logger.warning(f"Attempt to generate for unexpected mode '{mode}' for question '{question}'.")
-        return jsonify({"error": f"Cannot generate content for mode: {mode}"}), 400
+        return jsonify({"error": f"Cannot generate content for mode: {mode}", "full_cache": current_db_cache_for_word }), 400
 
     try:
         headers = {'Content-Type': 'application/json'}
@@ -322,66 +317,54 @@ def generate_explanation():
         response_data = response_gemini.json()
         
         generated_text = "Error: No content could be generated."
-        if response_data.get("candidates") and \
-           isinstance(response_data["candidates"], list) and \
-           len(response_data["candidates"]) > 0 and \
-           response_data["candidates"][0].get("content") and \
-           isinstance(response_data["candidates"][0]["content"].get("parts"), list) and \
+        if response_data.get("candidates") and isinstance(response_data["candidates"], list) and len(response_data["candidates"]) > 0 and \
+           response_data["candidates"][0].get("content") and isinstance(response_data["candidates"][0]["content"].get("parts"), list) and \
            len(response_data["candidates"][0]["content"]["parts"]) > 0:
             generated_text = response_data["candidates"][0]["content"]["parts"][0].get("text", "Error extracting text.")
         
-        word_data_update = {
+        # Prepare the cache to be saved and returned
+        # Start with the cache fetched at the beginning or an empty dict
+        cache_to_save_and_return = dict(current_db_cache_for_word) # Make a copy
+        cache_to_save_and_return[mode] = generated_text # Add/update the newly generated content
+
+        db_update_payload = {
             'word': question,
             'sanitized_word': sanitized_word_id,
             'last_explored_at': firestore.SERVER_TIMESTAMP,
-            f'generated_content_cache.{mode}': generated_text,
+            'generated_content_cache': cache_to_save_and_return, # Save the updated full cache
             'modes_generated': firestore.ArrayUnion([mode])
         }
-        if mode == "explain":
+        if mode == "explain": # Only add explicit_connections if 'explain' mode was generated
             highlighted_words = re.findall(r'<click>(.*?)</click>', generated_text)
-            word_data_update['explicit_connections'] = list(set(highlighted_words))
-
-        word_doc_ref.set(word_data_update, merge=True)
+            db_update_payload['explicit_connections'] = list(set(highlighted_words))
         
-        # Ensure first_explored_at and default is_favorite are set on initial creation
-        # Re-fetch snapshot to get the most current data including any merged fields
-        final_word_snapshot = word_doc_ref.get()
-        final_word_data = final_word_snapshot.to_dict() if final_word_snapshot.exists else {}
-
-        if not final_word_data.get('first_explored_at'):
-            word_doc_ref.set({
-                'first_explored_at': firestore.SERVER_TIMESTAMP,
-                'is_favorite': False
-            }, merge=True)
-            # After setting defaults, fetch again to include these in full_cache if it was the very first write
-            final_word_snapshot = word_doc_ref.get() 
-            final_word_data = final_word_snapshot.to_dict() if final_word_snapshot.exists else {}
+        if is_new_word_entry: # If this is the first time any content is generated for this word
+            db_update_payload['first_explored_at'] = firestore.SERVER_TIMESTAMP
+            db_update_payload['is_favorite'] = False
+            # If explicit_connections is not set for a new word in explain mode, initialize it
+            if mode == "explain" and 'explicit_connections' not in db_update_payload:
+                 db_update_payload['explicit_connections'] = []
 
 
-        full_word_cache_after_action = final_word_data.get('generated_content_cache', {})
-        if not isinstance(full_word_cache_after_action, dict): # Sanity check
-            full_word_cache_after_action = {}
-
+        word_doc_ref.set(db_update_payload, merge=True)
 
         app.logger.info(f"Generated (and cached) '{mode}' for '{question}' for user '{user_id}'.")
         return jsonify({
             "question": question,
             "mode": mode,
-            "content": generated_text,
-            "full_cache": full_word_cache_after_action,
+            "content": generated_text, # The specific content for the requested mode
+            "full_cache": cache_to_save_and_return, # The complete cache for the word after this operation
             "source": "generated"
         }), 200
 
     except requests.exceptions.RequestException as e:
         app.logger.error(f"Gemini API request failed for '{question}', mode '{mode}', user '{user_id}': {e}")
-        return jsonify({"error": f"AI content generation failed: {e}", "full_cache": current_full_cache_for_word}), 503
+        return jsonify({"error": f"AI content generation failed: {e}", "full_cache": current_db_cache_for_word}), 503
     except Exception as e:
         app.logger.error(f"Error in generate_explanation for '{question}', mode '{mode}', user '{user_id}': {e}")
-        return jsonify({"error": f"An unexpected error occurred: {e}", "full_cache": current_full_cache_for_word}), 500
+        return jsonify({"error": f"An unexpected error occurred: {e}", "full_cache": current_db_cache_for_word}), 500
 
-# ... (rest of app.py: /toggle_favorite, /profile, /save_streak, etc. should be mostly fine) ...
-# Ensure /profile also returns the full 'generated_content_cache' for each word.
-# The previous version of /profile already did: "generated_content_cache": data.get('generated_content_cache', {})
+# ... (rest of app.py)
 
 
     # ... (exception handling) ...
