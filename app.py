@@ -208,20 +208,49 @@ def login():
 @app.route('/generate_explanation', methods=['POST'])
 @token_required
 def generate_explanation():
-    if not db:
-        return jsonify({"error": "Database not initialized. Cannot generate explanation."}), 500
-    if not GEMINI_API_KEY:
-        return jsonify({"error": "Gemini API key not configured. Cannot generate explanation."}), 500
+    if not db: # Ensure db is checked early
+        return jsonify({"error": "Database not initialized. Cannot process."}), 500
+    if not GEMINI_API_KEY: # Ensure GEMINI_API_KEY is checked early
+        return jsonify({"error": "Gemini API key not configured."}), 500
 
-    user_id = request.current_user_jwt.get('username') # Username is user_id
+    user_id = request.current_user_jwt.get('username')
     data = request.get_json()
     question = data.get('question')
-    mode = data.get('mode', 'explain').lower() # Default to 'explain'
+    mode = data.get('mode', 'explain').lower()
+    force_refresh = data.get('force_refresh', False)
 
     if not question:
         return jsonify({"error": "No question provided"}), 400
-    
-    # --- Placeholder for Image and Deep modes as per report ---
+
+    sanitized_word_id = sanitize_word_for_id(question)
+    word_doc_ref = db.collection('users').document(user_id).collection('word_history').document(sanitized_word_id)
+
+    if not force_refresh:
+        try:
+            word_doc_snapshot = word_doc_ref.get()
+            if word_doc_snapshot.exists:
+                word_data = word_doc_snapshot.to_dict()
+                # Ensure generated_content_cache exists and is a dict before trying .get(mode)
+                generated_content_cache = word_data.get('generated_content_cache', {})
+                if isinstance(generated_content_cache, dict):
+                    cached_content_for_mode = generated_content_cache.get(mode)
+                    if cached_content_for_mode:
+                        app.logger.info(f"Returning cached '{mode}' for '{question}' for user '{user_id}'.")
+                        word_doc_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP}, merge=True)
+                        return jsonify({
+                            "question": question,
+                            "mode": mode,
+                            "content": cached_content_for_mode,
+                            "source": "cache"
+                        }), 200
+                else: # Log if generated_content_cache is not a dict, and proceed to generate
+                    app.logger.warning(f"generated_content_cache for {question} user {user_id} is not a dict. Proceeding to generate.")
+        except Exception as e:
+            app.logger.error(f"Error checking cache for '{question}', mode '{mode}', user '{user_id}': {e}")
+            # Fall through to generate content if cache check fails,
+            # or you could return an error: jsonify({"error": "Cache check failed"}), 500
+
+    # Placeholder modes (as in your original code)
     if mode == "image":
         return jsonify({
             "question": question,
@@ -234,6 +263,87 @@ def generate_explanation():
             "mode": mode,
             "content": f"In-depth explanation feature coming soon! We're working on providing more detailed insights for '{question}'."
         }), 200
+
+    # AI Content Generation (Explain, Fact, Quiz)
+    prompt_text = ""
+    if mode == "explain":
+        prompt_text = f"Explain the concept '{question}' in a clear, concise, and engaging way for a general audience. Identify up to 3 important keywords within your explanation and wrap them in <click>keyword</click> tags. For example, if explaining 'photosynthesis', you might say 'Plants use <click>chlorophyll</click> to convert <click>sunlight</click> into energy through a process called <click>photosynthesis</click>.' Keep the explanation to about 2-4 sentences."
+    elif mode == "fact":
+        prompt_text = f"Provide one interesting and concise fact about '{question}'. The fact should be easily understandable."
+    elif mode == "quiz":
+        prompt_text = f"Create a simple multiple-choice quiz question about '{question}'. Provide the question, three incorrect options (A, B, C), and one correct option (D). Format it as: Question: [Your question]? A) [Option A] B) [Option B] C) [Option C] D) [Option D] Correct: D"
+    else:
+        # This was missing in your original but good for robustness if mode is somehow unexpected
+        if mode not in ["explain", "fact", "quiz", "image", "deep"]:
+             return jsonify({"error": "Invalid content mode specified"}), 400
+
+    # If we reach here, it's either force_refresh=True or content not in cache for valid modes
+    try:
+        headers = {'Content-Type': 'application/json'}
+        payload = {
+            "contents": [{"parts": [{"text": prompt_text}]}],
+            "generationConfig": {
+                "temperature": 0.7,
+                "maxOutputTokens": 300
+            }
+        }
+        api_url = f"{GEMINI_API_URL_BASE}{GEMINI_MODEL}?key={GEMINI_API_KEY}"
+        
+        response_gemini = requests.post(api_url, headers=headers, json=payload) # Renamed to avoid conflict
+        response_gemini.raise_for_status()
+        
+        response_data = response_gemini.json()
+        
+        generated_text = "Error: No content could be generated." # Default if extraction fails
+        if response_data.get("candidates") and \
+           isinstance(response_data["candidates"], list) and \
+           len(response_data["candidates"]) > 0 and \
+           response_data["candidates"][0].get("content") and \
+           isinstance(response_data["candidates"][0]["content"].get("parts"), list) and \
+           len(response_data["candidates"][0]["content"]["parts"]) > 0:
+            generated_text = response_data["candidates"][0]["content"]["parts"][0].get("text", "Error extracting text from Gemini response.")
+        
+        # --- Log word exploration to Firestore ---
+        word_data_update = {
+            'word': question,
+            'sanitized_word': sanitized_word_id,
+            'last_explored_at': firestore.SERVER_TIMESTAMP,
+            # Store under 'generated_content_cache' map with mode as key
+            f'generated_content_cache.{mode}': generated_text,
+            'modes_generated': firestore.ArrayUnion([mode])
+        }
+        
+        if mode == "explain":
+            highlighted_words = re.findall(r'<click>(.*?)</click>', generated_text)
+            word_data_update['explicit_connections'] = list(set(highlighted_words))
+
+        word_doc_ref.set(word_data_update, merge=True)
+        
+        # If the document is being created for the first time (or first_explored_at is missing), set defaults
+        # It's safer to fetch after set to ensure atomicity for the check or rely on merge behavior
+        word_doc_snapshot_after_set = word_doc_ref.get() # Re-fetch or use a transaction
+        if not word_doc_snapshot_after_set.exists or not word_doc_snapshot_after_set.to_dict().get('first_explored_at'):
+            word_doc_ref.set({
+                'first_explored_at': firestore.SERVER_TIMESTAMP,
+                'is_favorite': False # Default to not favorite
+            }, merge=True)
+
+        app.logger.info(f"Generated (and cached) '{mode}' for '{question}' for user '{user_id}'.")
+        return jsonify({
+            "question": question,
+            "mode": mode,
+            "content": generated_text,
+            "source": "generated"
+        }), 200
+
+    except requests.exceptions.RequestException as e:
+        app.logger.error(f"Gemini API request failed for '{question}', mode '{mode}', user '{user_id}': {e}")
+        return jsonify({"error": f"AI content generation failed: {e}"}), 503
+    except Exception as e:
+        app.logger.error(f"Error in generate_explanation for '{question}', mode '{mode}', user '{user_id}': {e}")
+        return jsonify({"error": f"An unexpected error occurred: {e}"}), 500
+
+    # ... (exception handling) ...
 
     # --- AI Content Generation (Explain, Fact, Quiz) ---
     prompt_text = ""
