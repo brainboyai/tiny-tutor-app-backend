@@ -254,7 +254,7 @@ def generate_explanation_route(current_user_id):
             model = genai.GenerativeModel('gemini-1.5-flash-latest') # Or your preferred model
             prompt = ""
             if mode == 'explain':
-                prompt = f"Explain the concept or word '{word}' in 2-4 concise sentences. Identify up to 3 key sub-topics within your explanation and enclose them in <click> and </click> tags. For example: <click>Sub-topic A</click>."
+                prompt = f"Explain the concept of '{concept}' in 2 concise sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2 key words or sub-topics within your explanation that deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
             elif mode == 'fact':
                 prompt = f"Tell me one single, concise, interesting fact about '{word}'."
             elif mode == 'quiz':
