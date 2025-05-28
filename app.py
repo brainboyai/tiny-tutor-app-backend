@@ -1,4 +1,3 @@
-```python
 # app.py
 from flask import Flask, request, jsonify, current_app 
 from flask_cors import CORS
