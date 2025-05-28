@@ -21,13 +21,14 @@ load_dotenv()
 app = Flask(__name__)
 
 # --- Logging Configuration ---
-app.logger.setLevel(logging.DEBUG)
+app.logger.setLevel(logging.DEBUG) # Set root logger level
 handler = logging.StreamHandler()
 handler.setLevel(logging.DEBUG)
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
 handler.setFormatter(formatter)
 if not app.logger.handlers:
     app.logger.addHandler(handler)
+    app.logger.propagate = False 
 
 app.logger.info("Flask app starting up...")
 
@@ -46,7 +47,7 @@ CORS(app,
 app.logger.info("CORS configured.")
 
 # --- App Configuration ---
-app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me_for_prod')
+app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me_for_prod_strong_key')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 app.logger.info("JWT configuration loaded.")
 
@@ -70,31 +71,26 @@ else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase functionality will be disabled.")
 
 # --- Generative AI Configuration ---
-gemini_api_key = os.getenv('GEMINI_API_KEY')
-if gemini_api_key:
+gemini_api_key_from_env = os.getenv('GEMINI_API_KEY')
+app.logger.info(f"Attempting to load GEMINI_API_KEY. Value seen by os.getenv: '{'SET' if gemini_api_key_from_env else 'NOT SET'}'")
+
+if gemini_api_key_from_env and gemini_api_key_from_env.strip():
     try:
-        genai.configure(api_key=gemini_api_key)
-        app.logger.info("gemini Generative AI configured.")
+        genai.configure(api_key=gemini_api_key_from_env)
+        app.logger.info("Google Generative AI configured successfully.")
     except Exception as e:
-        app.logger.error(f"Failed to configure Gemini Generative AI: {e}", exc_info=True)
+        app.logger.error(f"Failed to configure Google Generative AI: {e}", exc_info=True)
 else:
-    app.logger.warning("GEMINI_API_KEY not found. Generative AI functionality will be disabled.")
+    app.logger.warning("GEMINI_API_KEY not found, is empty, or contains only whitespace. Generative AI functionality will be disabled.")
 
 # --- Request Logging ---
 @app.before_request
 def log_all_requests():
-    app.logger.debug(f"Incoming Request -- Method: {request.method}, Path: {request.path}")
+    app.logger.debug(f"Incoming Request -- Method: {request.method}, Path: {request.path}, RemoteAddr: {request.remote_addr}")
     app.logger.debug(f"Request Headers: {dict(request.headers)}")
-    if request.method == 'OPTIONS':
-        app.logger.debug("Handling OPTIONS preflight request (Flask-CORS should manage response).")
 
 # --- Rate Limiter ---
-limiter = Limiter(
-    get_remote_address,
-    app=app,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://"
-)
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"], storage_uri="memory://")
 app.logger.info("Rate limiter configured.")
 
 # --- JWT Token Required Decorator ---
@@ -109,22 +105,16 @@ def token_required(f):
             except IndexError:
                 app.logger.warning("Malformed Authorization header.")
                 return jsonify({"error": "Malformed token"}), 401
-        if not token:
-            app.logger.warning("Token is missing for protected route.")
-            return jsonify({"error": "Token is missing"}), 401
+        if not token: return jsonify({"error": "Token is missing"}), 401
         try:
             data = jwt.decode(token, current_app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
-            current_user_id = data['user_id']
-        except jwt.ExpiredSignatureError:
-            app.logger.warning("Token has expired.")
-            return jsonify({"error": "Token has expired"}), 401
-        except jwt.InvalidTokenError:
-            app.logger.warning("Invalid token.")
-            return jsonify({"error": "Invalid token"}), 401
+            kwargs['current_user_id'] = data['user_id'] # Pass user_id as a keyword argument
+        except jwt.ExpiredSignatureError: return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError: return jsonify({"error": "Invalid token"}), 401
         except Exception as e:
             app.logger.error(f"Token validation error: {e}", exc_info=True)
             return jsonify({"error": "Token validation failed"}), 401
-        return f(current_user_id, *args, **kwargs)
+        return f(*args, **kwargs) # Pass all args, including current_user_id from kwargs
     return decorated
 
 # --- Routes ---
@@ -137,6 +127,7 @@ def home():
 @app.route('/auth/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup():
+    # ... (signup logic as before, ensure app.logger is used) ...
     app.logger.info(f"Signup attempt received for path: {request.path}")
     if not db:
         app.logger.error("Database not initialized. Cannot process signup.")
@@ -176,8 +167,7 @@ def signup():
             'created_at': firestore.SERVER_TIMESTAMP,
             'total_words_explored': 0,
             'explored_words': [],
-            'favorite_words': [], # This field might be redundant if derived from explored_words
-            'streak_history': [] # Initialize streak history
+            'streak_history': [] # Streak history not yet implemented
         }
         user_ref = users_ref.document()
         user_ref.set(user_data)
@@ -195,9 +185,11 @@ def signup():
         app.logger.error(f"Signup error: {e}", exc_info=True)
         return jsonify({"error": "An internal error occurred during signup."}), 500
 
+
 @app.route('/auth/login', methods=['POST'])
 @limiter.limit("10 per minute")
 def login():
+    # ... (login logic as before, ensure app.logger is used) ...
     app.logger.info(f"Login attempt received for path: {request.path}")
     if not db:
         app.logger.error("Database not initialized. Cannot process login.")
@@ -237,6 +229,7 @@ def login():
 @app.route('/users/profile', methods=['GET'])
 @token_required
 def get_user_profile(current_user_id):
+    # ... (get_user_profile logic as before, ensure app.logger is used) ...
     app.logger.info(f"Fetching profile for user_id: {current_user_id}")
     if not db: return jsonify({"error": "Server configuration error: Database not available"}), 503
     try:
@@ -244,18 +237,29 @@ def get_user_profile(current_user_id):
         user_doc = user_ref.get()
         if user_doc.exists:
             user_data = user_doc.to_dict()
+            created_at_val = user_data.get("created_at")
+            
+            # Ensure explored_words is a list of dicts
+            explored_words_from_db = user_data.get("explored_words", [])
+            if not isinstance(explored_words_from_db, list):
+                app.logger.warning(f"explored_words for user {current_user_id} is not a list, found: {type(explored_words_from_db)}. Resetting to empty list for profile.")
+                explored_words_from_db = []
+            
+            valid_explored_words = [ew for ew in explored_words_from_db if isinstance(ew, dict)]
+
+
             profile_data = {
                 "id": user_doc.id,
                 "username": user_data.get("username"),
                 "email": user_data.get("email"),
                 "tier": user_data.get("tier", "free"),
                 "total_words_explored": user_data.get("total_words_explored", 0),
-                "explored_words": user_data.get("explored_words", []),
-                "favorite_words": [word for word in user_data.get("explored_words", []) if word.get("is_favorite")], # Derived
+                "explored_words": valid_explored_words, # Use validated list
+                "favorite_words": [word for word in valid_explored_words if word.get("is_favorite")],
                 "streak_history": user_data.get("streak_history", []),
-                "created_at": user_data.get("created_at").isoformat() if user_data.get("created_at") else None
+                "created_at": created_at_val.isoformat() if isinstance(created_at_val, datetime) else str(created_at_val) if created_at_val else None
             }
-            app.logger.debug(f"Profile data for user {current_user_id}: {profile_data}")
+            app.logger.debug(f"Profile data for user {current_user_id} (before sending): {profile_data}")
             return jsonify({"user": profile_data}), 200
         else:
             app.logger.warning(f"User profile not found for user_id: {current_user_id}")
@@ -267,42 +271,50 @@ def get_user_profile(current_user_id):
 @app.route('/users/favorites/<word_id>', methods=['POST', 'DELETE'])
 @token_required
 def manage_favorite(current_user_id, word_id):
+    # ... (manage_favorite logic as before, ensure app.logger is used) ...
     app.logger.info(f"User {current_user_id} managing favorite for word_id: {word_id}, Method: {request.method}")
     if not db: return jsonify({"error": "Server configuration error"}), 503
 
     user_ref = db.collection('users').document(current_user_id)
-    # Favorites are now managed as a flag within the 'explored_words' array in the main user document
     try:
         user_doc = user_ref.get()
         if not user_doc.exists:
+            app.logger.warning(f"User {current_user_id} not found for managing favorite.")
             return jsonify({"error": "User not found"}), 404
 
-        explored_words = user_doc.to_dict().get("explored_words", [])
-        word_found = False
-        updated_explored_words = []
+        user_data = user_doc.to_dict()
+        explored_words = user_data.get("explored_words", [])
+        if not isinstance(explored_words, list): # Ensure it's a list
+            app.logger.error(f"explored_words for user {current_user_id} is not a list. Found: {type(explored_words)}")
+            explored_words = []
+
+        word_found_in_list = False
+        updated_explored_words_list = []
 
         for word_entry in explored_words:
-            if word_entry.get("id") == word_id:
-                word_found = True
-                if request.method == 'POST': # Add to favorites
+            if isinstance(word_entry, dict) and word_entry.get("id") == word_id:
+                word_found_in_list = True
+                if request.method == 'POST':
                     word_entry["is_favorite"] = True
                     app.logger.info(f"Word '{word_id}' marked as favorite for user '{current_user_id}'.")
-                elif request.method == 'DELETE': # Remove from favorites
+                elif request.method == 'DELETE':
                     word_entry["is_favorite"] = False
                     app.logger.info(f"Word '{word_id}' unmarked as favorite for user '{current_user_id}'.")
-            updated_explored_words.append(word_entry)
+                word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat() # Update last explored on fav change
+            updated_explored_words_list.append(word_entry)
 
-        if not word_found and request.method == 'POST':
-            # This case should ideally not happen if favoriting only explored words.
-            # If it can, you'd need to decide how to handle adding a new word entry here.
+        if not word_found_in_list and request.method == 'POST':
             app.logger.warning(f"Attempt to favorite word '{word_id}' not in explored list for user '{current_user_id}'.")
             return jsonify({"error": "Word not explored yet, cannot mark as favorite."}), 404
         
-        if word_found:
-            user_ref.update({"explored_words": updated_explored_words})
-            return jsonify({"message": f"Favorite status updated for {word_id}"}), 200
-        else: # Should only be reachable if DELETE and word_found is False
-            return jsonify({"error": "Word not found in explored list"}), 404
+        if word_found_in_list: # Only update if the word was found and modified
+            user_ref.update({"explored_words": updated_explored_words_list})
+            return jsonify({"message": f"Favorite status for '{word_id}' updated"}), 200
+        elif not word_found_in_list and request.method == 'DELETE': # Trying to unfavorite a non-existent/non-explored word
+            app.logger.warning(f"Attempt to unfavorite word '{word_id}' not in explored list for user '{current_user_id}'.")
+            return jsonify({"error": "Word not found in explored list to unfavorite."}), 404
+        else: # Should not be reached if logic is correct
+            return jsonify({"error": "Could not update favorite status."}), 500
 
     except Exception as e:
         app.logger.error(f"Error managing favorite for user '{current_user_id}', word '{word_id}': {e}", exc_info=True)
@@ -310,22 +322,23 @@ def manage_favorite(current_user_id, word_id):
 
 # --- Word Interaction Routes ---
 def get_word_content_from_genai(word, mode):
+    # ... (get_word_content_from_genai logic as before, ensure app.logger is used) ...
     app.logger.info(f"Fetching GenAI content for word: '{word}', mode: '{mode}'")
-    if not gemini_api_key or not genai:
-        app.logger.warning("Gemini API key or GenAI client not configured.")
+    if not (gemini_api_key_from_env and gemini_api_key_from_env.strip()) or not genai:
+        app.logger.warning("GEMINI_API_KEY or GenAI client not configured. Cannot fetch from GenAI.")
         return "Generative AI service is not available."
 
-    model = genai.GenerativeModel('gemini-2.0-flash')
+    model_name = 'gemini-2.0-flash' # Consider making this configurable
+    model = genai.GenerativeModel(model_name)
     prompt = ""
+
     if mode == 'explain':
-        # UPDATED PROMPT for clickable words
         prompt = f"Explain the concept of '{word}' in 2 simple sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2 key words or sub-topics within your explanation that can progress the concept along the learning curve to deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
     elif mode == 'fact':
         prompt = f"Tell me an interesting and verifiable fact about '{word}'."
     elif mode == 'deep_dive':
         prompt = f"Provide a deep dive into the concept of '{word}'. Include its history, applications, and related concepts. Aim for about 200-300 words."
     elif mode == 'quiz':
-        # UPDATED PROMPT for multiple quiz questions (e.g., 3)
         prompt = f"""Create an array of 3 unique multiple-choice quiz questions about the word '{word}'.
 Each question object in the array should have the following JSON structure:
 {{
@@ -344,27 +357,39 @@ Example of a single question object:
 }}
 """
         try:
-            generation_config = genai.types.GenerationConfig(
-                response_mime_type="application/json",
-            )
+            generation_config = genai.types.GenerationConfig(response_mime_type="application/json")
             response = model.generate_content(prompt, generation_config=generation_config)
             app.logger.debug(f"GenAI Quiz raw response for '{word}': {response.text}")
+            
             quiz_data_array = json.loads(response.text)
-
+            
             if not isinstance(quiz_data_array, list):
                 app.logger.error(f"GenAI Quiz JSON for '{word}' is not an array. Data: {quiz_data_array}")
                 raise ValueError("Quiz data from AI is not an array.")
 
-            for quiz_data in quiz_data_array: # Validate each question object
+            valid_questions = []
+            for quiz_data in quiz_data_array:
+                if not isinstance(quiz_data, dict):
+                    app.logger.warning(f"Skipping non-dict item in quiz array for '{word}': {quiz_data}")
+                    continue
                 if not all(k in quiz_data for k in ["question", "options", "correct_answer_key"]):
                     app.logger.error(f"GenAI Quiz JSON object in array for '{word}' missing required keys. Data: {quiz_data}")
-                    raise ValueError("Quiz data object from AI is malformed (missing keys).")
-                if not isinstance(quiz_data["options"], dict) or not all(k in quiz_data["options"] for k in ["A", "B", "C", "D"]): # Ensuring 4 options A-D
+                    # Skip this malformed question or raise error for the whole batch
+                    continue # Or raise ValueError("Quiz data object from AI is malformed (missing keys).")
+                if not isinstance(quiz_data["options"], dict) or not all(k in quiz_data["options"] for k in ["A", "B", "C", "D"]):
                      app.logger.error(f"GenAI Quiz JSON object for '{word}' options are malformed. Data: {quiz_data}")
-                     raise ValueError("Quiz data object from AI is malformed (options).")
-            return quiz_data_array
+                     # Skip this malformed question
+                     continue # Or raise ValueError("Quiz data object from AI is malformed (options).")
+                valid_questions.append(quiz_data)
+            
+            if not valid_questions: # If all questions were malformed
+                 app.logger.error(f"No valid quiz questions generated by AI for '{word}'.")
+                 raise ValueError("AI failed to generate any valid quiz questions.")
+            return valid_questions
+
         except json.JSONDecodeError as je:
-            app.logger.error(f"GenAI Quiz JSONDecodeError for '{word}': {je}. Response text: {response.text if 'response' in locals() else 'N/A'}")
+            resp_text = response.text if 'response' in locals() and hasattr(response, 'text') else 'N/A'
+            app.logger.error(f"GenAI Quiz JSONDecodeError for '{word}': {je}. Response text: {resp_text}")
             return "Failed to generate quiz: AI returned invalid JSON."
         except ValueError as ve:
             app.logger.error(f"GenAI Quiz ValueError for '{word}': {ve}")
@@ -380,97 +405,111 @@ Example of a single question object:
         return response.text
     except Exception as e:
         app.logger.error(f"GenAI content generation error for word '{word}', mode '{mode}': {e}", exc_info=True)
-        return f"Error generating content: {e}"
+        return f"Error generating content: {str(e)}"
+
 
 @app.route('/words/<word>/<mode>', methods=['GET'])
 @token_required
-@limiter.limit("30 per minute")
 def get_word_info(current_user_id, word, mode):
     app.logger.info(f"User '{current_user_id}' requesting info for word: '{word}', mode: '{mode}'")
     if not db: return jsonify({"error": "Server configuration error"}), 503
 
     sanitized_word = re.sub(r'[^a-zA-Z0-9\s-]', '', word).strip().lower()
     if not sanitized_word: return jsonify({"error": "Invalid word"}), 400
-
     valid_modes = ['explain', 'image', 'fact', 'quiz', 'deep_dive']
     if mode not in valid_modes: return jsonify({"error": "Invalid mode"}), 400
 
     user_ref = db.collection('users').document(current_user_id)
-    # Word specific data is now stored within the 'explored_words' array in the user document.
-    # We'll fetch the whole user document, find the word, and then its content.
-
     try:
         user_doc = user_ref.get()
-        content = None
-        source = "cache" # Assume cache initially
-
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            explored_words_list = user_data.get("explored_words", [])
-            word_entry = next((w for w in explored_words_list if w.get("id") == sanitized_word), None)
-
-            if word_entry and mode in word_entry.get("content", {}):
-                content = word_entry["content"][mode]
-                app.logger.info(f"Found cached content for '{sanitized_word}', mode '{mode}'.")
-            else:
-                app.logger.info(f"No cache or mode content for '{sanitized_word}', mode '{mode}'. Will fetch.")
-        else: # User document doesn't exist, should not happen if token_required works
-            app.logger.error(f"User document for {current_user_id} not found in get_word_info.")
+        if not user_doc.exists:
+            app.logger.warning(f"User {current_user_id} not found for word info request.")
             return jsonify({"error": "User not found"}), 404
 
+        user_data = user_doc.to_dict()
+        # Ensure explored_words is a list of dicts
+        explored_words_from_db = user_data.get("explored_words", [])
+        if not isinstance(explored_words_from_db, list):
+            app.logger.warning(f"explored_words for user {current_user_id} is not a list, found: {type(explored_words_from_db)}. Initializing as empty list for this operation.")
+            explored_words_from_db = []
+        
+        # Filter out any non-dict items just in case, though ideally it's always a list of dicts
+        explored_words = [ew for ew in explored_words_from_db if isinstance(ew, dict)]
 
+        word_entry_index = -1
+        for i, w_entry in enumerate(explored_words):
+            if w_entry.get("id") == sanitized_word:
+                word_entry_index = i
+                break
+        
+        word_entry_data = explored_words[word_entry_index] if word_entry_index != -1 else None
+        
+        content = None
+        source = "cache"
+
+        if word_entry_data and isinstance(word_entry_data.get("content"), dict) and mode in word_entry_data["content"] and word_entry_data["content"][mode] is not None:
+            content = word_entry_data["content"][mode]
+            app.logger.info(f"Found cached content for '{sanitized_word}', mode '{mode}'.")
+        
         if content is None and mode == 'image':
             app.logger.info(f"Image mode for '{sanitized_word}'. Placeholder response.")
-            return jsonify({"message": "Image generation for this word is not yet supported or is in progress."}), 202
+            return jsonify({"message": "Image generation is in progress or not supported yet."}), 202
 
-        if content is None: # Fetch from GenAI if not cached
+        if content is None:
             source = "new"
+            app.logger.info(f"No cache or empty cache for '{sanitized_word}', mode '{mode}'. Fetching from GenAI.")
             content = get_word_content_from_genai(sanitized_word, mode)
-            if isinstance(content, str) and ("Error generating content" in content or "Failed to generate" in content or "service is not available" in content):
+            
+            if isinstance(content, str) and ("Error generating content" in content or "Failed to generate" in content or "service is not available" in content or "AI returned invalid JSON" in content):
                  app.logger.error(f"Failed to get content from GenAI for '{sanitized_word}', mode '{mode}': {content}")
                  return jsonify({"error": content}), 500
+            if content is None: # Should be caught by above if string, but defensive
+                app.logger.error(f"GenAI returned None for '{sanitized_word}', mode '{mode}'.")
+                return jsonify({"error": "Failed to retrieve content from AI service."}), 500
 
-            # Update Firestore document
-            # This part needs to update the specific word_entry within the explored_words array
-            updated_explored_words = []
-            word_found_in_list = False
-            current_time_iso = datetime.now(timezone.utc).isoformat()
+        # Update explored_words array in the user document
+        current_time_iso = datetime.now(timezone.utc).isoformat()
+        is_new_word_overall = False
 
-            for w_entry in explored_words_list:
-                if w_entry.get("id") == sanitized_word:
-                    word_found_in_list = True
-                    if "content" not in w_entry: w_entry["content"] = {}
-                    w_entry["content"][mode] = content
-                    w_entry["last_explored_at"] = current_time_iso
-                    w_entry["modes_generated"] = list(set(w_entry.get("modes_generated", []) + [mode]))
-                updated_explored_words.append(w_entry)
+        if word_entry_index != -1: # Word exists, update it
+            app.logger.debug(f"Updating existing word_entry for '{sanitized_word}' at index {word_entry_index}")
+            target_entry_to_update = explored_words[word_entry_index] # This is a reference to the dict in the list
+            
+            target_entry_to_update.setdefault("content", {}) # Ensure 'content' dict exists
+            target_entry_to_update["content"][mode] = content
+            target_entry_to_update["last_explored_at"] = current_time_iso
+            
+            target_entry_to_update.setdefault("modes_generated", [])
+            if mode not in target_entry_to_update["modes_generated"]:
+                target_entry_to_update["modes_generated"].append(mode)
+        else: # Word is new to explored_words, create and add it
+            app.logger.debug(f"Creating new word_entry for '{sanitized_word}'")
+            new_word_entry_obj = {
+                "id": sanitized_word, "word": word,
+                "first_explored_at": current_time_iso, "last_explored_at": current_time_iso,
+                "is_favorite": False, "content": {mode: content},
+                "modes_generated": [mode], "quiz_progress": []
+            }
+            explored_words.append(new_word_entry_obj) # Add to the list
+            is_new_word_overall = True
 
-            if not word_found_in_list:
-                new_word_data = {
-                    "id": sanitized_word,
-                    "word": word, # Original word
-                    "first_explored_at": current_time_iso,
-                    "last_explored_at": current_time_iso,
-                    "is_favorite": False,
-                    "quiz_progress": [],
-                    "content": {mode: content},
-                    "modes_generated": [mode]
-                }
-                updated_explored_words.append(new_word_data)
-                user_ref.update({"total_words_explored": firestore.Increment(1)})
-                app.logger.info(f"New word '{sanitized_word}' added to explored_words for user '{current_user_id}'.")
+        update_payload_firestore = {"explored_words": explored_words} # explored_words list is now updated
+        if is_new_word_overall:
+            update_payload_firestore["total_words_explored"] = firestore.Increment(1)
+            app.logger.info(f"Incremented total_words_explored for user '{current_user_id}'.")
 
-            user_ref.update({"explored_words": updated_explored_words})
-            app.logger.info(f"Explored_words updated for '{sanitized_word}', mode '{mode}', user '{current_user_id}'.")
-
+        user_ref.update(update_payload_firestore)
+        app.logger.info(f"Word entry for '{sanitized_word}', mode '{mode}' processed for user '{current_user_id}'. Content snippet: {str(content)[:70]}...")
         return jsonify({"word": sanitized_word, "mode": mode, "content": content, "source": source}), 200
+
     except Exception as e:
-        app.logger.error(f"Error fetching info for word '{sanitized_word}', mode '{mode}', user '{current_user_id}': {e}", exc_info=True)
-        return jsonify({"error": f"Failed to get information for '{word}': {e}"}), 500
+        app.logger.error(f"Error in get_word_info for '{sanitized_word}', mode '{mode}', user '{current_user_id}': {e}", exc_info=True)
+        return jsonify({"error": f"Failed to get information for '{word}': {str(e)}"}), 500
 
 @app.route('/words/<word>/quiz/attempt', methods=['POST'])
 @token_required
 def save_quiz_attempt(current_user_id, word):
+    # ... (save_quiz_attempt logic as before, ensure app.logger is used and it updates explored_words array) ...
     app.logger.info(f"User '{current_user_id}' saving quiz attempt for word: '{word}'")
     if not db: return jsonify({"error": "Server configuration error"}), 503
 
@@ -486,54 +525,93 @@ def save_quiz_attempt(current_user_id, word):
         if not isinstance(question_index, int) or \
            not isinstance(selected_option_key, str) or \
            not isinstance(is_correct, bool):
-            app.logger.warning("Invalid quiz attempt data.")
+            app.logger.warning("Invalid quiz attempt data format.")
             return jsonify({"error": "Invalid quiz attempt data."}), 400
 
         user_ref = db.collection('users').document(current_user_id)
         user_doc = user_ref.get()
-        if not user_doc.exists: return jsonify({"error": "User not found"}), 404
+        if not user_doc.exists:
+            app.logger.warning(f"User {current_user_id} not found for saving quiz attempt.")
+            return jsonify({"error": "User not found"}), 404
 
-        explored_words = user_doc.to_dict().get("explored_words", [])
-        updated_explored_words = []
-        word_found = False
-        current_quiz_progress = []
-
-        for word_entry in explored_words:
-            if word_entry.get("id") == sanitized_word:
-                word_found = True
-                current_quiz_progress = word_entry.get("quiz_progress", [])
-                new_attempt = {
-                    "question_index": question_index,
-                    "selected_option_key": selected_option_key,
-                    "is_correct": is_correct,
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
-                attempt_updated = False
-                for i, attempt in enumerate(current_quiz_progress):
-                    if attempt.get('question_index') == question_index:
-                        current_quiz_progress[i] = new_attempt
-                        attempt_updated = True
-                        break
-                if not attempt_updated:
-                    current_quiz_progress.append(new_attempt)
-                
-                current_quiz_progress.sort(key=lambda x: x['question_index'])
-                word_entry["quiz_progress"] = current_quiz_progress
-                word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat()
-            updated_explored_words.append(word_entry)
-
-        if not word_found: # Should ideally not happen if quiz is for an explored word
-            app.logger.warning(f"Quiz attempt for non-existent word '{sanitized_word}' in user '{current_user_id}' explored list.")
-            return jsonify({"error": "Word not found in explored history to save quiz attempt."}), 404
+        user_data = user_doc.to_dict()
+        explored_words = user_data.get("explored_words", [])
+        if not isinstance(explored_words, list): # Ensure it's a list
+            app.logger.error(f"explored_words for user {current_user_id} is not a list. Found: {type(explored_words)}")
+            explored_words = []
             
-        user_ref.update({"explored_words": updated_explored_words})
+        target_word_entry = None
+        word_entry_index = -1
+
+        for i, w_entry in enumerate(explored_words):
+            if isinstance(w_entry, dict) and w_entry.get("id") == sanitized_word:
+                target_word_entry = w_entry
+                word_entry_index = i
+                break
+        
+        is_new_word_overall_for_quiz_attempt = not target_word_entry
+        current_time_iso = datetime.now(timezone.utc).isoformat()
+
+        if not target_word_entry:
+            app.logger.info(f"Creating new word entry for '{sanitized_word}' via quiz attempt by user '{current_user_id}'.")
+            target_word_entry = {
+                "id": sanitized_word, "word": word,
+                "first_explored_at": current_time_iso,
+                "last_explored_at": current_time_iso,
+                "is_favorite": False, "content": {}, 
+                "modes_generated": ["quiz"], # Mark quiz as generated
+                "quiz_progress": []
+            }
+        
+        target_word_entry.setdefault("quiz_progress", [])
+        if not isinstance(target_word_entry["quiz_progress"], list): # Ensure it's a list
+            target_word_entry["quiz_progress"] = []
+            
+        quiz_progress_list = target_word_entry["quiz_progress"]
+
+        new_attempt_data = {
+            "question_index": question_index,
+            "selected_option_key": selected_option_key,
+            "is_correct": is_correct,
+            "timestamp": current_time_iso
+        }
+
+        existing_attempt_index = -1
+        for i, attempt in enumerate(quiz_progress_list):
+            if isinstance(attempt, dict) and attempt.get('question_index') == question_index:
+                existing_attempt_index = i
+                break
+        
+        if existing_attempt_index != -1:
+            quiz_progress_list[existing_attempt_index] = new_attempt_data
+        else:
+            quiz_progress_list.append(new_attempt_data)
+
+        quiz_progress_list.sort(key=lambda x: x.get('question_index', 0))
+        target_word_entry["last_explored_at"] = current_time_iso # Update last explored time
+        if "quiz" not in target_word_entry.get("modes_generated", []): # Ensure quiz mode is marked
+            target_word_entry.setdefault("modes_generated", [])
+            target_word_entry["modes_generated"].append("quiz")
+
+        # Update explored_words list in Firestore
+        if word_entry_index != -1: # Existing word entry was found and modified
+            explored_words[word_entry_index] = target_word_entry
+        else: # New word entry was created for this quiz attempt
+            explored_words.append(target_word_entry)
+
+        update_payload_firestore = {"explored_words": explored_words}
+        if is_new_word_overall_for_quiz_attempt:
+             update_payload_firestore["total_words_explored"] = firestore.Increment(1)
+
+        user_ref.update(update_payload_firestore)
         app.logger.info(f"Quiz attempt saved for user '{current_user_id}', word '{sanitized_word}', q_idx {question_index}.")
-        return jsonify({"message": "Quiz attempt saved", "quiz_progress": current_quiz_progress}), 200
+        return jsonify({"message": "Quiz attempt saved", "quiz_progress": quiz_progress_list}), 200
+
     except Exception as e:
         app.logger.error(f"Error saving quiz attempt for user '{current_user_id}', word '{sanitized_word}': {e}", exc_info=True)
-        return jsonify({"error": f"Failed to save quiz attempt: {e}"}), 500
+        return jsonify({"error": f"Failed to save quiz attempt: {str(e)}"}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
-    app.logger.info(f"Starting Flask development server on http://localhost:{port}")
+    app.logger.info(f"Starting Flask development server on http://0.0.0.0:{port}")
     app.run(debug=True, host='0.0.0.0', port=port)
