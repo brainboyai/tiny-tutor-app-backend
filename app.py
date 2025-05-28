@@ -70,15 +70,15 @@ else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase functionality will be disabled.")
 
 # --- Generative AI Configuration ---
-google_api_key = os.getenv('GOOGLE_API_KEY')
-if google_api_key:
+gemini_api_key = os.getenv('GEMINI_API_KEY')
+if gemini_api_key:
     try:
-        genai.configure(api_key=google_api_key)
-        app.logger.info("Google Generative AI configured.")
+        genai.configure(api_key=gemini_api_key)
+        app.logger.info("gemini Generative AI configured.")
     except Exception as e:
-        app.logger.error(f"Failed to configure Google Generative AI: {e}", exc_info=True)
+        app.logger.error(f"Failed to configure Gemini Generative AI: {e}", exc_info=True)
 else:
-    app.logger.warning("GOOGLE_API_KEY not found. Generative AI functionality will be disabled.")
+    app.logger.warning("GEMINI_API_KEY not found. Generative AI functionality will be disabled.")
 
 # --- Request Logging ---
 @app.before_request
@@ -311,8 +311,8 @@ def manage_favorite(current_user_id, word_id):
 # --- Word Interaction Routes ---
 def get_word_content_from_genai(word, mode):
     app.logger.info(f"Fetching GenAI content for word: '{word}', mode: '{mode}'")
-    if not google_api_key or not genai:
-        app.logger.warning("Google API key or GenAI client not configured.")
+    if not gemini_api_key or not genai:
+        app.logger.warning("Gemini API key or GenAI client not configured.")
         return "Generative AI service is not available."
 
     model = genai.GenerativeModel('gemini-2.0-flash')
