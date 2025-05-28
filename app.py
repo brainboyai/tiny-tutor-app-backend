@@ -71,20 +71,21 @@ else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase functionality will be disabled.")
 
 # --- Generative AI Configuration ---
-google_api_key = os.getenv('GOOGLE_API_KEY')
-app.logger.info(f"Attempting to load GOOGLE_API_KEY. Value seen by os.getenv: '{google_api_key}'") # DEBUG LOG
-app.logger.info(f"Type of value seen by os.getenv for GOOGLE_API_KEY: {type(google_api_key)}") # DEBUG LOG
-app.logger.info(f"Length of value seen if string: {len(google_api_key) if isinstance(google_api_key, str) else 'Not a string'}") # DEBUG LOG
+# Changed to look for GEMINI_API_KEY based on your Render screenshot
+gemini_api_key_from_env = os.getenv('GEMINI_API_KEY')
+app.logger.info(f"Attempting to load GEMINI_API_KEY. Value seen by os.getenv: '{gemini_api_key_from_env}'")
+app.logger.info(f"Type of value seen by os.getenv for GEMINI_API_KEY: {type(gemini_api_key_from_env)}")
+app.logger.info(f"Length of value seen if string: {len(gemini_api_key_from_env) if isinstance(gemini_api_key_from_env, str) else 'Not a string'}")
 
-if google_api_key and google_api_key.strip(): # Check if key is not None and not just whitespace
+if gemini_api_key_from_env and gemini_api_key_from_env.strip(): # Check if key is not None and not just whitespace
     try:
-        genai.configure(api_key=google_api_key)
+        genai.configure(api_key=gemini_api_key_from_env) # Use the correctly named variable
         app.logger.info("Google Generative AI configured successfully.")
     except Exception as e:
-        key_snippet = google_api_key[:5] + "..." + google_api_key[-5:] if isinstance(google_api_key, str) and len(google_api_key) > 10 else str(google_api_key)
+        key_snippet = gemini_api_key_from_env[:5] + "..." + gemini_api_key_from_env[-5:] if isinstance(gemini_api_key_from_env, str) and len(gemini_api_key_from_env) > 10 else str(gemini_api_key_from_env)
         app.logger.error(f"Failed to configure Google Generative AI with key snippet '{key_snippet}': {e}", exc_info=True)
 else:
-    app.logger.warning("GOOGLE_API_KEY not found, is empty, or contains only whitespace. Generative AI functionality will be disabled.")
+    app.logger.warning("GEMINI_API_KEY not found, is empty, or contains only whitespace. Generative AI functionality will be disabled.")
 
 
 # --- Request Logging ---
@@ -92,8 +93,6 @@ else:
 def log_all_requests():
     app.logger.debug(f"Incoming Request -- Method: {request.method}, Path: {request.path}, RemoteAddr: {request.remote_addr}")
     app.logger.debug(f"Request Headers: {dict(request.headers)}")
-    # if request.method == 'OPTIONS': # This log is now less critical as flask-cors should handle it if app is healthy
-    #     app.logger.debug("Flask-CORS should be handling this OPTIONS preflight request.")
 
 
 # --- Rate Limiter ---
@@ -186,7 +185,7 @@ def signup():
             'created_at': firestore.SERVER_TIMESTAMP,
             'total_words_explored': 0,
             'explored_words': [],
-            'favorite_words': [],
+            'favorite_words': [], # This field might be redundant if derived from explored_words
             'streak_history': []
         }
         user_ref = users_ref.document()
@@ -262,10 +261,11 @@ def get_user_profile(current_user_id):
                 "tier": user_data.get("tier", "free"),
                 "total_words_explored": user_data.get("total_words_explored", 0),
                 "explored_words": user_data.get("explored_words", []),
-                "favorite_words": [], # Will be derived
+                "favorite_words": [], # Derived below
                 "streak_history": user_data.get("streak_history", []),
                 "created_at": created_at_val.isoformat() if isinstance(created_at_val, datetime) else str(created_at_val) if created_at_val else None
             }
+            # Derive favorite_words from explored_words
             if profile_data["explored_words"]:
                 profile_data["favorite_words"] = [
                     word for word in profile_data["explored_words"] if isinstance(word, dict) and word.get("is_favorite")
@@ -286,7 +286,6 @@ def manage_favorite(current_user_id, word_id):
     if not db: return jsonify({"error": "Server configuration error"}), 503
 
     user_ref = db.collection('users').document(current_user_id)
-    # Favorites are now managed within the 'explored_words' array in the main user document
     try:
         user_doc = user_ref.get()
         if not user_doc.exists:
@@ -295,28 +294,31 @@ def manage_favorite(current_user_id, word_id):
 
         user_data = user_doc.to_dict()
         explored_words = user_data.get("explored_words", [])
-        word_found = False
-        updated_explored_words = []
+        word_found_in_list = False
+        updated_explored_words_list = []
 
         for word_entry in explored_words:
             if isinstance(word_entry, dict) and word_entry.get("id") == word_id:
-                word_found = True
-                if request.method == 'POST': # Add to favorites
+                word_found_in_list = True
+                if request.method == 'POST':
                     word_entry["is_favorite"] = True
                     app.logger.info(f"Word '{word_id}' marked as favorite for user '{current_user_id}'.")
-                elif request.method == 'DELETE': # Remove from favorites
+                elif request.method == 'DELETE':
                     word_entry["is_favorite"] = False
                     app.logger.info(f"Word '{word_id}' unmarked as favorite for user '{current_user_id}'.")
-                word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat() # Update timestamp
-            updated_explored_words.append(word_entry)
+                word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat()
+            updated_explored_words_list.append(word_entry)
 
-        if not word_found:
+        if not word_found_in_list:
+            # If the word is not in explored_words, it means it hasn't been "explored" via /words/<word>/<mode>
+            # which is where new words are added to this list.
+            # For now, we'll prevent favoriting a word not yet in the main 'explored_words' list.
+            # Alternatively, you could add it here with default values if the design allows.
             app.logger.warning(f"Word '{word_id}' not found in explored_words for user '{current_user_id}' to manage favorite.")
             return jsonify({"error": "Word not explored yet, cannot manage favorite status."}), 404
 
-        user_ref.update({"explored_words": updated_explored_words})
+        user_ref.update({"explored_words": updated_explored_words_list})
         return jsonify({"message": f"Favorite status for '{word_id}' updated"}), 200
-
     except Exception as e:
         app.logger.error(f"Error managing favorite for user '{current_user_id}', word '{word_id}': {e}", exc_info=True)
         return jsonify({"error": "Failed to update favorite status"}), 500
@@ -325,11 +327,12 @@ def manage_favorite(current_user_id, word_id):
 # --- Word Interaction Routes ---
 def get_word_content_from_genai(word, mode):
     app.logger.info(f"Fetching GenAI content for word: '{word}', mode: '{mode}'")
-    if not (google_api_key and google_api_key.strip()) or not genai: # Check global var
-        app.logger.warning("Google API key (from global var) or GenAI client not configured. Cannot fetch from GenAI.")
+    # This global variable gemini_api_key_from_env is set at the top of the script
+    if not (gemini_api_key_from_env and gemini_api_key_from_env.strip()) or not genai:
+        app.logger.warning("GEMINI_API_KEY (from global var) or GenAI client not configured. Cannot fetch from GenAI.")
         return "Generative AI service is not available."
 
-    model_name = 'gemini-2.0-flash' # Changed to gemini-2.0-flash as per instructions
+    model_name = 'gemini-2.0-flash'
     model = genai.GenerativeModel(model_name)
     prompt = ""
 
@@ -357,38 +360,41 @@ Return only the JSON object.
             generation_config = genai.types.GenerationConfig(response_mime_type="application/json")
             response = model.generate_content(prompt, generation_config=generation_config)
             app.logger.debug(f"GenAI Quiz raw response for '{word}': {response.text}")
-            quiz_data_list = json.loads(response.text) # Expecting a list of questions from schema, but prompt asks for one.
-                                                      # For now, assume AI returns a single JSON object as requested by prompt.
             
-            # If AI returns a single object instead of a list containing one object:
-            if isinstance(quiz_data_list, dict):
-                quiz_data = quiz_data_list 
-            # If AI returns a list (even if just one item, as per some schema examples):
-            elif isinstance(quiz_data_list, list) and len(quiz_data_list) > 0 and isinstance(quiz_data_list[0], dict):
-                quiz_data = quiz_data_list[0]
+            # Attempt to parse the JSON response
+            parsed_response_text = json.loads(response.text)
+            
+            # Determine if the AI returned a single quiz object or a list containing one.
+            # The prompt asks for a single JSON object.
+            if isinstance(parsed_response_text, dict):
+                quiz_data = parsed_response_text
+            elif isinstance(parsed_response_text, list) and len(parsed_response_text) > 0 and isinstance(parsed_response_text[0], dict):
+                quiz_data = parsed_response_text[0] # Take the first element if it's a list of one
             else:
-                app.logger.error(f"GenAI Quiz JSON for '{word}' is not a dict or a list with one dict. Data: {quiz_data_list}")
+                app.logger.error(f"GenAI Quiz JSON for '{word}' is not a dict or a list with one dict. Data: {parsed_response_text}")
                 raise ValueError("Quiz data from AI is malformed (unexpected structure).")
 
+            # Validate the structure of the quiz_data object
             if not all(k in quiz_data for k in ["question", "options", "correct_answer_key"]):
                 app.logger.error(f"GenAI Quiz JSON for '{word}' missing required keys. Data: {quiz_data}")
                 raise ValueError("Quiz data from AI is malformed (missing keys).")
-            if not isinstance(quiz_data["options"], dict) or not (2 <= len(quiz_data["options"]) <= 4) : # Allow 2-4 options
-                 app.logger.error(f"GenAI Quiz JSON for '{word}' options are malformed. Data: {quiz_data}")
+            if not isinstance(quiz_data["options"], dict) or not (2 <= len(quiz_data["options"]) <= 4):
+                 app.logger.error(f"GenAI Quiz JSON for '{word}' options are malformed or wrong number of options. Data: {quiz_data}")
                  raise ValueError("Quiz data from AI is malformed (options).")
-            return [quiz_data] # Return as a list containing one quiz object
+            return [quiz_data] # Return as a list containing one quiz object, as per frontend expectation
+
         except json.JSONDecodeError as je:
             resp_text = response.text if 'response' in locals() and hasattr(response, 'text') else 'N/A'
             app.logger.error(f"GenAI Quiz JSONDecodeError for '{word}': {je}. Response text: {resp_text}")
             return "Failed to generate quiz: AI returned invalid JSON."
-        except ValueError as ve:
+        except ValueError as ve: # Catch our custom validation errors
             app.logger.error(f"GenAI Quiz ValueError for '{word}': {ve}")
-            return f"Failed to generate quiz: {ve}"
+            return f"Failed to generate quiz: {ve}" # Pass specific validation error
         except Exception as e:
             app.logger.error(f"GenAI Quiz generation error for '{word}': {e}", exc_info=True)
             return "Failed to generate quiz content."
 
-    if not prompt: return "Invalid mode selected."
+    if not prompt: return "Invalid mode selected." # Should not happen if mode is validated before calling
     try:
         response = model.generate_content(prompt)
         app.logger.debug(f"GenAI text response for '{word}', mode '{mode}': {response.text[:100]}...")
@@ -411,9 +417,6 @@ def get_word_info(current_user_id, word, mode):
     if mode not in valid_modes: return jsonify({"error": "Invalid mode"}), 400
 
     user_ref = db.collection('users').document(current_user_id)
-    # Word history is now part of the 'explored_words' array in the main user document.
-    # Content for modes is stored within each word entry in 'explored_words'.
-
     try:
         user_doc = user_ref.get()
         if not user_doc.exists:
@@ -423,47 +426,52 @@ def get_word_info(current_user_id, word, mode):
         user_data = user_doc.to_dict()
         explored_words = user_data.get("explored_words", [])
         word_entry = next((w for w in explored_words if isinstance(w, dict) and w.get("id") == sanitized_word), None)
+        
         content = None
         source = "cache"
 
-        if word_entry and isinstance(word_entry.get("content"), dict) and mode in word_entry["content"]:
+        if word_entry and isinstance(word_entry.get("content"), dict) and mode in word_entry["content"] and word_entry["content"][mode] is not None:
             content = word_entry["content"][mode]
             app.logger.info(f"Found cached content for '{sanitized_word}', mode '{mode}'.")
-
+        
         if content is None and mode == 'image':
             app.logger.info(f"Image mode for '{sanitized_word}'. Image generation not fully implemented.")
+            # For now, let's return a message. If you implement image generation, this will change.
+            # If GenAI is used to generate a description FOR an image, that would be handled by other modes.
             return jsonify({"message": "Image generation is in progress or not supported yet."}), 202
 
-        if content is None:
+        if content is None: # Fetch from GenAI if not cached or if cache was null/empty
             source = "new"
-            app.logger.info(f"No cache for '{sanitized_word}', mode '{mode}'. Fetching from GenAI.")
+            app.logger.info(f"No cache or empty cache for '{sanitized_word}', mode '{mode}'. Fetching from GenAI.")
             content = get_word_content_from_genai(sanitized_word, mode)
+            
+            # Check if GenAI returned an error string
             if isinstance(content, str) and ("Error generating content" in content or "Failed to generate" in content or "service is not available" in content or "AI returned invalid JSON" in content):
                  app.logger.error(f"Failed to get content from GenAI for '{sanitized_word}', mode '{mode}': {content}")
                  return jsonify({"error": content}), 500
+            # Also check if content is None after GenAI call (though get_word_content_from_genai should return string)
+            if content is None:
+                app.logger.error(f"GenAI returned None for '{sanitized_word}', mode '{mode}'. This indicates an unexpected issue.")
+                return jsonify({"error": "Failed to retrieve content from AI service."}), 500
 
-        # Update explored_words array
-        word_updated_in_list = False
-        new_explored_words_list = []
-        is_new_word_overall = not word_entry # Was the word explored before at all?
 
-        for w_item in explored_words:
-            if isinstance(w_item, dict) and w_item.get("id") == sanitized_word:
-                w_item.setdefault("content", {}) # Ensure content dict exists
-                w_item["content"][mode] = content
-                w_item["last_explored_at"] = datetime.now(timezone.utc).isoformat()
-                w_item.setdefault("modes_generated", [])
-                if mode not in w_item["modes_generated"]:
-                    w_item["modes_generated"].append(mode)
-                new_explored_words_list.append(w_item)
-                word_updated_in_list = True
-            else:
-                new_explored_words_list.append(w_item)
-
-        if not word_updated_in_list: # Word was not in explored_words list before
-            new_word_data_for_list = {
+        # Update explored_words array in the user document
+        is_new_word_overall = not word_entry # True if this is the first time any mode is explored for this word by this user
+        
+        if word_entry: # Word exists in explored_words, update it
+            word_entry.setdefault("content", {})
+            word_entry["content"][mode] = content
+            word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat()
+            word_entry.setdefault("modes_generated", [])
+            if mode not in word_entry["modes_generated"]:
+                word_entry["modes_generated"].append(mode)
+            
+            # Find and replace the updated word_entry in the explored_words list
+            updated_explored_words_list = [w if (not (isinstance(w, dict) and w.get("id") == sanitized_word)) else word_entry for w in explored_words]
+        else: # Word is new to explored_words, create and add it
+            word_entry = {
                 "id": sanitized_word,
-                "word": word,
+                "word": word, # Original word
                 "first_explored_at": datetime.now(timezone.utc).isoformat(),
                 "last_explored_at": datetime.now(timezone.utc).isoformat(),
                 "is_favorite": False,
@@ -471,10 +479,10 @@ def get_word_info(current_user_id, word, mode):
                 "modes_generated": [mode],
                 "quiz_progress": []
             }
-            new_explored_words_list.append(new_word_data_for_list)
-        
-        update_payload = {"explored_words": new_explored_words_list}
-        if is_new_word_overall: # Only increment if it's a truly new word for the user
+            updated_explored_words_list = explored_words + [word_entry]
+
+        update_payload = {"explored_words": updated_explored_words_list}
+        if is_new_word_overall:
             update_payload["total_words_explored"] = firestore.Increment(1)
             app.logger.info(f"Incremented total_words_explored for user '{current_user_id}'.")
 
@@ -483,7 +491,7 @@ def get_word_info(current_user_id, word, mode):
         return jsonify({"word": sanitized_word, "mode": mode, "content": content, "source": source}), 200
 
     except Exception as e:
-        app.logger.error(f"Error fetching info for word '{sanitized_word}', mode '{mode}', user '{current_user_id}': {e}", exc_info=True)
+        app.logger.error(f"Error in get_word_info for '{sanitized_word}', mode '{mode}', user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to get information for '{word}': {str(e)}"}), 500
 
 
@@ -516,63 +524,65 @@ def save_quiz_attempt(current_user_id, word):
 
         user_data = user_doc.to_dict()
         explored_words = user_data.get("explored_words", [])
-        word_entry = next((w for w in explored_words if isinstance(w, dict) and w.get("id") == sanitized_word), None)
+        target_word_entry = None
+        word_entry_index = -1
 
-        if not word_entry:
-            # This case should ideally not happen if quiz content was fetched via /words/<word>/quiz first,
-            # as that would create the word_entry. If it does, create a basic entry.
-            app.logger.info(f"Creating new word entry for '{sanitized_word}' due to quiz attempt by user '{current_user_id}'.")
-            word_entry = {
+        for i, w_entry in enumerate(explored_words):
+            if isinstance(w_entry, dict) and w_entry.get("id") == sanitized_word:
+                target_word_entry = w_entry
+                word_entry_index = i
+                break
+        
+        is_new_word_overall_for_quiz_attempt = not target_word_entry
+
+        if not target_word_entry:
+            app.logger.info(f"Creating new word entry for '{sanitized_word}' via quiz attempt by user '{current_user_id}'.")
+            target_word_entry = {
                 "id": sanitized_word, "word": word,
                 "first_explored_at": datetime.now(timezone.utc).isoformat(),
                 "last_explored_at": datetime.now(timezone.utc).isoformat(),
-                "is_favorite": False, "content": {}, "modes_generated": ["quiz"],
+                "is_favorite": False, "content": {}, "modes_generated": ["quiz"], # Mark quiz as generated
                 "quiz_progress": []
             }
-            explored_words.append(word_entry) # Add to list to be saved
-            # Also increment total_words_explored if it's truly new
-            user_ref.update({"total_words_explored": firestore.Increment(1)})
+            # explored_words.append(target_word_entry) # Will be added/updated in the list later
+        
+        target_word_entry.setdefault("quiz_progress", [])
+        quiz_progress_list = target_word_entry["quiz_progress"]
 
-
-        word_entry.setdefault("quiz_progress", [])
-        quiz_progress = word_entry["quiz_progress"]
-
-        new_attempt = {
+        new_attempt_data = {
             "question_index": question_index,
             "selected_option_key": selected_option_key,
             "is_correct": is_correct,
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
-        attempt_updated = False
-        for i, attempt in enumerate(quiz_progress):
+        existing_attempt_index = -1
+        for i, attempt in enumerate(quiz_progress_list):
             if isinstance(attempt, dict) and attempt.get('question_index') == question_index:
-                quiz_progress[i] = new_attempt
-                attempt_updated = True
+                existing_attempt_index = i
                 break
-        if not attempt_updated:
-            quiz_progress.append(new_attempt)
-
-        quiz_progress.sort(key=lambda x: x.get('question_index', 0))
-        word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat() # Update last explored for the word
-
-        # Update the specific word_entry within the explored_words list
-        final_explored_words = []
-        found_and_updated = False
-        for w_item in explored_words:
-            if isinstance(w_item, dict) and w_item.get("id") == sanitized_word:
-                final_explored_words.append(word_entry) # Add the modified entry
-                found_and_updated = True
-            else:
-                final_explored_words.append(w_item)
         
-        if not found_and_updated and word_entry not in final_explored_words : # Should not happen if logic above is correct
-             final_explored_words.append(word_entry)
+        if existing_attempt_index != -1:
+            quiz_progress_list[existing_attempt_index] = new_attempt_data
+        else:
+            quiz_progress_list.append(new_attempt_data)
 
+        quiz_progress_list.sort(key=lambda x: x.get('question_index', 0))
+        target_word_entry["last_explored_at"] = datetime.now(timezone.utc).isoformat()
+        
+        # Update explored_words list in Firestore
+        if word_entry_index != -1: # Existing word entry was found and modified
+            explored_words[word_entry_index] = target_word_entry
+        else: # New word entry was created for this quiz attempt
+            explored_words.append(target_word_entry)
 
-        user_ref.update({"explored_words": final_explored_words})
+        update_payload_firestore = {"explored_words": explored_words}
+        if is_new_word_overall_for_quiz_attempt: # If the word itself was new to explored_words
+             update_payload_firestore["total_words_explored"] = firestore.Increment(1)
+
+        user_ref.update(update_payload_firestore)
         app.logger.info(f"Quiz attempt saved for user '{current_user_id}', word '{sanitized_word}', q_idx {question_index}.")
-        return jsonify({"message": "Quiz attempt saved", "quiz_progress": quiz_progress}), 200
+        return jsonify({"message": "Quiz attempt saved", "quiz_progress": quiz_progress_list}), 200
 
     except Exception as e:
         app.logger.error(f"Error saving quiz attempt for user '{current_user_id}', word '{sanitized_word}': {e}", exc_info=True)
