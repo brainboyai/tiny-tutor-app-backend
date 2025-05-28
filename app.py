@@ -1,5 +1,6 @@
+```python
 # app.py
-from flask import Flask, request, jsonify, current_app # Ensure current_app is imported
+from flask import Flask, request, jsonify, current_app 
 from flask_cors import CORS
 import os
 import re
@@ -20,27 +21,20 @@ load_dotenv()
 
 app = Flask(__name__)
 
-# --- IMPORTANT: Configure CORS ---
-# This setup allows credentials and specific headers/methods.
-# The order of middleware (CORS, Limiter, custom decorators) can sometimes matter.
-# Generally, CORS should be applied early.
 CORS(app, 
      resources={r"/*": {"origins": [
          "https://tiny-tutor-app-frontend.onrender.com",
-         "http://localhost:5173", # For local development
-         "http://127.0.0.1:5173"  # For local development
+         "http://localhost:5173", 
+         "http://127.0.0.1:5173"  
      ]}}, 
      supports_credentials=True,
-     # Expose headers that your frontend might need to read from the response
      expose_headers=["Content-Type", "Authorization"], 
-     # Allow headers that your frontend will send in the request
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"] 
 )
 
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
-# --- Firebase Initialization ---
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 db = None
 if service_account_key_base64:
@@ -61,7 +55,6 @@ if service_account_key_base64:
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
-# --- Gemini API Initialization ---
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
     try:
@@ -72,17 +65,13 @@ if gemini_api_key:
 else:
     app.logger.warning("GEMINI_API_KEY not found. Google Gemini API not configured.")
 
-# --- Rate Limiting ---
-# Initialize Limiter AFTER app is created but BEFORE routes that use it,
-# or ensure it's correctly applied if routes are defined in blueprints.
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"], # General limits
-    storage_uri="memory://", # Consider persistent storage for production
+    default_limits=["200 per day", "50 per hour"], 
+    storage_uri="memory://", 
 )
 
-# --- Helper Functions ---
 def sanitize_word_for_id(word: str) -> str:
     if not isinstance(word, str): return "invalid_input"
     sanitized = word.lower()
@@ -90,22 +79,14 @@ def sanitize_word_for_id(word: str) -> str:
     sanitized = re.sub(r'[^a-z0-9_]', '', sanitized)
     return sanitized if sanitized else "empty_word"
 
-# --- MODIFIED token_required DECORATOR ---
 def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # CRITICAL: Handle OPTIONS (preflight) requests first.
-        # These requests are sent by the browser to check CORS permissions
-        # *before* the actual request (GET, POST, etc.) that carries the token.
-        # OPTIONS requests do not (and should not) contain Authorization headers.
         if request.method == 'OPTIONS':
             app.logger.info(f"OPTIONS request received for: {request.path}, allowing through for CORS handling.")
-            # Flask-CORS will add the necessary headers to this default response.
-            # Returning a simple 200/204 response is key.
             response = current_app.make_default_options_response()
             return response
 
-        # For non-OPTIONS requests, proceed with token validation
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
@@ -122,9 +103,6 @@ def token_required(f):
         try:
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'], leeway=timedelta(seconds=30))
             current_user_id = payload['user_id']
-            # You could also add user_data to flask.g if needed in the route
-            # from flask import g
-            # g.current_user_id = current_user_id
         except jwt.ExpiredSignatureError:
             app.logger.warning(f"Expired token for {request.path}.")
             return jsonify({"error": "Token has expired"}), 401
@@ -135,20 +113,17 @@ def token_required(f):
             app.logger.error(f"Token validation error for {request.path}: {e}")
             return jsonify({"error": "Token validation failed"}), 401
             
-        return f(current_user_id, *args, **kwargs) # Pass current_user_id to the wrapped function
+        return f(current_user_id, *args, **kwargs) 
     return decorated_function
 
 
-# --- Routes ---
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
 
-# No token needed for signup/login
 @app.route('/signup', methods=['POST'])
-@limiter.limit("5 per hour") # Apply specific rate limit
+@limiter.limit("5 per hour") 
 def signup_user():
-    # ... (your existing signup logic - ensure it's complete) ...
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -156,7 +131,6 @@ def signup_user():
     email = data.get('email', '').strip().lower() 
     password = data.get('password', '') 
     if not username or not email or not password: return jsonify({"error": "Username, email, and password are required"}), 400
-    # ... (rest of your validation and user creation logic) ...
     try:
         users_ref = db.collection('users')
         existing_user_username = users_ref.where('username_lowercase', '==', username.lower()).limit(1).stream()
@@ -176,16 +150,14 @@ def signup_user():
 
 
 @app.route('/login', methods=['POST'])
-@limiter.limit("10 per minute") # Apply specific rate limit
+@limiter.limit("10 per minute") 
 def login_user():
-    # ... (your existing login logic - ensure it's complete) ...
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
     identifier = str(data.get('email_or_username', '')).strip()
     password = str(data.get('password', ''))
     if not identifier or not password: return jsonify({"error": "Missing username/email or password"}), 400
-    # ... (rest of your user lookup and password check logic) ...
     try:
         is_email = '@' in identifier
         user_ref = db.collection('users')
@@ -210,13 +182,10 @@ def login_user():
         app.logger.error(f"Login error for '{identifier}': {e}", exc_info=True)
         return jsonify({"error": "Login failed."}), 500
 
-# Ensure OPTIONS is listed for methods on routes protected by @token_required
 @app.route('/generate_explanation', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("60/hour")
 def generate_explanation_route(current_user_id):
-    # ... (Your existing logic) ...
-    # This route should now correctly handle OPTIONS requests due to the modified decorator
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
     data = request.get_json()
@@ -225,15 +194,11 @@ def generate_explanation_route(current_user_id):
     mode = data.get('mode', 'explain').strip().lower()
     force_refresh = data.get('refresh_cache', False)
     if not word: return jsonify({"error": "Word/concept is required"}), 400
-    # ... (rest of your generation logic) ...
+    
+    sanitized_word_id = sanitize_word_for_id(word)
+    user_word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
+
     try:
-        # ... (your content generation and caching logic) ...
-        # Ensure you return a valid JSON response
-        # For brevity, assuming your logic is here
-        # Example response structure:
-        # return jsonify({"word": word, mode: generated_data, "source": "generated/cache", ...}), 200
-        sanitized_word_id = sanitize_word_for_id(word)
-        user_word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
         word_doc = user_word_history_ref.get()
         cached_content = {}
         is_favorite_status = False
@@ -244,7 +209,7 @@ def generate_explanation_route(current_user_id):
             word_data = word_doc.to_dict()
             cached_content = word_data.get('generated_content_cache', {})
             is_favorite_status = word_data.get('is_favorite', False)
-            quiz_progress_data = word_data.get('quiz_progress', [])
+            quiz_progress_data = word_data.get('quiz_progress', []) 
             modes_already_generated = word_data.get('modes_generated', [])
             if mode in cached_content and not force_refresh:
                 user_word_history_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP, 'word': word}, merge=True)
@@ -253,7 +218,8 @@ def generate_explanation_route(current_user_id):
                     "full_cache": cached_content, "quiz_progress": quiz_progress_data, "modes_generated": modes_already_generated
                 }), 200
         
-        # ... (Gemini call and content processing) ...
+        app.logger.info(f"Generating '{mode}' for '{word}' for user '{current_user_id}' (Force refresh: {force_refresh})")
+        
         generated_text_content = None
         prompt = ""
         if mode == 'explain':
@@ -261,8 +227,25 @@ def generate_explanation_route(current_user_id):
         elif mode == 'fact':
             prompt = f"Tell me one very interesting and concise fun fact about '{word}'."
         elif mode == 'quiz':
-            prompt = f"Generate a set of up to 3 distinct multiple-choice quiz questions about '{word}'. For each question, provide the question, 4 options (A, B, C, D), and clearly indicate the correct answer (e.g., 'Correct Answer: A'). Ensure option keys are unique (A, B, C, D) for each question. Separate each complete question block (question, options, answer) with '---QUIZ_SEPARATOR---'." # Added emphasis on unique keys
-        # ... (other modes)
+            # --- REFINED QUIZ PROMPT v2 ---
+            prompt = (
+                f"Generate a set of exactly 3 distinct multiple-choice quiz questions about '{word}'. "
+                "For each question, strictly follow this exact format, including newlines:\n"
+                "**Question [Number]:** [Your Question Text Here]\n" # Question text on its own line after header
+                "A) [Option A Text]\n"
+                "B) [Option B Text]\n"
+                "C) [Option C Text]\n"
+                "D) [Option D Text]\n"
+                "Correct Answer: [Single Letter A, B, C, or D]\n" # Correct answer on its own line
+                "Ensure option keys are unique (A, B, C, D) for each question. "
+                "The text for each option (A, B, C, D) should start immediately after the 'A) ', 'B) ', 'C) ', 'D) ' marker. "
+                "Do not include option markers like 'A)' or 'B)' *within* the text of the options themselves. "
+                "Separate each complete question block (from **Question... to Correct Answer:...) with '---QUIZ_SEPARATOR---'."
+            )
+        elif mode == 'image': 
+             generated_text_content = f"Placeholder image description for {word}. Actual image generation to be implemented."
+        elif mode == 'deep_dive': 
+             generated_text_content = f"Placeholder for a deep dive into {word}. More detailed content to come."
 
         if mode in ['explain', 'fact', 'quiz'] and prompt:
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -270,14 +253,23 @@ def generate_explanation_route(current_user_id):
             generated_text_content = response.text
             if mode == 'quiz':
                 quiz_questions_array = [q.strip() for q in generated_text_content.split('---QUIZ_SEPARATOR---') if q.strip()]
-                cached_content[mode] = quiz_questions_array if quiz_questions_array else ([generated_text_content.strip()] if generated_text_content.strip() else [])
+                if not (1 <= len(quiz_questions_array) <= 3) and '---QUIZ_SEPARATOR---' in generated_text_content :
+                     app.logger.warning(f"Quiz separator found, but split resulted in {len(quiz_questions_array)} questions for '{word}'. Using raw output as single block if non-empty.")
+                     quiz_questions_array = [generated_text_content.strip()] if generated_text_content.strip() else []
+                elif not quiz_questions_array and generated_text_content.strip(): 
+                    quiz_questions_array = [generated_text_content.strip()]
+
+                cached_content[mode] = quiz_questions_array
+                if force_refresh: 
+                    quiz_progress_data = [] 
             else:
                 cached_content[mode] = generated_text_content
-        elif mode in ['image', 'deep_dive']: # Placeholder
-             cached_content[mode] = f"Placeholder for {mode} of {word}"
+        elif mode in ['image', 'deep_dive'] and generated_text_content:
+             cached_content[mode] = generated_text_content
 
 
         if mode not in modes_already_generated: modes_already_generated.append(mode)
+        
         payload = {
             'word': word, 'last_explored_at': firestore.SERVER_TIMESTAMP,
             'generated_content_cache': cached_content, 'is_favorite': is_favorite_status,
@@ -286,11 +278,16 @@ def generate_explanation_route(current_user_id):
         if not word_doc.exists:
             payload.update({'first_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False, 'quiz_progress': []})
         
+        if mode == 'quiz' and force_refresh:
+            payload['quiz_progress'] = [] # Ensure progress is reset in DB if quiz is regenerated
+
         user_word_history_ref.set(payload, merge=True)
+        
         return jsonify({
             "word": word, mode: cached_content.get(mode), "source": "generated",
             "is_favorite": payload.get('is_favorite', False), "full_cache": cached_content,
-            "quiz_progress": payload.get('quiz_progress', quiz_progress_data), "modes_generated": modes_already_generated
+            "quiz_progress": payload.get('quiz_progress', quiz_progress_data), 
+            "modes_generated": modes_already_generated
         }), 200
 
     except Exception as e:
@@ -298,28 +295,43 @@ def generate_explanation_route(current_user_id):
         return jsonify({"error": f"Internal error: {e}"}), 500
 
 
-@app.route('/profile', methods=['GET', 'OPTIONS']) # Added OPTIONS
+@app.route('/profile', methods=['GET', 'OPTIONS']) 
 @token_required
 def get_user_profile(current_user_id):
-    # ... (Your existing profile logic) ...
-    # This route should now correctly handle OPTIONS requests
     if not db: return jsonify({"error": "Database not configured"}), 500
     try:
         user_doc_ref = db.collection('users').document(current_user_id)
         user_doc = user_doc_ref.get()
         if not user_doc.exists: return jsonify({"error": "User not found"}), 404
         user_data = user_doc.to_dict()
-        # ... (fetch word history, streaks etc.) ...
-        word_history_list = [] # Populate this
-        favorite_words_list = [] # Populate this
-        streak_history_list = [] # Populate this
-        # Example:
-        for doc in user_doc_ref.collection('word_history').stream():
+        
+        word_history_list = []
+        favorite_words_list = []
+        word_history_query = user_doc_ref.collection('word_history').order_by('last_explored_at', direction=firestore.Query.DESCENDING).stream()
+        for doc in word_history_query:
             entry = doc.to_dict()
-            entry_data = {"id": doc.id, "word": entry.get("word"), "is_favorite": entry.get("is_favorite"), "last_explored_at": entry.get("last_explored_at").isoformat() if entry.get("last_explored_at") else None}
+            entry_data = {
+                "id": doc.id, 
+                "word": entry.get("word"), 
+                "is_favorite": entry.get("is_favorite", False), 
+                "last_explored_at": entry.get("last_explored_at").isoformat() if entry.get("last_explored_at") else None,
+                "modes_generated": entry.get("modes_generated", [])
+            }
             word_history_list.append(entry_data)
-            if entry.get("is_favorite"): favorite_words_list.append(entry_data)
+            if entry_data["is_favorite"]:
+                favorite_words_list.append(entry_data)
 
+        streak_history_list = []
+        streak_history_query = user_doc_ref.collection('streaks').order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
+        for doc in streak_history_query:
+            streak = doc.to_dict()
+            streak_history_list.append({
+                "id": doc.id,
+                "words": streak.get("words", []),
+                "score": streak.get("score", 0),
+                "completed_at": streak.get("completed_at").isoformat() if streak.get("completed_at") else None
+            })
+            
         return jsonify({
             "username": user_data.get("username"), "email": user_data.get("email"), "tier": user_data.get("tier"),
             "total_words_explored": len(word_history_list), "explored_words": word_history_list,
@@ -333,7 +345,6 @@ def get_user_profile(current_user_id):
 @app.route('/toggle_favorite', methods=['POST', 'OPTIONS'])
 @token_required
 def toggle_favorite_word(current_user_id):
-    # ... (Your existing logic) ...
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     word_to_toggle = data.get('word', '').strip()
@@ -342,7 +353,19 @@ def toggle_favorite_word(current_user_id):
     word_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
     try:
         word_doc = word_ref.get()
-        if not word_doc.exists: return jsonify({"error": "Word not found in history"}), 404
+        if not word_doc.exists: 
+            app.logger.info(f"Word '{word_to_toggle}' not in history for user '{current_user_id}'. Creating and favoriting.")
+            word_ref.set({
+                'word': word_to_toggle,
+                'first_explored_at': firestore.SERVER_TIMESTAMP,
+                'last_explored_at': firestore.SERVER_TIMESTAMP,
+                'is_favorite': True, 
+                'generated_content_cache': {}, 
+                'quiz_progress': [],
+                'modes_generated': []
+            }, merge=True)
+            return jsonify({"message": "Word added to history and favorited", "word": word_to_toggle, "is_favorite": True}), 200
+
         current_is_favorite = word_doc.to_dict().get('is_favorite', False)
         new_favorite_status = not current_is_favorite
         word_ref.update({'is_favorite': new_favorite_status, 'last_explored_at': firestore.SERVER_TIMESTAMP})
@@ -355,7 +378,6 @@ def toggle_favorite_word(current_user_id):
 @app.route('/save_streak', methods=['POST', 'OPTIONS'])
 @token_required
 def save_user_streak(current_user_id):
-    # ... (Your existing logic) ...
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     streak_words = data.get('words')
@@ -372,8 +394,8 @@ def save_user_streak(current_user_id):
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
 
 
-@app.route('/save_quiz_attempt', methods=['POST', 'OPTIONS']) # CRITICAL: Ensure OPTIONS is here
-@token_required # This decorator MUST correctly handle OPTIONS now
+@app.route('/save_quiz_attempt', methods=['POST', 'OPTIONS']) 
+@token_required 
 def save_quiz_attempt_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
@@ -387,17 +409,16 @@ def save_quiz_attempt_route(current_user_id):
 
     if not word or question_index is None or not selected_option_key or is_correct is None:
         return jsonify({"error": "Missing required fields"}), 400
-    # ... (add other validations as before)
-
+    
     sanitized_word_id = sanitize_word_for_id(word)
     word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
 
     try:
         word_doc = word_history_ref.get()
-        quiz_progress = []
+        quiz_progress = [] 
         if word_doc.exists:
             quiz_progress = word_doc.to_dict().get('quiz_progress', [])
-        else: # Should not happen if quiz is generated first, but handle defensively
+        else: 
             app.logger.warning(f"Word history for '{sanitized_word_id}' not found for user '{current_user_id}' during quiz save. Creating it.")
             word_history_ref.set({
                 'word': word, 'first_explored_at': firestore.SERVER_TIMESTAMP,
@@ -412,7 +433,6 @@ def save_quiz_attempt_route(current_user_id):
             "timestamp": datetime.now(timezone.utc).isoformat() 
         }
         
-        # Replace if attempt for this index exists, else append
         attempt_updated = False
         for i, attempt in enumerate(quiz_progress):
             if attempt.get('question_index') == question_index:
@@ -422,13 +442,12 @@ def save_quiz_attempt_route(current_user_id):
         if not attempt_updated:
             quiz_progress.append(new_attempt)
         
-        # Sort to ensure order if needed, though appending should maintain it if indices are sequential
         quiz_progress.sort(key=lambda x: x['question_index'])
 
         word_history_ref.update({"quiz_progress": quiz_progress, "last_explored_at": firestore.SERVER_TIMESTAMP})
         
         app.logger.info(f"Quiz attempt saved for user '{current_user_id}', word '{word}', q_idx {question_index}. New progress length: {len(quiz_progress)}")
-        return jsonify({"message": "Quiz attempt saved", "quiz_progress": quiz_progress}), 200 # Return the updated progress
+        return jsonify({"message": "Quiz attempt saved", "quiz_progress": quiz_progress}), 200
 
     except Exception as e:
         app.logger.error(f"Error saving quiz attempt for user '{current_user_id}', word '{word}': {e}", exc_info=True)
@@ -437,5 +456,5 @@ def save_quiz_attempt_route(current_user_id):
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
-    # For local development, you might want debug=True. Render usually handles this.
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'False').lower() == 'true')
+
