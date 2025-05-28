@@ -20,17 +20,16 @@ load_dotenv()
 
 app = Flask(__name__)
 
-#CORS(app, 
-     #resources={r"/*": {"origins": [
-        # "https://tiny-tutor-app-frontend.onrender.com",
-         #"http://localhost:5173", 
-         #"http://127.0.0.1:5173"  
-     #]}}, 
-     #supports_credentials=True,
-     #expose_headers=["Content-Type", "Authorization"], 
-     #allow_headers=["Content-Type", "Authorization", "X-Requested-With"] 
-#)
-CORS(app, origins="*", methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"], headers=["Content-Type", "Authorization"], supports_credentials=True)
+CORS(app, 
+     resources={r"/*": {"origins": [
+         "https://tiny-tutor-app-frontend.onrender.com",
+         "http://localhost:5173", 
+         "http://127.0.0.1:5173"  
+     ]}}, 
+     supports_credentials=True,
+     expose_headers=["Content-Type", "Authorization"], 
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"] 
+)
 
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
@@ -120,6 +119,16 @@ def token_required(f):
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
+
+@app.route('/test-cors', methods=['POST', 'OPTIONS'])
+def test_cors_route():
+    if request.method == 'OPTIONS':
+        # flask-cors should handle this, but for explicit test:
+        response = jsonify(message="OPTIONS request successful")
+        # flask-cors will add the headers
+        return response, 200
+    elif request.method == 'POST':
+        return jsonify(message="POST request successful"), 200
 
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour") 
