@@ -219,17 +219,17 @@ def test_db_connection():
         app.logger.error(f"Failed to connect to Firestore: {e}", exc_info=True)
         return jsonify({"error": f"Failed to connect to Firestore: {str(e)}"}), 500
 
-@app.route('/signup', methods=['POST', 'OPTIONS'])
+@app.route('/auth/signup', methods=['POST', 'OPTIONS'])
 @limiter.limit("5 per hour") # Limit signup attempts
 def signup():
     if request.method == 'OPTIONS': # Flask-CORS should handle this, but as a fallback
-        app.logger.debug("OPTIONS request to /signup")
+        app.logger.debug("OPTIONS request to auth/signup")
         return _build_cors_preflight_response()
 
     if request.method == 'POST':
         app.logger.info("Signup attempt received.")
         if not db:
-            app.logger.error("Firestore client (db) is not initialized for /signup.")
+            app.logger.error("Firestore client (db) is not initialized for auth/signup.")
             return jsonify({"error": "Server error: Database not available"}), 500
         try:
             data = request.get_json()
@@ -291,16 +291,16 @@ def signup():
     return jsonify({"error": "Method not allowed"}), 405
 
 
-@app.route('/login', methods=['POST', 'OPTIONS'])
+@app.route('/auth/login', methods=['POST', 'OPTIONS'])
 @limiter.limit("10 per hour")
 def login():
     if request.method == 'OPTIONS':
-        app.logger.debug("OPTIONS request to /login")
+        app.logger.debug("OPTIONS request to auth/login")
         return _build_cors_preflight_response()
     if request.method == 'POST':
         app.logger.info("Login attempt received.")
         if not db:
-            app.logger.error("Firestore client (db) is not initialized for /login.")
+            app.logger.error("Firestore client (db) is not initialized for auth/login.")
             return jsonify({"error": "Server error: Database not available"}), 500
         try:
             data = request.get_json()
