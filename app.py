@@ -1,5 +1,5 @@
 # app.py
-from flask import Flask, request, jsonify, current_app
+from flask import Flask, request, jsonify, current_app 
 from flask_cors import CORS
 import os
 import re
@@ -20,15 +20,15 @@ load_dotenv()
 
 app = Flask(__name__)
 
-CORS(app,
+CORS(app, 
      resources={r"/*": {"origins": [
-         "https://tiny-tutor-app-frontend.onrender.com", # Your deployed frontend
-         "http://localhost:5173", # Local dev frontend
-         "http://127.0.0.1:5173"  # Local dev frontend
-     ]}},
+         "https://tiny-tutor-app-frontend.onrender.com",
+         "http://localhost:5173", 
+         "http://127.0.0.1:5173"  
+     ]}}, 
      supports_credentials=True,
-     expose_headers=["Content-Type", "Authorization"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-CSRF-Token"]
+     expose_headers=["Content-Type", "Authorization"], 
+     allow_headers=["Content-Type", "Authorization", "X-Requested-With"] 
 )
 
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
@@ -67,8 +67,8 @@ else:
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"],
-    storage_uri="memory://",
+    default_limits=["200 per day", "50 per hour"], 
+    storage_uri="memory://", 
 )
 
 def sanitize_word_for_id(word: str) -> str:
@@ -82,9 +82,8 @@ def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if request.method == 'OPTIONS':
-            app.logger.info(f"OPTIONS request for {request.path} from Origin: {request.headers.get('Origin')}")
+            app.logger.info(f"OPTIONS request received for: {request.path}, allowing through for CORS handling.")
             response = current_app.make_default_options_response()
-            app.logger.info(f"OPTIONS response headers: {response.headers}")
             return response
 
         token = None
@@ -113,7 +112,7 @@ def token_required(f):
             app.logger.error(f"Token validation error for {request.path}: {e}")
             return jsonify({"error": "Token validation failed"}), 401
             
-        return f(current_user_id, *args, **kwargs)
+        return f(current_user_id, *args, **kwargs) 
     return decorated_function
 
 
@@ -122,14 +121,14 @@ def home():
     return "Tiny Tutor Backend is running!"
 
 @app.route('/signup', methods=['POST'])
-@limiter.limit("5 per hour")
+@limiter.limit("5 per hour") 
 def signup_user():
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
     username = data.get('username', '').strip()
-    email = data.get('email', '').strip().lower()
-    password = data.get('password', '')
+    email = data.get('email', '').strip().lower() 
+    password = data.get('password', '') 
     if not username or not email or not password: return jsonify({"error": "Username, email, and password are required"}), 400
     try:
         users_ref = db.collection('users')
@@ -150,84 +149,39 @@ def signup_user():
 
 
 @app.route('/login', methods=['POST'])
-@limiter.limit("20 per minute") # Increased limit slightly for testing
+@limiter.limit("10 per minute") 
 def login_user():
-    if not db:
-        app.logger.error("Login attempt failed: Database not configured")
-        return jsonify({"error": "Database not configured"}), 500
-
+    if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
-    app.logger.info(f"Login attempt - Raw data received: {data}")
-
-    if not data:
-        app.logger.warning("Login attempt failed: No input data provided")
-        return jsonify({"error": "No input data provided"}), 400
-
-    # Frontend sends "email" and "password" for login.
-    # The "username" field from formData is undefined and thus omitted by JSON.stringify.
-    
-    email_from_payload = data.get('email') 
-    password_from_payload = data.get('password')
-
-    app.logger.info(f"Login attempt - Extracted email: '{email_from_payload}', Password was provided: {'yes' if password_from_payload is not None else 'no'}")
-
-    # Ensure email and password are treated as strings for stripping, even if None initially
-    identifier = str(email_from_payload).strip() if email_from_payload is not None else ""
-    password = str(password_from_payload).strip() if password_from_payload is not None else ""
-    
-    app.logger.info(f"Login attempt - Processed identifier (email): '{identifier}', Processed password length: {len(password)}")
-
-    if not identifier or not password:
-        app.logger.warning(f"Login attempt failed: Missing identifier or password. Identifier empty: {not identifier}, Password empty: {not password}")
-        return jsonify({"error": "Missing username/email or password"}), 400
-    
+    if not data: return jsonify({"error": "No input data provided"}), 400
+    identifier = str(data.get('email_or_username', '')).strip()
+    password = str(data.get('password', ''))
+    if not identifier or not password: return jsonify({"error": "Missing username/email or password"}), 400
     try:
-        # For login via this frontend, identifier will be email.
-        # Email is stored in lowercase during signup.
+        is_email = '@' in identifier
         user_ref = db.collection('users')
-        query = user_ref.where('email', '==', identifier.lower()).limit(1) # Query by email, ensure lowercase comparison
-        
-        app.logger.info(f"Querying Firestore for email: '{identifier.lower()}'")
-
+        query = user_ref.where('email' if is_email else 'username_lowercase', '==', identifier.lower()).limit(1)
         docs = list(query.stream())
-        
-        if not docs:
-            app.logger.warning(f"Login failed: No user found for email '{identifier.lower()}'")
-            return jsonify({"error": "Invalid credentials"}), 401
-        
+        if not docs: return jsonify({"error": "Invalid credentials"}), 401
         user_doc = docs[0]
         user_data = user_doc.to_dict()
-        
-        if not user_data or not user_data.get('password_hash') or not check_password_hash(user_data.get('password_hash'), password):
-            app.logger.warning(f"Login failed: Password check failed for email '{identifier.lower()}'")
+        if not user_data or not check_password_hash(user_data.get('password_hash', ''), password):
             return jsonify({"error": "Invalid credentials"}), 401
-            
         token_payload = {
-            'user_id': user_doc.id, 
-            'username': user_data.get('username'), 
-            'email': user_data.get('email'), 
+            'user_id': user_doc.id, 'username': user_data.get('username'), 'email': user_data.get('email'),
             'tier': user_data.get('tier', 'standard'),
             'exp': datetime.now(timezone.utc) + app.config['JWT_ACCESS_TOKEN_EXPIRES']
         }
         access_token = jwt.encode(token_payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
-        
-        app.logger.info(f"Login successful for user: {user_data.get('username')}")
         return jsonify({
-            "message": "Login successful", 
-            "access_token": access_token, 
-            "user": { # Ensure this structure matches what frontend expects for setCurrentUser
-                "username": user_data.get('username'), 
-                "email": user_data.get('email'), 
-                "id": user_doc.id, 
-                "tier": user_data.get("tier")
-            }
+            "message": "Login successful", "access_token": access_token,
+            "user": {"username": user_data.get('username'), "email": user_data.get('email'), "tier": user_data.get('tier')}
         }), 200
     except Exception as e:
         app.logger.error(f"Login error for '{identifier}': {e}", exc_info=True)
-        return jsonify({"error": "Login failed due to an internal error."}), 500
+        return jsonify({"error": "Login failed."}), 500
 
-# ... (rest of your app.py: /generate_explanation, /profile, etc. remain the same) ...
-@app.route('/generate_explanation', methods=['POST']) 
+@app.route('/generate_explanation', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("60/hour")
 def generate_explanation_route(current_user_id):
@@ -249,146 +203,98 @@ def generate_explanation_route(current_user_id):
         is_favorite_status = False
         quiz_progress_data = []
         modes_already_generated = []
-        word_data_from_db = {}
-
 
         if word_doc.exists:
-            word_data_from_db = word_doc.to_dict()
-            cached_content = word_data_from_db.get('generated_content_cache', {})
-            is_favorite_status = word_data_from_db.get('is_favorite', False)
-            quiz_progress_data = word_data_from_db.get('quiz_progress', [])
-            modes_already_generated = word_data_from_db.get('modes_generated', [])
-            
+            word_data = word_doc.to_dict()
+            cached_content = word_data.get('generated_content_cache', {})
+            is_favorite_status = word_data.get('is_favorite', False)
+            quiz_progress_data = word_data.get('quiz_progress', []) 
+            modes_already_generated = word_data.get('modes_generated', [])
             if mode in cached_content and not force_refresh:
                 user_word_history_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP, 'word': word}, merge=True)
                 return jsonify({
-                    "word": word, 
-                    mode: cached_content[mode], 
-                    "source": "cache", 
-                    "is_favorite": is_favorite_status,
-                    "word_data": { 
-                        "generated_content_cache": cached_content,
-                        "quiz_progress": quiz_progress_data,
-                        "is_favorite": is_favorite_status,
-                        "modes_generated": modes_already_generated
-                    }
+                    "word": word, mode: cached_content[mode], "source": "cache", "is_favorite": is_favorite_status,
+                    "full_cache": cached_content, "quiz_progress": quiz_progress_data, "modes_generated": modes_already_generated
                 }), 200
         
         app.logger.info(f"Generating '{mode}' for '{word}' for user '{current_user_id}' (Force refresh: {force_refresh})")
         
         generated_text_content = None
         prompt = ""
-        quiz_questions_refreshed_flag = False
-
         if mode == 'explain':
-            prompt = f"Explain the concept of '{word}' in 2 concise sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2 key words or sub-topics within your explanation that can progress the concept along the learning curve to deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
+            prompt = f"Explain the concept of '{word}' in 2 simple sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2 key words or sub-topics within your explanation that can progress the concept along the learning curve to deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
         elif mode == 'fact':
             prompt = f"Tell me one very interesting and concise fun fact about '{word}'."
         elif mode == 'quiz':
+            # --- REFINED QUIZ PROMPT v2 ---
             prompt = (
                 f"Generate a set of exactly 3 distinct multiple-choice quiz questions about '{word}'. "
                 "For each question, strictly follow this exact format, including newlines:\n"
-                "**Question [Number]:** [Your Question Text Here]\n" 
+                "**Question [Number]:** [Your Question Text Here]\n" # Question text on its own line after header
                 "A) [Option A Text]\n"
                 "B) [Option B Text]\n"
                 "C) [Option C Text]\n"
                 "D) [Option D Text]\n"
-                "Correct Answer: [Single Letter A, B, C, or D]\n" 
-                "Explanation: [Brief explanation for the correct answer, especially if the question is tricky or nuanced]\n"
+                "Correct Answer: [Single Letter A, B, C, or D]\n" # Correct answer on its own line
                 "Ensure option keys are unique (A, B, C, D) for each question. "
                 "The text for each option (A, B, C, D) should start immediately after the 'A) ', 'B) ', 'C) ', 'D) ' marker. "
                 "Do not include option markers like 'A)' or 'B)' *within* the text of the options themselves. "
-                "Separate each complete question block (from **Question... to Explanation:...) with '---QUIZ_SEPARATOR---'."
+                "Separate each complete question block (from **Question... to Correct Answer:...) with '---QUIZ_SEPARATOR---'."
             )
-            if force_refresh:
-                quiz_questions_refreshed_flag = True 
-        elif mode == 'image':
-             generated_text_content = f"https://placehold.co/600x400/0ea5e9/ffffff?text=Image+for+{word.replace(' ','+')}" 
-        elif mode == 'deep_dive':
-             prompt = f"Provide a more detailed explanation (a 'deep dive') into '{word}'. This should be about 3-5 sentences long, expanding on the initial explanation. If relevant, identify up to 2 key words or sub-topics within this deep dive that users can click to learn more, and wrap them in <<double_angle_brackets>> like this: <<sub-topic_deep_dive>>."
+        elif mode == 'image': 
+             generated_text_content = f"Placeholder image description for {word}. Actual image generation to be implemented."
+        elif mode == 'deep_dive': 
+             generated_text_content = f"Placeholder for a deep dive into {word}. More detailed content to come."
 
-
-        if mode in ['explain', 'fact', 'quiz', 'deep_dive'] and prompt: 
-            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest') 
+        if mode in ['explain', 'fact', 'quiz'] and prompt:
+            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
             response = gemini_model.generate_content(prompt)
-            generated_text_content = response.text 
-
+            generated_text_content = response.text
             if mode == 'quiz':
-                parsed_questions = []
-                question_blocks = generated_text_content.split('---QUIZ_SEPARATOR---')
-                for block_num, block in enumerate(question_blocks):
-                    block = block.strip()
-                    if not block: continue
-                    
-                    question_match = re.search(r"\*\*Question \d+:\*\*\s*([\s\S]+?)\nA\)", block, re.IGNORECASE)
-                    options_matches = re.findall(r"([A-D])\)\s*([^\n]+)", block) 
-                    correct_match = re.search(r"Correct Answer:\s*([A-D])", block, re.IGNORECASE)
-                    explanation_match = re.search(r"Explanation:\s*([\s\S]+)", block, re.IGNORECASE)
+                quiz_questions_array = [q.strip() for q in generated_text_content.split('---QUIZ_SEPARATOR---') if q.strip()]
+                if not (1 <= len(quiz_questions_array) <= 3) and '---QUIZ_SEPARATOR---' in generated_text_content :
+                     app.logger.warning(f"Quiz separator found, but split resulted in {len(quiz_questions_array)} questions for '{word}'. Using raw output as single block if non-empty.")
+                     quiz_questions_array = [generated_text_content.strip()] if generated_text_content.strip() else []
+                elif not quiz_questions_array and generated_text_content.strip(): 
+                    quiz_questions_array = [generated_text_content.strip()]
 
-                    if question_match and options_matches and len(options_matches) == 4 and correct_match:
-                        question_text = question_match.group(1).strip()
-                        options_dict = {opt_match[0]: opt_match[1].strip() for opt_match in options_matches}
-                        correct_key = correct_match.group(1).upper()
-                        explanation_text = explanation_match.group(1).strip() if explanation_match else ""
-                        
-                        parsed_questions.append({
-                            "question": question_text,
-                            "options": options_dict,
-                            "correctOptionKey": correct_key,
-                            "explanation": explanation_text
-                        })
-                    else:
-                        app.logger.warning(f"Could not parse quiz block {block_num+1} for '{word}':\n{block}")
-
-                cached_content[mode] = parsed_questions
-                if force_refresh:
-                    quiz_progress_data = []
-            else: 
-                cached_content[mode] = generated_text_content.strip()
-        elif mode == 'image' and generated_text_content: 
+                cached_content[mode] = quiz_questions_array
+                if force_refresh: 
+                    quiz_progress_data = [] 
+            else:
+                cached_content[mode] = generated_text_content
+        elif mode in ['image', 'deep_dive'] and generated_text_content:
              cached_content[mode] = generated_text_content
 
 
         if mode not in modes_already_generated: modes_already_generated.append(mode)
         
-        payload_to_save = {
+        payload = {
             'word': word, 'last_explored_at': firestore.SERVER_TIMESTAMP,
-            'generated_content_cache': cached_content, 
-            'is_favorite': is_favorite_status, 
+            'generated_content_cache': cached_content, 'is_favorite': is_favorite_status,
             'modes_generated': modes_already_generated
         }
         if not word_doc.exists:
-            payload_to_save.update({'first_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False, 'quiz_progress': []})
+            payload.update({'first_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False, 'quiz_progress': []})
         
         if mode == 'quiz' and force_refresh:
-            payload_to_save['quiz_progress'] = [] 
+            payload['quiz_progress'] = [] # Ensure progress is reset in DB if quiz is regenerated
 
-        user_word_history_ref.set(payload_to_save, merge=True)
+        user_word_history_ref.set(payload, merge=True)
         
-        response_payload = {
-            "word": word,
-            mode: cached_content.get(mode),
-            "source": "generated",
-            "is_favorite": payload_to_save.get('is_favorite', False),
-            "word_data": { 
-                 "generated_content_cache": cached_content,
-                 "quiz_progress": payload_to_save.get('quiz_progress', quiz_progress_data), 
-                 "is_favorite": payload_to_save.get('is_favorite', False),
-                 "modes_generated": modes_already_generated
-            }
-        }
-        if quiz_questions_refreshed_flag:
-            response_payload["quiz_questions_refreshed"] = True
-
-
-        return jsonify(response_payload), 200
+        return jsonify({
+            "word": word, mode: cached_content.get(mode), "source": "generated",
+            "is_favorite": payload.get('is_favorite', False), "full_cache": cached_content,
+            "quiz_progress": payload.get('quiz_progress', quiz_progress_data), 
+            "modes_generated": modes_already_generated
+        }), 200
 
     except Exception as e:
         app.logger.error(f"Error in /generate_explanation for '{word}', user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Internal error: {e}"}), 500
 
 
-@app.route('/profile', methods=['GET']) 
+@app.route('/profile', methods=['GET', 'OPTIONS']) 
 @token_required
 def get_user_profile(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
@@ -399,53 +305,43 @@ def get_user_profile(current_user_id):
         user_data = user_doc.to_dict()
         
         word_history_list = []
+        favorite_words_list = []
         word_history_query = user_doc_ref.collection('word_history').order_by('last_explored_at', direction=firestore.Query.DESCENDING).stream()
         for doc in word_history_query:
             entry = doc.to_dict()
-            last_explored_at_val = entry.get("last_explored_at")
-            first_explored_at_val = entry.get("first_explored_at")
             entry_data = {
-                "id": doc.id,
-                "word": entry.get("word"),
-                "is_favorite": entry.get("is_favorite", False),
-                "last_explored_at": last_explored_at_val.isoformat() if isinstance(last_explored_at_val, datetime) else str(last_explored_at_val),
-                "first_explored_at": first_explored_at_val.isoformat() if isinstance(first_explored_at_val, datetime) else str(first_explored_at_val),
-                "modes_generated": entry.get("modes_generated", []),
-                "quiz_progress": entry.get("quiz_progress", []),
-                "generated_content_cache": entry.get("generated_content_cache", {})
+                "id": doc.id, 
+                "word": entry.get("word"), 
+                "is_favorite": entry.get("is_favorite", False), 
+                "last_explored_at": entry.get("last_explored_at").isoformat() if entry.get("last_explored_at") else None,
+                "modes_generated": entry.get("modes_generated", [])
             }
             word_history_list.append(entry_data)
-
-        favorite_words_list = [wh_item for wh_item in word_history_list if wh_item["is_favorite"]]
-
+            if entry_data["is_favorite"]:
+                favorite_words_list.append(entry_data)
 
         streak_history_list = []
         streak_history_query = user_doc_ref.collection('streaks').order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
         for doc in streak_history_query:
             streak = doc.to_dict()
-            completed_at_val = streak.get("completed_at")
             streak_history_list.append({
                 "id": doc.id,
                 "words": streak.get("words", []),
                 "score": streak.get("score", 0),
-                "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val)
+                "completed_at": streak.get("completed_at").isoformat() if streak.get("completed_at") else None
             })
-        
-        created_at_val = user_data.get("created_at")
+            
         return jsonify({
-            "user_id": current_user_id, 
             "username": user_data.get("username"), "email": user_data.get("email"), "tier": user_data.get("tier"),
-            "total_words_explored": len(word_history_list), 
-            "explored_words_history": word_history_list, 
-            "favorite_words_history": favorite_words_list, 
-            "streak_history": streak_history_list,
-            "created_at": created_at_val.isoformat() if isinstance(created_at_val, datetime) else str(created_at_val)
+            "total_words_explored": len(word_history_list), "explored_words": word_history_list,
+            "favorite_words": favorite_words_list, "streak_history": streak_history_list,
+            "created_at": user_data.get("created_at").isoformat() if user_data.get("created_at") else None
         }), 200
     except Exception as e:
         app.logger.error(f"Error fetching profile for user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to fetch profile: {e}"}), 500
 
-@app.route('/toggle_favorite', methods=['POST']) 
+@app.route('/toggle_favorite', methods=['POST', 'OPTIONS'])
 @token_required
 def toggle_favorite_word(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
@@ -456,14 +352,14 @@ def toggle_favorite_word(current_user_id):
     word_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
     try:
         word_doc = word_ref.get()
-        if not word_doc.exists:
+        if not word_doc.exists: 
             app.logger.info(f"Word '{word_to_toggle}' not in history for user '{current_user_id}'. Creating and favoriting.")
             word_ref.set({
                 'word': word_to_toggle,
                 'first_explored_at': firestore.SERVER_TIMESTAMP,
                 'last_explored_at': firestore.SERVER_TIMESTAMP,
-                'is_favorite': True,
-                'generated_content_cache': {},
+                'is_favorite': True, 
+                'generated_content_cache': {}, 
                 'quiz_progress': [],
                 'modes_generated': []
             }, merge=True)
@@ -478,7 +374,7 @@ def toggle_favorite_word(current_user_id):
         return jsonify({"error": f"Failed to toggle favorite: {e}"}), 500
 
 
-@app.route('/save_streak', methods=['POST']) 
+@app.route('/save_streak', methods=['POST', 'OPTIONS'])
 @token_required
 def save_user_streak(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
@@ -497,8 +393,8 @@ def save_user_streak(current_user_id):
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
 
 
-@app.route('/save_quiz_attempt', methods=['POST']) 
-@token_required
+@app.route('/save_quiz_attempt', methods=['POST', 'OPTIONS']) 
+@token_required 
 def save_quiz_attempt_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
@@ -518,22 +414,22 @@ def save_quiz_attempt_route(current_user_id):
 
     try:
         word_doc = word_history_ref.get()
-        quiz_progress = []
+        quiz_progress = [] 
         if word_doc.exists:
             quiz_progress = word_doc.to_dict().get('quiz_progress', [])
-        else:
+        else: 
             app.logger.warning(f"Word history for '{sanitized_word_id}' not found for user '{current_user_id}' during quiz save. Creating it.")
             word_history_ref.set({
                 'word': word, 'first_explored_at': firestore.SERVER_TIMESTAMP,
                 'last_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False,
-                'quiz_progress': [], 'modes_generated': ['quiz'] 
-            }, merge=True) 
+                'quiz_progress': [], 'modes_generated': ['quiz']
+            })
         
         new_attempt = {
             "question_index": question_index,
             "selected_option_key": selected_option_key,
             "is_correct": is_correct,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "timestamp": datetime.now(timezone.utc).isoformat() 
         }
         
         attempt_updated = False
@@ -558,5 +454,6 @@ def save_quiz_attempt_route(current_user_id):
 
 
 if __name__ == '__main__':
-    port = int(os.environ.get('PORT', 5001)) 
+    port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port, debug=os.environ.get('FLASK_DEBUG', 'False').lower() == 'true')
+
