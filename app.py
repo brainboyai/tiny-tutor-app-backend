@@ -281,7 +281,7 @@ def generate_explanation_route(current_user_id):
         quiz_questions_refreshed_flag = False
 
         if mode == 'explain':
-            prompt = f"Explain the concept of '{word}' in 2-3 simple sentences with words or sub-topics that could extend the learning. If relevant, identify up to 3 key words or sub-topics within your explanation that can progress the concept along the learning curve to deepen the understanding and wrap them in <<double_angle_brackets>> like this: <<sub-topic>>. Ensure the explanation is clear and concise."
+            prompt = f"Explain the concept of '{word}' in 2 concise sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2 key words or sub-topics within your explanation that can progress the concept along the learning curve to deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
         elif mode == 'fact':
             prompt = f"Tell me one very interesting and concise fun fact about '{word}'."
         elif mode == 'quiz':
