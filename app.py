@@ -135,14 +135,20 @@ def get_sanitized_word_id(word_text):
 def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # Flask-CORS should handle OPTIONS requests before this decorator is even called
-        # for the actual request (GET, POST, etc.).
-        # If an OPTIONS request somehow reaches here and fails, it means Flask-CORS
-        # didn't handle it, which would be unusual if CORS is set up for r"/*".
+        # If the request method is OPTIONS, let it pass through to the route handler.
+        # The route handler or Flask-CORS should then handle the OPTIONS response.
+        if request.method == 'OPTIONS':
+            app.logger.debug(f"OPTIONS request detected in token_required for {request.path}, passing to route handler.")
+            # This will call the actual route function (e.g., get_user_profile),
+            # which has its own 'if request.method == "OPTIONS":' block.
+            return f(*args, **kwargs)
+
+        # Proceed with token check for non-OPTIONS requests
         app.logger.debug(f"Token_required decorator called for: {request.method} {request.path}")
 
         token = None
         auth_header = request.headers.get('Authorization')
+        # ... rest of your existing token checking logic ...
         if auth_header and auth_header.startswith('Bearer '):
             token = auth_header.split(" ")[1]
 
