@@ -181,17 +181,27 @@ def login_user():
         app.logger.error(f"Login error for '{identifier}': {e}", exc_info=True)
         return jsonify({"error": "Login failed."}), 500
 
+# app.py
+# ... (other imports remain the same)
+
+# ... (sanitize_word_for_id, token_required, other routes remain the same) ...
+
 @app.route('/generate_explanation', methods=['POST', 'OPTIONS'])
 @token_required
-@limiter.limit("60/hour")
+@limiter.limit("60/hour") # Existing limiter
 def generate_explanation_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
+    
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
+    
     word = data.get('word', '').strip()
     mode = data.get('mode', 'explain').strip().lower()
     force_refresh = data.get('refresh_cache', False)
+    # NEW: Get streakContext from the request
+    streak_context_list = data.get('streakContext', []) 
+
     if not word: return jsonify({"error": "Word/concept is required"}), 400
     
     sanitized_word_id = sanitize_word_for_id(word)
@@ -199,99 +209,185 @@ def generate_explanation_route(current_user_id):
 
     try:
         word_doc = user_word_history_ref.get()
-        cached_content = {}
+        cached_content_from_db = {} # Renamed to avoid confusion
         is_favorite_status = False
         quiz_progress_data = []
         modes_already_generated = []
 
+        # Caching Option A: If it's an 'explain' mode with context, we always regenerate.
+        # So, we only check cache if it's NOT (explain mode AND streak_context_list is present).
+        should_check_cache = not (mode == 'explain' and streak_context_list)
+
         if word_doc.exists:
             word_data = word_doc.to_dict()
-            cached_content = word_data.get('generated_content_cache', {})
+            cached_content_from_db = word_data.get('generated_content_cache', {})
             is_favorite_status = word_data.get('is_favorite', False)
             quiz_progress_data = word_data.get('quiz_progress', []) 
             modes_already_generated = word_data.get('modes_generated', [])
-            if mode in cached_content and not force_refresh:
+            
+            if should_check_cache and mode in cached_content_from_db and not force_refresh:
+                current_app.logger.info(f"Serving '{mode}' for '{word}' from cache for user '{current_user_id}'.")
                 user_word_history_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP, 'word': word}, merge=True)
                 return jsonify({
-                    "word": word, mode: cached_content[mode], "source": "cache", "is_favorite": is_favorite_status,
-                    "full_cache": cached_content, "quiz_progress": quiz_progress_data, "modes_generated": modes_already_generated
+                    "word": word, 
+                    mode: cached_content_from_db[mode], 
+                    "source": "cache", 
+                    "is_favorite": is_favorite_status,
+                    "full_cache": cached_content_from_db, 
+                    "quiz_progress": quiz_progress_data, 
+                    "modes_generated": modes_already_generated
                 }), 200
         
-        app.logger.info(f"Generating '{mode}' for '{word}' for user '{current_user_id}' (Force refresh: {force_refresh})")
+        current_app.logger.info(f"Generating '{mode}' for '{word}' for user '{current_user_id}'. Context: {streak_context_list if mode == 'explain' else 'N/A'}. Force refresh: {force_refresh}")
         
         generated_text_content = None
         prompt = ""
+
         if mode == 'explain':
-            prompt = f"Explain the concept of '{word}' in 2 simple sentences with words or sub-topics that could extend the learning. If relevant, identify up to 2 key words or sub-topics within your explanation that can progress the concept along the learning curve to deepen the understanding and wrap them in <click>tags</click> like this: <click>sub-topic</click>."
+            # --- NEW PROMPT LOGIC FOR 'EXPLAIN' MODE ---
+            if not streak_context_list: # Primary word
+                primary_word_for_prompt = word
+                prompt = f"""Your task is to define the concept: '{primary_word_for_prompt}'.
+
+Please adhere to the following instructions to generate the definition:
+1.  **Definition Length and Style:** The definition must be exactly two sentences long. It should be beginner-friendly, concise, and use precise terminology, highlighting the core aspects of '{primary_word_for_prompt}'.
+2.  **Identify and Embed Sub-topics:** Within these two sentences, identify key concepts or sub-topics that are integral for a deeper understanding of '{primary_word_for_prompt}'. These sub-topics should be foundational and distinct, offering clear paths for further learning. They should not be a simple reiteration of '{primary_word_for_prompt}'.
+3.  **Tag Sub-topics for Clickability:** Each identified sub-topic must be wrapped in <click>tags</click>. For example, if "energy currency" is a relevant sub-topic for ATP, it should appear as `<click>energy currency</click>` directly within one of the definition sentences.
+4.  **Output Format:** Your response must consist *only* of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or the instructional list items themselves in the final output.
+
+Example of the expected output format:
+The first sentence clearly defines the concept, potentially including a <click>key sub-topic</click> for exploration. The second sentence elaborates or completes the definition, possibly embedding another <click>related concept</click>.
+"""
+            else: # Subsequent word in a streak (contextual)
+                current_word_for_prompt = word
+                context_string = ", ".join(streak_context_list)
+                all_relevant_words_for_reiteration_check = [current_word_for_prompt] + streak_context_list
+                reiteration_check_string = ", ".join(all_relevant_words_for_reiteration_check)
+
+                prompt = f"""Your task is to define the concept: '{current_word_for_prompt}', specifically in the context of its preceding topics: '{context_string}'.
+
+Please adhere to the following instructions to generate the definition:
+1.  **Definition Length and Style:** The definition must be exactly two sentences long. It should be beginner-friendly, concise, and use precise terminology, highlighting the core aspects of '{current_word_for_prompt}' as it relates to '{context_string}'.
+2.  **Identify and Embed Sub-topics:** Within these two sentences, identify key concepts or sub-topics that are integral for a deeper understanding of '{current_word_for_prompt}' (especially considering its context). These sub-topics should be foundational and distinct, offering clear paths for further learning. They should not be a simple reiteration of any words found in '{reiteration_check_string}'.
+3.  **Tag Sub-topics for Clickability:** Each identified sub-topic must be wrapped in <click>tags</click>. For example, if "genetic information" is a relevant sub-topic, it should appear as `<click>genetic information</click>` directly within one of the definition sentences.
+4.  **Output Format:** Your response must consist *only* of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or the instructional list items themselves in the final output.
+
+Example of the expected output format:
+The first sentence clearly defines the concept within its given context, potentially including a <click>key sub-topic</click> for exploration. The second sentence elaborates or completes the definition, possibly embedding another <click>related concept</click>.
+"""
         elif mode == 'fact':
-            prompt = f"Tell me one very interesting and concise fun fact about '{word}'."
+            prompt = f"Tell me one very interesting and concise fun fact about '{word}'." # Existing
         elif mode == 'quiz':
-            # --- REFINED QUIZ PROMPT v2 ---
-            prompt = (
+            prompt = ( # Existing
                 f"Generate a set of exactly 3 distinct multiple-choice quiz questions about '{word}'. "
                 "For each question, strictly follow this exact format, including newlines:\n"
-                "**Question [Number]:** [Your Question Text Here]\n" # Question text on its own line after header
+                "**Question [Number]:** [Your Question Text Here]\n" 
                 "A) [Option A Text]\n"
                 "B) [Option B Text]\n"
                 "C) [Option C Text]\n"
                 "D) [Option D Text]\n"
-                "Correct Answer: [Single Letter A, B, C, or D]\n" # Correct answer on its own line
+                "Correct Answer: [Single Letter A, B, C, or D]\n" 
                 "Ensure option keys are unique (A, B, C, D) for each question. "
                 "The text for each option (A, B, C, D) should start immediately after the 'A) ', 'B) ', 'C) ', 'D) ' marker. "
                 "Do not include option markers like 'A)' or 'B)' *within* the text of the options themselves. "
                 "Separate each complete question block (from **Question... to Correct Answer:...) with '---QUIZ_SEPARATOR---'."
             )
         elif mode == 'image': 
-             generated_text_content = f"Placeholder image description for {word}. Actual image generation to be implemented."
+             generated_text_content = f"Placeholder image description for {word}. Actual image generation to be implemented." # Existing
         elif mode == 'deep_dive': 
-             generated_text_content = f"Placeholder for a deep dive into {word}. More detailed content to come."
+             generated_text_content = f"Placeholder for a deep dive into {word}. More detailed content to come." # Existing
+
+        # This will hold the content for the current request, to be returned
+        current_request_content_holder = {}
 
         if mode in ['explain', 'fact', 'quiz'] and prompt:
+            if not genai.get_model('models/gemini-1.5-flash-latest'):
+                current_app.logger.error("Gemini model 'gemini-1.5-flash-latest' not found or not configured.")
+                return jsonify({"error": "AI model not available"}), 503
+            
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
             response = gemini_model.generate_content(prompt)
             generated_text_content = response.text
+            
             if mode == 'quiz':
                 quiz_questions_array = [q.strip() for q in generated_text_content.split('---QUIZ_SEPARATOR---') if q.strip()]
+                # ... (rest of your existing quiz parsing logic) ...
                 if not (1 <= len(quiz_questions_array) <= 3) and '---QUIZ_SEPARATOR---' in generated_text_content :
-                     app.logger.warning(f"Quiz separator found, but split resulted in {len(quiz_questions_array)} questions for '{word}'. Using raw output as single block if non-empty.")
+                     current_app.logger.warning(f"Quiz separator found, but split resulted in {len(quiz_questions_array)} questions for '{word}'. Using raw output as single block if non-empty.")
                      quiz_questions_array = [generated_text_content.strip()] if generated_text_content.strip() else []
                 elif not quiz_questions_array and generated_text_content.strip(): 
                     quiz_questions_array = [generated_text_content.strip()]
+                
+                current_request_content_holder[mode] = quiz_questions_array
+                # Only update cached_content_from_db if we are actually caching this
+                if should_check_cache or force_refresh: # force_refresh implies we update cache
+                    cached_content_from_db[mode] = quiz_questions_array
+                    if force_refresh: 
+                        quiz_progress_data = [] 
+            else: # explain, fact
+                current_request_content_holder[mode] = generated_text_content
+                if should_check_cache or force_refresh: # Only cache if not (explain with context) or if refreshing
+                    cached_content_from_db[mode] = generated_text_content
 
-                cached_content[mode] = quiz_questions_array
-                if force_refresh: 
-                    quiz_progress_data = [] 
-            else:
-                cached_content[mode] = generated_text_content
-        elif mode in ['image', 'deep_dive'] and generated_text_content:
-             cached_content[mode] = generated_text_content
+        elif mode in ['image', 'deep_dive'] and generated_text_content: # Placeholder modes
+             current_request_content_holder[mode] = generated_text_content
+             if should_check_cache or force_refresh:
+                cached_content_from_db[mode] = generated_text_content
 
-
-        if mode not in modes_already_generated: modes_already_generated.append(mode)
+        # Update modes_generated, ensuring not to add duplicates
+        if mode not in modes_already_generated: 
+            modes_already_generated.append(mode)
         
-        payload = {
-            'word': word, 'last_explored_at': firestore.SERVER_TIMESTAMP,
-            'generated_content_cache': cached_content, 'is_favorite': is_favorite_status,
-            'modes_generated': modes_already_generated
+        # Prepare payload for Firestore update
+        # Caching Option A: We only write to 'generated_content_cache' if should_check_cache is true
+        # or if it's a force_refresh (which implies updating the generic cache).
+        # For contextual explanations (mode=='explain' and streak_context_list is present),
+        # cached_content_from_db will NOT be updated with this specific contextual explanation.
+        payload_for_db = {
+            'word': word, 
+            'last_explored_at': firestore.SERVER_TIMESTAMP,
+            'modes_generated': modes_already_generated,
+            # is_favorite and quiz_progress are handled below or if doc exists
         }
         if not word_doc.exists:
-            payload.update({'first_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False, 'quiz_progress': []})
-        
-        if mode == 'quiz' and force_refresh:
-            payload['quiz_progress'] = [] # Ensure progress is reset in DB if quiz is regenerated
+            payload_for_db.update({
+                'first_explored_at': firestore.SERVER_TIMESTAMP, 
+                'is_favorite': False, # Default for new word
+                'quiz_progress': []   # Default for new word
+            })
+            is_favorite_status = False # Ensure it's set for the response
+        else: # If doc exists, carry over favorite status and quiz progress unless modified
+            payload_for_db['is_favorite'] = is_favorite_status
+            payload_for_db['quiz_progress'] = quiz_progress_data
 
-        user_word_history_ref.set(payload, merge=True)
+
+        # If we are allowed to cache this specific result (not contextual explain, or it's a refresh)
+        if should_check_cache or force_refresh:
+            payload_for_db['generated_content_cache'] = cached_content_from_db
+            if mode == 'quiz' and force_refresh: # Ensure quiz progress is reset in DB if quiz is regenerated
+                payload_for_db['quiz_progress'] = []
+                quiz_progress_data = [] # also update local var for response
+
+        user_word_history_ref.set(payload_for_db, merge=True)
         
-        return jsonify({
-            "word": word, mode: cached_content.get(mode), "source": "generated",
-            "is_favorite": payload.get('is_favorite', False), "full_cache": cached_content,
-            "quiz_progress": payload.get('quiz_progress', quiz_progress_data), 
+        # The response to the frontend should contain the content just generated for THIS request.
+        # And the full_cache should reflect what's in the DB (which excludes contextual 'explain' unless forced)
+        response_payload = {
+            "word": word, 
+            mode: current_request_content_holder.get(mode), # The specific content for this request
+            "source": "generated",
+            "is_favorite": payload_for_db.get('is_favorite', is_favorite_status), 
+            "full_cache": cached_content_from_db, # Reflects DB cache state
+            "quiz_progress": payload_for_db.get('quiz_progress', quiz_progress_data), 
             "modes_generated": modes_already_generated
-        }), 200
+        }
+        return jsonify(response_payload), 200
 
     except Exception as e:
-        app.logger.error(f"Error in /generate_explanation for '{word}', user '{current_user_id}': {e}", exc_info=True)
+        current_app.logger.error(f"Error in /generate_explanation for '{word}', user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Internal error: {e}"}), 500
+
+# ... (rest of your app.py: /profile, /toggle_favorite, /save_streak, /save_quiz_attempt, if __name__ == '__main__':)
 
 
 @app.route('/profile', methods=['GET', 'OPTIONS']) 
