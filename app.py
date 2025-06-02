@@ -23,8 +23,8 @@ app = Flask(__name__)
 CORS(app,
      resources={r"/*": {"origins": [
          "https://tiny-tutor-app-frontend.onrender.com",
-         "http://localhost:5173", 
-         "http://127.0.0.1:5173"  
+         "http://localhost:5173",
+         "http://127.0.0.1:5173"
      ]}},
      supports_credentials=True,
      expose_headers=["Content-Type", "Authorization"],
@@ -35,14 +35,13 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
-db = None 
+db = None
 if service_account_key_base64:
     try:
         decoded_key_bytes = base64.b64decode(service_account_key_base64)
         decoded_key_str = decoded_key_bytes.decode('utf-8')
         service_account_info = json.loads(decoded_key_str)
-        
-        if not firebase_admin._apps: 
+        if not firebase_admin._apps:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
             app.logger.info("Firebase Admin SDK initialized successfully from Base64.")
@@ -51,7 +50,7 @@ if service_account_key_base64:
         db = firestore.client()
     except Exception as e:
         app.logger.error(f"Failed to initialize Firebase Admin SDK from Base64: {e}")
-        db = None 
+        db = None
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
@@ -68,8 +67,8 @@ else:
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "60 per hour"], 
-    storage_uri="memory://", 
+    default_limits=["200 per day", "60 per hour"],
+    storage_uri="memory://",
 )
 
 def sanitize_word_for_id(word: str) -> str:
@@ -85,36 +84,26 @@ def token_required(f):
         if request.method == 'OPTIONS':
             response = current_app.make_default_options_response()
             return response
-
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
             try:
                 token = auth_header.split(" ")[1]
             except IndexError:
-                app.logger.warning(f"Malformed Bearer token for {request.path}.")
                 return jsonify({"error": "Bearer token malformed"}), 401
-
         if not token:
-            app.logger.warning(f"Token is missing for {request.method} request to {request.path}.")
             return jsonify({"error": "Token is missing"}), 401
-
         try:
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'], leeway=timedelta(seconds=30))
             current_user_id = payload['user_id']
         except jwt.ExpiredSignatureError:
-            app.logger.warning(f"Expired token for {request.path}.")
             return jsonify({"error": "Token has expired"}), 401
         except jwt.InvalidTokenError:
-            app.logger.warning(f"Invalid token for {request.path}.")
             return jsonify({"error": "Token is invalid"}), 401
         except Exception as e:
-            app.logger.error(f"Token validation error for {request.path}: {e}")
             return jsonify({"error": "Token validation failed"}), 401
-
         return f(current_user_id, *args, **kwargs)
     return decorated_function
-
 
 @app.route('/')
 def home():
@@ -132,32 +121,24 @@ def signup_user():
     if not username or not email or not password: return jsonify({"error": "Username, email, and password are required"}), 400
     try:
         users_ref = db.collection('users')
-        existing_user_username = users_ref.where('username_lowercase', '==', username.lower()).limit(1).stream()
-        if len(list(existing_user_username)) > 0: return jsonify({"error": "Username already exists"}), 409
-        existing_user_email = users_ref.where('email', '==', email).limit(1).stream()
-        if len(list(existing_user_email)) > 0: return jsonify({"error": "Email already registered"}), 409
+        if len(list(users_ref.where('username_lowercase', '==', username.lower()).limit(1).stream())) > 0:
+            return jsonify({"error": "Username already exists"}), 409
+        if len(list(users_ref.where('email', '==', email).limit(1).stream())) > 0:
+            return jsonify({"error": "Email already registered"}), 409
         
-        password_hash = generate_password_hash(password)
         user_doc_ref = users_ref.document()
         user_doc_ref.set({
-            'username': username, 
-            'username_lowercase': username.lower(), 
-            'email': email,
-            'password_hash': password_hash, 
-            'tier': 'standard', 
-            'created_at': firestore.SERVER_TIMESTAMP,
-            'quiz_points': 0, 
-            'total_quiz_questions_answered': 0, 
-            'total_quiz_questions_correct': 0 
+            'username': username, 'username_lowercase': username.lower(), 'email': email,
+            'password_hash': generate_password_hash(password), 'tier': 'standard', 
+            'created_at': firestore.SERVER_TIMESTAMP, 'quiz_points': 0,
+            'total_quiz_questions_answered': 0, 'total_quiz_questions_correct': 0
         })
         return jsonify({"message": "User created successfully. Please login."}), 201
     except Exception as e:
-        current_app.logger.error(f"Error during signup for {username}: {e}")
         return jsonify({"error": f"Signup failed: {e}"}), 500
 
-
 @app.route('/login', methods=['POST'])
-@limiter.limit("10 per minute") 
+@limiter.limit("20 per minute") # Increased limit for login
 def login_user():
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
@@ -176,34 +157,25 @@ def login_user():
         if not user_data or not check_password_hash(user_data.get('password_hash', ''), password):
             return jsonify({"error": "Invalid credentials"}), 401
         token_payload = {
-            'user_id': user_doc.id, 
-            'username': user_data.get('username'), 
-            'email': user_data.get('email'),
-            'tier': user_data.get('tier', 'standard'),
+            'user_id': user_doc.id, 'username': user_data.get('username'), 
+            'email': user_data.get('email'), 'tier': user_data.get('tier', 'standard'),
             'exp': datetime.now(timezone.utc) + app.config['JWT_ACCESS_TOKEN_EXPIRES']
         }
         access_token = jwt.encode(token_payload, app.config['JWT_SECRET_KEY'], algorithm='HS256')
         return jsonify({
             "message": "Login successful", "access_token": access_token,
-            "user": {
-                "id": user_doc.id, 
-                "username": user_data.get('username'), 
-                "email": user_data.get('email'), 
-                "tier": user_data.get('tier')
-            }
+            "user": {"id": user_doc.id, "username": user_data.get('username'), 
+                     "email": user_data.get('email'), "tier": user_data.get('tier')}
         }), 200
     except Exception as e:
-        current_app.logger.error(f"Login error for '{identifier}': {e}", exc_info=True)
         return jsonify({"error": "Login failed."}), 500
-
 
 @app.route('/generate_explanation', methods=['POST', 'OPTIONS'])
 @token_required
-@limiter.limit("60/hour") 
+@limiter.limit("120/hour") # Increased limit for content generation
 def generate_explanation_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
-
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
 
@@ -211,11 +183,10 @@ def generate_explanation_route(current_user_id):
     mode = data.get('mode', 'explain').strip().lower()
     force_refresh = data.get('refresh_cache', False)
     streak_context_list = data.get('streakContext', []) 
-    explanation_text_for_quiz = data.get('explanation_text', None) 
+    explanation_text_for_quiz = data.get('explanation_text', None)
 
     if not word: return jsonify({"error": "Word/concept is required"}), 400
-    if mode == 'quiz' and not explanation_text_for_quiz: # Quiz mode now requires explanation text
-        app.logger.warning(f"Quiz generation for '{word}' failed: explanation_text missing.")
+    if mode == 'quiz' and not explanation_text_for_quiz:
         return jsonify({"error": "Explanation text is required to generate a quiz for this word. Please view the explanation first."}), 400
 
     sanitized_word_id = sanitize_word_for_id(word)
@@ -237,37 +208,26 @@ def generate_explanation_route(current_user_id):
 
         is_contextual_explain_call = mode == 'explain' and bool(streak_context_list)
 
-        # Cache Check for non-quiz, non-contextual explain modes
         if mode != 'quiz' and not is_contextual_explain_call and not force_refresh and mode in cached_content_from_db:
-            current_app.logger.info(f"Serving '{mode}' for '{word}' from DB cache for user '{current_user_id}'.")
             user_word_history_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP, 'word': word}, merge=True)
             return jsonify({
-                "word": word,
-                mode: cached_content_from_db[mode],
-                "source": "cache",
-                "is_favorite": is_favorite_status,
-                "full_cache": cached_content_from_db,
-                "quiz_progress": quiz_progress_data,
-                "modes_generated": modes_already_generated
+                "word": word, mode: cached_content_from_db[mode], "source": "cache",
+                "is_favorite": is_favorite_status, "full_cache": cached_content_from_db,
+                "quiz_progress": quiz_progress_data, "modes_generated": modes_already_generated
             }), 200
 
-        current_app.logger.info(f"Generating '{mode}' for '{word}' (ContextualExplain: {is_contextual_explain_call}, ForceRefresh: {force_refresh}, QuizFromExplain: {bool(explanation_text_for_quiz and mode=='quiz')}) for user '{current_user_id}'.")
-
-        generated_text_content = None 
-        quiz_questions_array = [] 
         prompt = ""
         current_request_content_holder = {}
 
         if mode == 'explain':
-            # *** USER'S ORIGINAL PROMPTS RESTORED FOR EXPLAIN MODE ***
+            primary_word_for_prompt = word # Used in both generic and contextual for clarity
             if not streak_context_list: 
-                primary_word_for_prompt = word
                 prompt = f"""Your task is to define '{primary_word_for_prompt}', acting as a knowledgeable guide introducing a foundational concept to a curious beginner.
 Instructions: Define '{primary_word_for_prompt}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner with no prior knowledge; focus on its core, fundamental aspects. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas) that are crucial not only for grasping '{primary_word_for_prompt}' but also for sparking further inquiry and naturally leading towards a deeper exploration—think of these as initial pathways into a fascinating subject. These sub-topics must not be mere synonyms or rephrasing of '{primary_word_for_prompt}'. If '{primary_word_for_prompt}' involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>energy conversion</click>, <click>$A=\pi r^2$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
 Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO_2+6H_2O+textLightrightarrowC_6H_12O_6+6O_2</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
 """
             else: 
-                current_word_for_prompt = word
+                current_word_for_prompt = word # Keep this variable name for clarity in prompt
                 context_string = ", ".join(streak_context_list)
                 all_relevant_words_for_reiteration_check = [current_word_for_prompt] + streak_context_list
                 reiteration_check_string = ", ".join(all_relevant_words_for_reiteration_check)
@@ -292,58 +252,49 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
                 "C) [Option C Text]\n"
                 "D) [Option D Text]\n"
                 "Correct Answer: [Single Letter A, B, C, or D]\n"
+                "Explanation: [Optional: A brief explanation for the correct answer or why other options are incorrect]\n" # Added optional explanation field to prompt
                 "Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'."
             )
         elif mode == 'image':
-             generated_text_content = f"Placeholder image description for {word}."
+             current_request_content_holder[mode] = f"Placeholder image description for {word}."
         elif mode == 'deep_dive':
-             generated_text_content = f"Placeholder for a deep dive into {word}."
+             current_request_content_holder[mode] = f"Placeholder for a deep dive into {word}."
 
         if mode in ['explain', 'fact', 'quiz'] and prompt:
-            if not genai.get_model('models/gemini-1.5-flash-latest'):
-                current_app.logger.error("Gemini model not found.")
-                return jsonify({"error": "AI model not available"}), 503
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
             response = gemini_model.generate_content(prompt)
             llm_output_text = response.text
-
             if mode == 'quiz':
                 quiz_questions_array = [q.strip() for q in llm_output_text.split('---QUIZ_SEPARATOR---') if q.strip()]
                 if not quiz_questions_array and llm_output_text.strip():
                     quiz_questions_array = [llm_output_text.strip()]
                 current_request_content_holder[mode] = quiz_questions_array
-                # DO NOT save quiz_questions_array to cached_content_from_db for 'quiz' mode.
-                if force_refresh: 
-                    quiz_progress_data = []
+                if force_refresh: quiz_progress_data = []
             else: # explain, fact
-                generated_text_content = llm_output_text
-                current_request_content_holder[mode] = generated_text_content
+                current_request_content_holder[mode] = llm_output_text
                 if not is_contextual_explain_call: 
-                    cached_content_from_db[mode] = generated_text_content
+                    cached_content_from_db[mode] = llm_output_text
         
-        elif mode in ['image', 'deep_dive'] and generated_text_content:
-             current_request_content_holder[mode] = generated_text_content
-             cached_content_from_db[mode] = generated_text_content
+        elif mode in ['image', 'deep_dive']: # Content already set for placeholders
+             if not is_contextual_explain_call: # Should not happen for these modes, but as safety
+                cached_content_from_db[mode] = current_request_content_holder[mode]
+
 
         if mode not in modes_already_generated:
             modes_already_generated.append(mode)
 
         payload_for_db = {
-            'word': word,
-            'last_explored_at': firestore.SERVER_TIMESTAMP,
+            'word': word, 'last_explored_at': firestore.SERVER_TIMESTAMP,
             'modes_generated': modes_already_generated,
-            # IMPORTANT: generated_content_cache no longer stores 'quiz' arrays from new generations
             'generated_content_cache': cached_content_from_db 
         }
-        if 'quiz' in payload_for_db['generated_content_cache']: # Remove quiz from DB cache if it was there
+        # Remove quiz from DB cache explicitly if it exists (old data)
+        if 'quiz' in payload_for_db['generated_content_cache']:
             del payload_for_db['generated_content_cache']['quiz']
-
 
         if not word_doc.exists: 
             payload_for_db.update({
-                'first_explored_at': firestore.SERVER_TIMESTAMP,
-                'is_favorite': False, 
-                'quiz_progress': [] 
+                'first_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False, 'quiz_progress': []
             })
             is_favorite_status = False 
         else: 
@@ -357,20 +308,15 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
         user_word_history_ref.set(payload_for_db, merge=True)
 
         response_payload = {
-            "word": word,
-            mode: current_request_content_holder.get(mode),
-            "source": "generated",
+            "word": word, mode: current_request_content_holder.get(mode), "source": "generated",
             "is_favorite": payload_for_db.get('is_favorite', is_favorite_status),
             "full_cache": cached_content_from_db, 
             "quiz_progress": payload_for_db.get('quiz_progress', quiz_progress_data), 
             "modes_generated": modes_already_generated
         }
         return jsonify(response_payload), 200
-
     except Exception as e:
-        current_app.logger.error(f"Error in /generate_explanation for '{word}', user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Internal error: {e}"}), 500
-
 
 @app.route('/profile', methods=['GET', 'OPTIONS'])
 @token_required
@@ -388,6 +334,8 @@ def get_user_profile(current_user_id):
         word_history_query = user_doc_ref.collection('word_history').order_by('last_explored_at', direction=firestore.Query.DESCENDING).stream()
         for doc in word_history_query:
             entry = doc.to_dict()
+            if not entry.get("word"): # Skip if word is missing for some reason
+                continue
             entry_data = {
                 "word": entry.get("word"),
                 "is_favorite": entry.get("is_favorite", False),
@@ -403,9 +351,7 @@ def get_user_profile(current_user_id):
         for doc in streak_history_query:
             streak = doc.to_dict()
             streak_history_list.append({
-                "id": doc.id,
-                "words": streak.get("words", []),
-                "score": streak.get("score", 0),
+                "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
                 "completed_at": streak.get("completed_at").isoformat() if streak.get("completed_at") else None,
             })
 
@@ -413,17 +359,16 @@ def get_user_profile(current_user_id):
             "username": user_data.get("username"), 
             "email": user_data.get("email"), 
             "tier": user_data.get("tier"),
-            "total_words_explored": len(word_history_list), # Corrected to match frontend expectation if it was 'totalWordsExplored'
-            "exploredWords": word_history_list, # Use camelCase to match frontend UserProfileData
-            "favoriteWords": favorite_words_list, # Use camelCase
-            "streakHistory": streak_history_list, # Use camelCase
+            "totalWordsExplored": len(word_history_list), # Changed to camelCase
+            "exploredWords": word_history_list, 
+            "favoriteWords": favorite_words_list, 
+            "streakHistory": streak_history_list, 
             "created_at": user_data.get("created_at").isoformat() if user_data.get("created_at") else None,
             "quiz_points": user_data.get("quiz_points", 0),
             "total_quiz_questions_answered": user_data.get("total_quiz_questions_answered", 0),
             "total_quiz_questions_correct": user_data.get("total_quiz_questions_correct", 0)
         }), 200
     except Exception as e:
-        current_app.logger.error(f"Error fetching profile for user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to fetch profile: {e}"}), 500
 
 @app.route('/toggle_favorite', methods=['POST', 'OPTIONS'])
@@ -438,26 +383,19 @@ def toggle_favorite_word(current_user_id):
     try:
         word_doc = word_ref.get()
         if not word_doc.exists:
-            app.logger.info(f"Word '{word_to_toggle}' not in history for user '{current_user_id}'. Creating and favoriting.")
             word_ref.set({
-                'word': word_to_toggle,
-                'first_explored_at': firestore.SERVER_TIMESTAMP,
-                'last_explored_at': firestore.SERVER_TIMESTAMP,
-                'is_favorite': True, 
-                'generated_content_cache': {}, 
-                'quiz_progress': [], 
-                'modes_generated': [] 
+                'word': word_to_toggle, 'first_explored_at': firestore.SERVER_TIMESTAMP,
+                'last_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': True, 
+                'generated_content_cache': {}, 'quiz_progress': [], 'modes_generated': []
             }, merge=True) 
-            return jsonify({"message": "Word added to history and favorited", "word": word_to_toggle, "is_favorite": True}), 200
+            return jsonify({"message": "Word added and favorited", "word": word_to_toggle, "is_favorite": True}), 200
 
         current_is_favorite = word_doc.to_dict().get('is_favorite', False)
         new_favorite_status = not current_is_favorite
         word_ref.update({'is_favorite': new_favorite_status, 'last_explored_at': firestore.SERVER_TIMESTAMP})
         return jsonify({"message": "Favorite status updated", "word": word_to_toggle, "is_favorite": new_favorite_status}), 200
     except Exception as e:
-        current_app.logger.error(f"Error toggling favorite for '{word_to_toggle}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to toggle favorite: {e}"}), 500
-
 
 @app.route('/save_streak', methods=['POST', 'OPTIONS'])
 @token_required
@@ -474,17 +412,14 @@ def save_user_streak(current_user_id):
         streak_doc_ref.set({'words': streak_words, 'score': streak_score, 'completed_at': firestore.SERVER_TIMESTAMP})
         return jsonify({"message": "Streak saved", "streak_id": streak_doc_ref.id}), 201
     except Exception as e:
-        current_app.logger.error(f"Error saving streak for user '{current_user_id}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
-
 
 @app.route('/save_quiz_attempt', methods=['POST', 'OPTIONS'])
 @token_required
 def save_quiz_attempt_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "No data provided"}), 400
+    if not data: return jsonify({"error": "No data provided"}), 400
 
     word = data.get('word', '').strip()
     question_index = data.get('question_index')
@@ -496,28 +431,26 @@ def save_quiz_attempt_route(current_user_id):
 
     sanitized_word_id = sanitize_word_for_id(word)
     word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
-    user_doc_ref = db.collection('users').document(current_user_id) # For updating user-level stats
+    user_doc_ref = db.collection('users').document(current_user_id)
 
     try:
         word_doc = word_history_ref.get()
         quiz_progress = []
-        if word_doc.exists:
+        if word_doc.exists and word_doc.to_dict() is not None : # Make sure to_dict() is not None
             quiz_progress = word_doc.to_dict().get('quiz_progress', [])
         else:
-            current_app.logger.warning(f"Word history for '{sanitized_word_id}' not found during quiz save. Creating.")
             word_history_ref.set({
                 'word': word, 'first_explored_at': firestore.SERVER_TIMESTAMP,
                 'last_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False,
                 'quiz_progress': [], 'generated_content_cache': {}, 'modes_generated': ['quiz']
             }, merge=True)
+            # quiz_progress is still [] here if it was new
 
         new_attempt = {
-            "question_index": question_index,
-            "selected_option_key": selected_option_key,
-            "is_correct": is_correct,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+            "question_index": question_index, "selected_option_key": selected_option_key,
+            "is_correct": is_correct, "timestamp": datetime.now(timezone.utc).isoformat()
         }
-
+        
         attempt_updated = False
         for i, attempt in enumerate(quiz_progress):
             if attempt.get('question_index') == question_index:
@@ -530,23 +463,15 @@ def save_quiz_attempt_route(current_user_id):
         quiz_progress.sort(key=lambda x: x['question_index'])
         word_history_ref.update({"quiz_progress": quiz_progress, "last_explored_at": firestore.SERVER_TIMESTAMP})
 
-        # Update user-level aggregate stats
-        user_update_payload = {
-            'total_quiz_questions_answered': firestore.Increment(1)
-        }
+        user_update_payload = {'total_quiz_questions_answered': firestore.Increment(1)}
         if is_correct:
             user_update_payload['total_quiz_questions_correct'] = firestore.Increment(1)
             user_update_payload['quiz_points'] = firestore.Increment(10) 
-        
         user_doc_ref.update(user_update_payload)
-
-        current_app.logger.info(f"Quiz attempt saved for user '{current_user_id}', word '{word}', q_idx {question_index}. Correct: {is_correct}")
+        
         return jsonify({"message": "Quiz attempt saved", "quiz_progress": quiz_progress}), 200
-
     except Exception as e:
-        current_app.logger.error(f"Error saving quiz attempt for user '{current_user_id}', word '{word}': {e}", exc_info=True)
         return jsonify({"error": f"Failed to save quiz attempt: {e}"}), 500
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
