@@ -242,7 +242,7 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
             if streak_context_list:
                 context_hint_for_quiz = f" The learning path so far included: {', '.join(streak_context_list)}."
             prompt = (
-                f"Based on the following explanation text for the term '{word}', generate a set of exactly 3 distinct multiple-choice quiz questions. "
+                f"Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. "
                 f"The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}\n\n"
                 f"Explanation Text:\n\"\"\"{explanation_text_for_quiz}\"\"\"\n\n"
                 "For each question, strictly follow this exact format, including newlines:\n"
