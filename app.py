@@ -23,8 +23,8 @@ app = Flask(__name__)
 CORS(app,
      resources={r"/*": {"origins": [
          "https://tiny-tutor-app-frontend.onrender.com",
-         "http://localhost:5173",
-         "http://127.0.0.1:5173"
+         "http://localhost:5173", 
+         "http://127.0.0.1:5173"  
      ]}},
      supports_credentials=True,
      expose_headers=["Content-Type", "Authorization"],
@@ -35,13 +35,14 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
-db = None
+db = None 
 if service_account_key_base64:
     try:
         decoded_key_bytes = base64.b64decode(service_account_key_base64)
         decoded_key_str = decoded_key_bytes.decode('utf-8')
         service_account_info = json.loads(decoded_key_str)
-        if not firebase_admin._apps:
+        
+        if not firebase_admin._apps: 
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
             app.logger.info("Firebase Admin SDK initialized successfully from Base64.")
@@ -50,7 +51,7 @@ if service_account_key_base64:
         db = firestore.client()
     except Exception as e:
         app.logger.error(f"Failed to initialize Firebase Admin SDK from Base64: {e}")
-        db = None
+        db = None 
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
@@ -67,8 +68,8 @@ else:
 limiter = Limiter(
     get_remote_address,
     app=app,
-    default_limits=["200 per day", "50 per hour"], # Adjusted default limits
-    storage_uri="memory://",
+    default_limits=["200 per day", "60 per hour"], 
+    storage_uri="memory://", 
 )
 
 def sanitize_word_for_id(word: str) -> str:
@@ -82,7 +83,6 @@ def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if request.method == 'OPTIONS':
-            # app.logger.info(f"OPTIONS request received for: {request.path}, allowing through for CORS handling.")
             response = current_app.make_default_options_response()
             return response
 
@@ -146,9 +146,9 @@ def signup_user():
             'password_hash': password_hash, 
             'tier': 'standard', 
             'created_at': firestore.SERVER_TIMESTAMP,
-            'quiz_points': 0, # NEW
-            'total_quiz_questions_answered': 0, # NEW
-            'total_quiz_questions_correct': 0 # NEW
+            'quiz_points': 0, 
+            'total_quiz_questions_answered': 0, 
+            'total_quiz_questions_correct': 0 
         })
         return jsonify({"message": "User created successfully. Please login."}), 201
     except Exception as e:
@@ -157,7 +157,7 @@ def signup_user():
 
 
 @app.route('/login', methods=['POST'])
-@limiter.limit("10 per minute") # Increased limit for login
+@limiter.limit("10 per minute") 
 def login_user():
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
@@ -186,7 +186,7 @@ def login_user():
         return jsonify({
             "message": "Login successful", "access_token": access_token,
             "user": {
-                "id": user_doc.id, # Added user ID
+                "id": user_doc.id, 
                 "username": user_data.get('username'), 
                 "email": user_data.get('email'), 
                 "tier": user_data.get('tier')
@@ -199,7 +199,7 @@ def login_user():
 
 @app.route('/generate_explanation', methods=['POST', 'OPTIONS'])
 @token_required
-@limiter.limit("60/hour") # Example: 60 requests per hour per user for this endpoint
+@limiter.limit("60/hour") 
 def generate_explanation_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
@@ -211,12 +211,12 @@ def generate_explanation_route(current_user_id):
     mode = data.get('mode', 'explain').strip().lower()
     force_refresh = data.get('refresh_cache', False)
     streak_context_list = data.get('streakContext', []) 
-    explanation_text_for_quiz = data.get('explanation_text', None) # NEW: For quiz mode
+    explanation_text_for_quiz = data.get('explanation_text', None) 
 
     if not word: return jsonify({"error": "Word/concept is required"}), 400
-    if mode == 'quiz' and not explanation_text_for_quiz:
-        return jsonify({"error": "Explanation text is required to generate a quiz"}), 400
-
+    if mode == 'quiz' and not explanation_text_for_quiz: # Quiz mode now requires explanation text
+        app.logger.warning(f"Quiz generation for '{word}' failed: explanation_text missing.")
+        return jsonify({"error": "Explanation text is required to generate a quiz for this word. Please view the explanation first."}), 400
 
     sanitized_word_id = sanitize_word_for_id(word)
     user_word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
@@ -237,8 +237,7 @@ def generate_explanation_route(current_user_id):
 
         is_contextual_explain_call = mode == 'explain' and bool(streak_context_list)
 
-        # Cache Check Logic for generic explanations, facts, images, deep_dives
-        # Quizzes are now always generated on-the-fly from explanation text, so no DB cache check for quiz mode here.
+        # Cache Check for non-quiz, non-contextual explain modes
         if mode != 'quiz' and not is_contextual_explain_call and not force_refresh and mode in cached_content_from_db:
             current_app.logger.info(f"Serving '{mode}' for '{word}' from DB cache for user '{current_user_id}'.")
             user_word_history_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP, 'word': word}, merge=True)
@@ -257,27 +256,34 @@ def generate_explanation_route(current_user_id):
         generated_text_content = None 
         quiz_questions_array = [] 
         prompt = ""
-        
-        # Prepare body for API response, will be populated based on mode
         current_request_content_holder = {}
 
-
         if mode == 'explain':
-            # Prompts for explain mode (generic and contextual) remain the same
-            if not streak_context_list:
-                prompt = f"""Your task is to define '{word}', acting as a knowledgeable guide... (rest of your generic explain prompt)"""
-            else:
+            # *** USER'S ORIGINAL PROMPTS RESTORED FOR EXPLAIN MODE ***
+            if not streak_context_list: 
+                primary_word_for_prompt = word
+                prompt = f"""Your task is to define '{primary_word_for_prompt}', acting as a knowledgeable guide introducing a foundational concept to a curious beginner.
+Instructions: Define '{primary_word_for_prompt}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner with no prior knowledge; focus on its core, fundamental aspects. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas) that are crucial not only for grasping '{primary_word_for_prompt}' but also for sparking further inquiry and naturally leading towards a deeper exploration—think of these as initial pathways into a fascinating subject. These sub-topics must not be mere synonyms or rephrasing of '{primary_word_for_prompt}'. If '{primary_word_for_prompt}' involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>energy conversion</click>, <click>$A=\pi r^2$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
+Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO_2+6H_2O+textLightrightarrowC_6H_12O_6+6O_2</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
+"""
+            else: 
+                current_word_for_prompt = word
                 context_string = ", ".join(streak_context_list)
-                reiteration_check_string = ", ".join([word] + streak_context_list)
-                prompt = f"""Your task is to define '{word}', in context of '{context_string}'... (rest of your contextual explain prompt, ensuring '{reiteration_check_string}' is used)"""
+                all_relevant_words_for_reiteration_check = [current_word_for_prompt] + streak_context_list
+                reiteration_check_string = ", ".join(all_relevant_words_for_reiteration_check)
+                prompt = f"""Your task is to define '{current_word_for_prompt}', acting as a teacher guiding a student step-by-step down a 'rabbit hole' of knowledge. The student has already learned about the following concepts in this order: '{context_string}'.
+Instructions: Define '{current_word_for_prompt}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner. Your explanation must clearly show how '{current_word_for_prompt}' relates to, builds upon, or offers a new dimension to the established learning path of '{context_string}'. Focus on its core aspects as they specifically connect to this narrative of exploration. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas). These sub-topics should be crucial for understanding '{current_word_for_prompt}' within this specific learning sequence and should themselves be chosen to intelligently suggest further avenues of exploration, continuing the streak of discovery. Crucially, these embedded sub-topics must not be a simple reiteration of any words found in '{reiteration_check_string}'. If '{current_word_for_prompt}' (when considered in the context of '{context_string}') involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>relevant concept</click>, <click>$y=mx+c$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
+Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO2​+6H2​O+Light→C6​H12​O6​+6O2​</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
+"""
         elif mode == 'fact':
             prompt = f"Tell me one very interesting and concise fun fact about '{word}'."
-        elif mode == 'quiz': # NEW: Quiz generation based on explanation_text_for_quiz
+        elif mode == 'quiz': 
             context_hint_for_quiz = ""
-            if streak_context_list: # Optional: provide streak context as additional hint for quiz
-                context_hint_for_quiz = f" The preceding topics explored were: {', '.join(streak_context_list)}."
+            if streak_context_list:
+                context_hint_for_quiz = f" The learning path so far included: {', '.join(streak_context_list)}."
             prompt = (
-                f"Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. {context_hint_for_quiz}\n\n"
+                f"Based on the following explanation text for the term '{word}', generate a set of exactly 3 distinct multiple-choice quiz questions. "
+                f"The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}\n\n"
                 f"Explanation Text:\n\"\"\"{explanation_text_for_quiz}\"\"\"\n\n"
                 "For each question, strictly follow this exact format, including newlines:\n"
                 "**Question [Number]:** [Your Question Text Here]\n"
@@ -289,10 +295,9 @@ def generate_explanation_route(current_user_id):
                 "Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'."
             )
         elif mode == 'image':
-             generated_text_content = f"Placeholder image description for {word}. Actual image generation to be implemented."
+             generated_text_content = f"Placeholder image description for {word}."
         elif mode == 'deep_dive':
-             generated_text_content = f"Placeholder for a deep dive into {word}. More detailed content to come."
-
+             generated_text_content = f"Placeholder for a deep dive into {word}."
 
         if mode in ['explain', 'fact', 'quiz'] and prompt:
             if not genai.get_model('models/gemini-1.5-flash-latest'):
@@ -304,59 +309,60 @@ def generate_explanation_route(current_user_id):
 
             if mode == 'quiz':
                 quiz_questions_array = [q.strip() for q in llm_output_text.split('---QUIZ_SEPARATOR---') if q.strip()]
-                # Basic validation for quiz format
-                if not quiz_questions_array and llm_output_text.strip(): # If no separator but text exists, use as one block
+                if not quiz_questions_array and llm_output_text.strip():
                     quiz_questions_array = [llm_output_text.strip()]
                 current_request_content_holder[mode] = quiz_questions_array
-                # DO NOT save quiz_questions_array to cached_content_from_db for 'quiz' mode anymore
-                if force_refresh: # If refreshing quiz, reset progress for this word
+                # DO NOT save quiz_questions_array to cached_content_from_db for 'quiz' mode.
+                if force_refresh: 
                     quiz_progress_data = []
             else: # explain, fact
                 generated_text_content = llm_output_text
                 current_request_content_holder[mode] = generated_text_content
-                if not is_contextual_explain_call: # Only cache generic explanations and facts in DB
+                if not is_contextual_explain_call: 
                     cached_content_from_db[mode] = generated_text_content
         
         elif mode in ['image', 'deep_dive'] and generated_text_content:
              current_request_content_holder[mode] = generated_text_content
-             cached_content_from_db[mode] = generated_text_content # Placeholders are generic, can be cached
+             cached_content_from_db[mode] = generated_text_content
 
         if mode not in modes_already_generated:
             modes_already_generated.append(mode)
 
-        # Prepare payload for DB update (word_history document)
         payload_for_db = {
-            'word': word, # Ensure 'word' is always present
+            'word': word,
             'last_explored_at': firestore.SERVER_TIMESTAMP,
             'modes_generated': modes_already_generated,
-            'generated_content_cache': cached_content_from_db # This no longer includes new quizzes
+            # IMPORTANT: generated_content_cache no longer stores 'quiz' arrays from new generations
+            'generated_content_cache': cached_content_from_db 
         }
-        if not word_doc.exists: # If word is new to history
+        if 'quiz' in payload_for_db['generated_content_cache']: # Remove quiz from DB cache if it was there
+            del payload_for_db['generated_content_cache']['quiz']
+
+
+        if not word_doc.exists: 
             payload_for_db.update({
                 'first_explored_at': firestore.SERVER_TIMESTAMP,
-                'is_favorite': False, # Default for new word
-                'quiz_progress': []  # Initialize quiz_progress
+                'is_favorite': False, 
+                'quiz_progress': [] 
             })
-            is_favorite_status = False # Ensure for response
-        else: # If word exists, preserve its favorite status unless changed by this call
+            is_favorite_status = False 
+        else: 
             payload_for_db['is_favorite'] = is_favorite_status 
-            payload_for_db['quiz_progress'] = quiz_progress_data # Carry over existing progress
+            payload_for_db['quiz_progress'] = quiz_progress_data
 
-        if mode == 'quiz' and force_refresh: # Ensure progress is reset in DB if quiz is refreshed
+        if mode == 'quiz' and force_refresh: 
             payload_for_db['quiz_progress'] = []
-            quiz_progress_data = [] # Also for the current response
+            quiz_progress_data = [] 
 
         user_word_history_ref.set(payload_for_db, merge=True)
 
-        # Prepare response to frontend
         response_payload = {
             "word": word,
-             # This ensures the key in response matches the mode, e.g., "explain": "...", "quiz": [...]
             mode: current_request_content_holder.get(mode),
             "source": "generated",
             "is_favorite": payload_for_db.get('is_favorite', is_favorite_status),
-            "full_cache": cached_content_from_db, # What's in DB cache (won't include this new quiz)
-            "quiz_progress": payload_for_db.get('quiz_progress', quiz_progress_data), # Current progress
+            "full_cache": cached_content_from_db, 
+            "quiz_progress": payload_for_db.get('quiz_progress', quiz_progress_data), 
             "modes_generated": modes_already_generated
         }
         return jsonify(response_payload), 200
@@ -378,30 +384,21 @@ def get_user_profile(current_user_id):
 
         word_history_list = []
         favorite_words_list = []
-        # total_quiz_questions_answered_overall = 0 # Calculate on backend
-        # total_quiz_questions_correct_overall = 0  # Calculate on backend
-
+        
         word_history_query = user_doc_ref.collection('word_history').order_by('last_explored_at', direction=firestore.Query.DESCENDING).stream()
         for doc in word_history_query:
             entry = doc.to_dict()
-            # quiz_prog = entry.get("quiz_progress", [])
-            # total_quiz_questions_answered_overall += len(quiz_prog)
-            # total_quiz_questions_correct_overall += sum(1 for attempt in quiz_prog if attempt.get("is_correct"))
-            
             entry_data = {
                 "word": entry.get("word"),
                 "is_favorite": entry.get("is_favorite", False),
                 "last_explored_at": entry.get("last_explored_at").isoformat() if entry.get("last_explored_at") else None,
-                "first_explored_at": entry.get("first_explored_at").isoformat() if entry.get("first_explored_at") else None, # Added first_explored_at
-                # quiz_progress could be large, so maybe don't send all progress for all words here.
-                # "quiz_progress_summary": {"answered": len(quiz_prog), "correct": sum(1 for attempt in quiz_prog if attempt.get("is_correct"))}
+                "first_explored_at": entry.get("first_explored_at").isoformat() if entry.get("first_explored_at") else None,
             }
             word_history_list.append(entry_data)
             if entry_data["is_favorite"]:
                 favorite_words_list.append(entry_data)
         
         streak_history_list = []
-        # ... (streak history logic remains the same) ...
         streak_history_query = user_doc_ref.collection('streaks').order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
         for doc in streak_history_query:
             streak = doc.to_dict()
@@ -412,17 +409,15 @@ def get_user_profile(current_user_id):
                 "completed_at": streak.get("completed_at").isoformat() if streak.get("completed_at") else None,
             })
 
-
         return jsonify({
             "username": user_data.get("username"), 
             "email": user_data.get("email"), 
             "tier": user_data.get("tier"),
-            "totalWordsExplored": len(word_history_list), 
-            "exploredWords": word_history_list,
-            "favoriteWords": favorite_words_list, 
-            "streakHistory": streak_history_list,
+            "total_words_explored": len(word_history_list), # Corrected to match frontend expectation if it was 'totalWordsExplored'
+            "exploredWords": word_history_list, # Use camelCase to match frontend UserProfileData
+            "favoriteWords": favorite_words_list, # Use camelCase
+            "streakHistory": streak_history_list, # Use camelCase
             "created_at": user_data.get("created_at").isoformat() if user_data.get("created_at") else None,
-            # NEW fields for quiz metrics
             "quiz_points": user_data.get("quiz_points", 0),
             "total_quiz_questions_answered": user_data.get("total_quiz_questions_answered", 0),
             "total_quiz_questions_correct": user_data.get("total_quiz_questions_correct", 0)
@@ -448,11 +443,11 @@ def toggle_favorite_word(current_user_id):
                 'word': word_to_toggle,
                 'first_explored_at': firestore.SERVER_TIMESTAMP,
                 'last_explored_at': firestore.SERVER_TIMESTAMP,
-                'is_favorite': True, # Favoriting a new word
-                'generated_content_cache': {}, # Initialize cache
-                'quiz_progress': [], # Initialize progress
-                'modes_generated': [] # Initialize modes
-            }, merge=True) # merge=True is good practice but set creates if not exists
+                'is_favorite': True, 
+                'generated_content_cache': {}, 
+                'quiz_progress': [], 
+                'modes_generated': [] 
+            }, merge=True) 
             return jsonify({"message": "Word added to history and favorited", "word": word_to_toggle, "is_favorite": True}), 200
 
         current_is_favorite = word_doc.to_dict().get('is_favorite', False)
@@ -509,13 +504,11 @@ def save_quiz_attempt_route(current_user_id):
         if word_doc.exists:
             quiz_progress = word_doc.to_dict().get('quiz_progress', [])
         else:
-            # This case should ideally not happen if quiz is generated after explanation,
-            # but as a fallback, create the word history entry.
             current_app.logger.warning(f"Word history for '{sanitized_word_id}' not found during quiz save. Creating.")
             word_history_ref.set({
                 'word': word, 'first_explored_at': firestore.SERVER_TIMESTAMP,
                 'last_explored_at': firestore.SERVER_TIMESTAMP, 'is_favorite': False,
-                'quiz_progress': [], 'modes_generated': ['quiz']
+                'quiz_progress': [], 'generated_content_cache': {}, 'modes_generated': ['quiz']
             }, merge=True)
 
         new_attempt = {
@@ -543,7 +536,7 @@ def save_quiz_attempt_route(current_user_id):
         }
         if is_correct:
             user_update_payload['total_quiz_questions_correct'] = firestore.Increment(1)
-            user_update_payload['quiz_points'] = firestore.Increment(10) # Award 10 points for correct answer
+            user_update_payload['quiz_points'] = firestore.Increment(10) 
         
         user_doc_ref.update(user_update_payload)
 
