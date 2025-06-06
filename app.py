@@ -456,7 +456,17 @@ def save_user_streak(current_user_id):
 
         if len(list(existing_streaks_query)) > 0:
             app.logger.info(f"Duplicate streak detected for user {current_user_id}. Ignoring.")
-            return jsonify({"message": "Streak already saved recently"}), 200
+            # Still return the latest history
+            streak_history_list = []
+            streak_history_query = streaks_collection_ref.order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
+            for doc in streak_history_query:
+                streak = doc.to_dict()
+                completed_at_val = streak.get("completed_at")
+                streak_history_list.append({
+                    "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
+                    "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val) if completed_at_val else None,
+                })
+            return jsonify({"message": "Streak already saved recently", "streakHistory": streak_history_list}), 200
         # --- END: DUPLICATE CHECK ---
 
         streak_doc_ref = streaks_collection_ref.document()
@@ -477,7 +487,6 @@ def save_user_streak(current_user_id):
     except Exception as e:
         app.logger.error(f"Failed to save streak for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
-
 
 @app.route('/save_quiz_attempt', methods=['POST', 'OPTIONS'])
 @token_required
