@@ -440,51 +440,43 @@ def save_user_streak(current_user_id):
     data = request.get_json()
     streak_words = data.get('words')
     streak_score = data.get('score')
+
     if not isinstance(streak_words, list) or not streak_words or not isinstance(streak_score, int) or streak_score < 2:
         return jsonify({"error": "Invalid streak data"}), 400
+
     try:
         streaks_collection_ref = db.collection('users').document(current_user_id).collection('streaks')
         
-        # --- ADDED: DUPLICATE CHECK ---
-        # Check for an identical streak in the last 2 minutes to prevent refresh duplication
+        # --- FIX: DUPLICATE CHECK & SAVE LOGIC ---
         two_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=2)
-        
         existing_streaks_query = streaks_collection_ref \
             .where('words', '==', streak_words) \
             .where('completed_at', '>', two_minutes_ago) \
-            .limit(1) \
-            .stream()
+            .limit(1).stream()
 
-        if len(list(existing_streaks_query)) > 0:
-            app.logger.info(f"Duplicate streak detected for user {current_user_id}. Ignoring.")
-            # Still return the latest history to keep the frontend in sync
-            streak_history_list = []
-            streak_history_query = streaks_collection_ref.order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
-            for doc in streak_history_query:
-                streak = doc.to_dict()
-                completed_at_val = streak.get("completed_at")
-                streak_history_list.append({
-                    "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
-                    "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val) if completed_at_val else None,
-                })
-            return jsonify({"message": "Streak already saved recently", "streakHistory": streak_history_list}), 200
-        # --- END: DUPLICATE CHECK ---
+        if not list(existing_streaks_query):
+            # Only save if no recent duplicate is found
+            streak_doc_ref = streaks_collection_ref.document()
+            streak_doc_ref.set({'words': streak_words, 'score': streak_score, 'completed_at': firestore.SERVER_TIMESTAMP})
+            app.logger.info(f"Streak saved for user {current_user_id}")
+        else:
+            app.logger.info(f"Duplicate streak detected for user {current_user_id}. Ignoring save.")
 
-        streak_doc_ref = streaks_collection_ref.document()
-        streak_doc_ref.set({'words': streak_words, 'score': streak_score, 'completed_at': firestore.SERVER_TIMESTAMP})
-        
-        # Return full streak history after saving
+        # --- FIX: ALWAYS RETURN THE LATEST HISTORY ---
         streak_history_list = []
         streak_history_query = streaks_collection_ref.order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
         for doc in streak_history_query:
             streak = doc.to_dict()
             completed_at_val = streak.get("completed_at")
             streak_history_list.append({
-                "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
+                "id": doc.id,
+                "words": streak.get("words", []),
+                "score": streak.get("score", 0),
                 "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val) if completed_at_val else None,
             })
             
-        return jsonify({"message": "Streak saved", "streak_id": streak_doc_ref.id, "streakHistory": streak_history_list}), 201
+        return jsonify({"message": "Streak processed", "streakHistory": streak_history_list}), 200
+        
     except Exception as e:
         app.logger.error(f"Failed to save streak for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
