@@ -432,7 +432,6 @@ def toggle_favorite_word(current_user_id):
         app.logger.error(f"Failed to toggle favorite for user {current_user_id}, word '{word_to_toggle}': {e}")
         return jsonify({"error": f"Failed to toggle favorite: {e}"}), 500
 
-
 @app.route('/save_streak', methods=['POST', 'OPTIONS'])
 @token_required
 def save_user_streak(current_user_id):
@@ -444,37 +443,9 @@ def save_user_streak(current_user_id):
         return jsonify({"error": "Invalid streak data"}), 400
     try:
         streaks_collection_ref = db.collection('users').document(current_user_id).collection('streaks')
-        
-        # Check for recent duplicates to prevent issues on browser refresh
-        two_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=2)
-        existing_streaks_query = streaks_collection_ref \
-            .where('words', '==', streak_words) \
-            .where('completed_at', '>', two_minutes_ago) \
-            .limit(1).stream()
-
-        if not list(existing_streaks_query):
-            # Only save if no recent duplicate is found
-            streak_doc_ref = streaks_collection_ref.document()
-            streak_doc_ref.set({'words': streak_words, 'score': streak_score, 'completed_at': firestore.SERVER_TIMESTAMP})
-            app.logger.info(f"Streak saved for user {current_user_id}")
-        else:
-            app.logger.info(f"Duplicate streak detected for user {current_user_id}. Ignoring save.")
-
-        # --- FIX: ALWAYS RETURN THE LATEST HISTORY ---
-        streak_history_list = []
-        streak_history_query = streaks_collection_ref.order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
-        for doc in streak_history_query:
-            streak = doc.to_dict()
-            completed_at_val = streak.get("completed_at")
-            streak_history_list.append({
-                "id": doc.id,
-                "words": streak.get("words", []),
-                "score": streak.get("score", 0),
-                "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val) if completed_at_val else None,
-            })
-            
-        return jsonify({"message": "Streak processed", "streakHistory": streak_history_list}), 200
-        
+        streak_doc_ref = streaks_collection_ref.document()
+        streak_doc_ref.set({'words': streak_words, 'score': streak_score, 'completed_at': firestore.SERVER_TIMESTAMP})
+        return jsonify({"message": "Streak saved", "streak_id": streak_doc_ref.id}), 201
     except Exception as e:
         app.logger.error(f"Failed to save streak for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
