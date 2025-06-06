@@ -440,14 +440,12 @@ def save_user_streak(current_user_id):
     data = request.get_json()
     streak_words = data.get('words')
     streak_score = data.get('score')
-
     if not isinstance(streak_words, list) or not streak_words or not isinstance(streak_score, int) or streak_score < 2:
         return jsonify({"error": "Invalid streak data"}), 400
-
     try:
         streaks_collection_ref = db.collection('users').document(current_user_id).collection('streaks')
         
-        # --- FIX: DUPLICATE CHECK & SAVE LOGIC ---
+        # Check for recent duplicates to prevent issues on browser refresh
         two_minutes_ago = datetime.now(timezone.utc) - timedelta(minutes=2)
         existing_streaks_query = streaks_collection_ref \
             .where('words', '==', streak_words) \
