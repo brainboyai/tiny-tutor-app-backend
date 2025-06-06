@@ -432,6 +432,7 @@ def toggle_favorite_word(current_user_id):
         app.logger.error(f"Failed to toggle favorite for user {current_user_id}, word '{word_to_toggle}': {e}")
         return jsonify({"error": f"Failed to toggle favorite: {e}"}), 500
 
+
 @app.route('/save_streak', methods=['POST', 'OPTIONS'])
 @token_required
 def save_user_streak(current_user_id):
@@ -487,7 +488,6 @@ def save_user_streak(current_user_id):
     except Exception as e:
         app.logger.error(f"Failed to save streak for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save streak: {e}"}), 500
-
 
 @app.route('/save_quiz_attempt', methods=['POST', 'OPTIONS'])
 @token_required
