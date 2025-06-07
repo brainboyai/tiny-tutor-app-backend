@@ -79,7 +79,7 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# --- NEW: Story Mode Endpoint ---
+# --- Story Mode Endpoint with REFINED PROMPTS ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -93,43 +93,44 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # Constructing the prompt for the AI
     prompt_history = "\n".join([f"{item['type']}: {item['text']}" for item in history])
     
     if not history:
-        # Initial prompt to kick off the story
+        # REFINED initial prompt
         prompt = f"""
 You are an AI Socratic Learning Partner. A user has provided the topic: "{topic}".
-Your task is to start an engaging, interactive learning conversation for a middle school student.
-Begin by acknowledging the topic with enthusiasm and frame it as an exciting journey.
-Then, present two distinct, interesting user options to start the exploration.
+Your task is to start an engaging, interactive learning conversation for a beginner.
+
+Follow these rules STRICTLY:
+1.  **AI Dialogue:** Your opening dialogue must be enthusiastic, simple, and brief (2-3 sentences).
+2.  **User Options:** Create two distinct user choices. These choices must be very short (under 8 words each).
 
 Respond ONLY in this strict JSON format:
 {{
-  "ai_dialogue": "Your enthusiastic opening dialogue here.",
-  "user_option_1": "The first user choice here.",
-  "user_option_2": "The second user choice here."
+  "ai_dialogue": "Your enthusiastic, simple, and brief opening dialogue.",
+  "user_option_1": "Short choice 1.",
+  "user_option_2": "Short choice 2."
 }}
 """
     else:
-        # Subsequent prompt to continue the story
+        # REFINED subsequent prompt
         last_user_choice = history[-1]['text'] if history and history[-1]['type'] == 'USER' else "the last dialogue"
         prompt = f"""
-You are an AI Socratic Learning Partner in the middle of a conversation about "{topic}".
-Here is the conversation history so far:
+You are an AI Socratic Learning Partner in a conversation about "{topic}" with a beginner.
+Here is the conversation history:
 {prompt_history}
 
-The user just chose the option: "{last_user_choice}".
+The user just chose: "{last_user_choice}".
 
-Your task is to:
-1. Seamlessly continue the conversation by providing the next AI dialogue. This dialogue should directly address the user's choice and guide the learning forward with a new question or scenario.
-2. Craft two new, distinct, and plausible user options that logically follow from your new dialogue.
+Your task is to continue the story. Follow these rules STRICTLY:
+1.  **AI Dialogue:** Seamlessly continue from the user's choice. Your dialogue must be simple, encouraging, and brief (2-4 sentences).
+2.  **User Options:** Craft two new, distinct user choices. The choices must be very short (under 8 words each). They should sound like questions or thoughts a curious person would have.
 
 Respond ONLY in this strict JSON format:
 {{
-  "ai_dialogue": "Your next dialogue that acknowledges the user's choice and continues the story.",
-  "user_option_1": "The first new user choice.",
-  "user_option_2": "The second new user choice."
+  "ai_dialogue": "Your simple, encouraging, and brief follow-up dialogue.",
+  "user_option_1": "Next short choice 1.",
+  "user_option_2": "Next short choice 2."
 }}
 """
 
@@ -137,12 +138,9 @@ Respond ONLY in this strict JSON format:
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = gemini_model.generate_content(prompt)
         
-        # Clean the response to extract only the JSON part
         cleaned_text = response.text.strip().replace("```json", "").replace("```", "").strip()
-        
         story_node = json.loads(cleaned_text)
         
-        # Basic validation of the returned structure
         if not all(k in story_node for k in ["ai_dialogue", "user_option_1", "user_option_2"]):
             raise ValueError("AI response did not contain the required JSON keys.")
 
@@ -157,7 +155,6 @@ Respond ONLY in this strict JSON format:
 
 
 # --- All other existing endpoints remain the same ---
-# ... (Home, Signup, Login, Generate Explanation, Profile, etc.) ...
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
