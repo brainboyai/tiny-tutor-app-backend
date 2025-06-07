@@ -79,48 +79,7 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# --- NEW: Parser for the AI's structured text response ---
-def parse_interaction_cycle(text_blob):
-    try:
-        dialogue_match = re.search(r"Dialogue:\s*(.*?)(?=\nImage Prompt\(s\):|\nUser Interaction:)", text_blob, re.DOTALL)
-        dialogue = dialogue_match.group(1).strip() if dialogue_match else ""
-
-        image_prompts_text_match = re.search(r"Image Prompt\(s\):\s*(.*?)(?=\nUser Interaction:)", text_blob, re.DOTALL)
-        image_prompts = []
-        if image_prompts_text_match:
-            image_prompts_text = image_prompts_text_match.group(1).strip()
-            # Split prompts that start with "Image X:" or "Image A.B.C:"
-            prompts = re.split(r'\nImage [A-Z0-9\.]+: ', image_prompts_text)
-            image_prompts = [p.strip() for p in prompts if p.strip()]
-
-        interaction_text_match = re.search(r"User Interaction:\s*(.*)", text_blob, re.DOTALL)
-        interaction_text = interaction_text_match.group(1).strip() if interaction_text_match else ""
-        
-        interaction_type_match = re.search(r"Type of Interaction:\s*(.*)", interaction_text)
-        interaction_type = interaction_type_match.group(1).strip() if interaction_type_match else "Text-based Button Selection"
-        
-        options = []
-        option_matches = re.finditer(r"Option \d+:\s*\"(.*?)\"\s*Leads to:\s*(.*)", interaction_text)
-        for match in option_matches:
-            options.append({
-                "text": match.group(1),
-                "leads_to": match.group(2).strip()
-            })
-
-        return {
-            "dialogue": dialogue,
-            "image_prompts": image_prompts,
-            "interaction": {
-                "type": interaction_type,
-                "options": options
-            }
-        }
-    except Exception as e:
-        app.logger.error(f"Failed to parse AI response blob: {e}\nBlob was: {text_blob}")
-        return None
-
-
-# --- Story Mode Endpoint with UPGRADED PROMPT ---
+# --- Story Mode Endpoint with ROBUST JSON PROMPT ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -131,19 +90,18 @@ def generate_story_node_route(current_user_id):
 
     topic = data.get('topic', '').strip()
     history = data.get('history', [])
-    last_choice_leads_to = data.get('leads_to') # The next block to generate, e.g., "Dialogue Block B.1"
+    last_choice_leads_to = data.get('leads_to')
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # The detailed prompt provided by the user.
     base_prompt = """
 Role: You are an expert Curriculum Designer and Interactive Narrative Game Developer.
 Objective: Generate a SINGLE interaction cycle for an educational narrative game. The content must be engaging, game-like, and test the user's intuition before explaining concepts.
 Instructions:
-- Adhere strictly to the Dialogue > Image Prompt(s) > User Interaction output structure.
 - Dialogue should be from your AI teacher persona, be concise, and age-appropriate (Grade 6).
 - Image Prompts must be purely educational, contextual, and contain no text or illustrative characters.
 - User Interaction options must guide the user toward the learning goal.
+- Your entire output MUST be a single, valid JSON object. Do not include any text or markdown formatting before or after the JSON.
 
 Input for this segment:
 - Learning Topic/Concept: "{topic}"
@@ -153,37 +111,43 @@ Input for this segment:
 """
 
     if not history:
-        # Initial prompt to kick off the story
         prompt = base_prompt.format(topic=topic) + """
 - Segment Type: "Introduction with common-sense testing"
-
-Now, generate the VERY FIRST interaction cycle (the introduction).
+Now, generate the VERY FIRST interaction cycle.
 """
     else:
-        # Subsequent prompt to continue the story
-        prompt_history = "\n".join([f"{item['type']}: {item['text']}" for item in history])
+        prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
         prompt = base_prompt.format(topic=topic) + f"""
-- Brief Summary of Previous Segment: The conversation so far has been:
-{prompt_history}
-
+- Brief Summary of Previous Segment: The conversation so far has been:\\n{prompt_history}
 - Segment Type: "Continuation or Question"
-
-The user has just made a choice that "Leads to: {last_choice_leads_to}".
-Now, generate the SINGLE, COMPLETE interaction cycle for "{last_choice_leads_to}".
+The user has just made a choice that "Leads to: {last_choice_leads_to}". Now, generate the SINGLE, COMPLETE interaction cycle for "{last_choice_leads_to}".
 """
 
     try:
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        response = gemini_model.generate_content(prompt)
         
-        parsed_node = parse_interaction_cycle(response.text)
+        # This is the key change: Tell the model to output JSON
+        generation_config = genai.types.GenerationConfig(
+            response_mime_type="application/json"
+        )
         
-        if not parsed_node or not parsed_node.get("dialogue"):
-             app.logger.error(f"Parser failed for AI response. Text: {response.text}")
-             return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+        response = gemini_model.generate_content(
+            prompt,
+            generation_config=generation_config
+        )
+        
+        # The response.text is now a reliable JSON string
+        parsed_node = json.loads(response.text)
+        
+        # Basic validation
+        if not all(k in parsed_node for k in ["dialogue", "image_prompts", "interaction"]):
+            raise ValueError("AI response JSON did not contain the required keys.")
 
         return jsonify(parsed_node), 200
 
+    except (json.JSONDecodeError, ValueError) as e:
+        app.logger.error(f"Failed to process AI JSON response for topic '{topic}'. Error: {e}. Response text: {response.text}")
+        return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
     except Exception as e:
         app.logger.error(f"Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
