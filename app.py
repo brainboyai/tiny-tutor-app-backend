@@ -66,7 +66,15 @@ def sanitize_word_for_id(word: str) -> str:
 def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        if request.method == 'OPTIONS': return current_app.make_default_options_response()
+        # Explicitly handle OPTIONS preflight requests before any other logic.
+        # This ensures they are not rate-limited and pass the browser's CORS check.
+        if request.method == 'OPTIONS':
+            # Create a 200 OK response
+            response = current_app.make_default_options_response()
+            
+            # The Flask-CORS extension will add the necessary headers,
+            # but we ensure a 200 status to prevent the preflight failure.
+            return response
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
