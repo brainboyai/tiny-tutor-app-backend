@@ -104,11 +104,12 @@ Instructions:
 - Dialogue should be from your AI teacher persona, concise, and age-appropriate (Grade 6).
 - Image Prompts must be purely educational and contextual.
 - User Interaction options must guide the user toward the learning goal.
-- Populate the provided JSON schema based on the logic of the narrative game.
+- You MUST populate the provided JSON schema. Your entire output must be ONLY the valid JSON object, with no other text or formatting.
 
 Input for this segment:
 - Learning Topic/Concept: "{topic}"
 - Target Audience/Grade Level: "Grade 6 Science"
+- Segment Goal/Learning Outcome: "User can visually identify and describe the difference between tap roots and fibrous roots."
 - Desired Visual Style for Images: "Clean and clear 2D educational illustrations"
 """
     if not history:
@@ -124,29 +125,30 @@ Now, generate the VERY FIRST interaction cycle.
 The user has just made a choice that "Leads to: {last_choice_leads_to}". Now, generate the SINGLE, COMPLETE interaction cycle for "{last_choice_leads_to}".
 """
     try:
-        # Define the exact JSON structure we expect from the AI
         story_node_schema = {
             "type": "object",
             "properties": {
-                "dialogue": {"type": "string"},
+                "dialogue": {"type": "string", "description": "The AI teacher's dialogue for this turn."},
                 "image_prompts": {
                     "type": "array",
-                    "items": {"type": "string"}
+                    "items": {"type": "string"},
+                    "description": "A list of prompts for images to display. Can be empty."
                 },
                 "interaction": {
                     "type": "object",
                     "properties": {
-                        "type": {"type": "string"},
+                        "type": {"type": "string", "description": "Type of user interaction, e.g., 'Text-based Button Selection'."},
                         "options": {
                             "type": "array",
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "text": {"type": "string"},
-                                    "leads_to": {"type": "string"}
+                                    "text": {"type": "string", "description": "The text to display on the user's choice button."},
+                                    "leads_to": {"type": "string", "description": "The identifier for the next dialogue block."}
                                 },
                                 "required": ["text", "leads_to"]
-                            }
+                            },
+                             "description": "A list of choices for the user."
                         }
                     },
                     "required": ["type", "options"]
@@ -157,38 +159,39 @@ The user has just made a choice that "Leads to: {last_choice_leads_to}". Now, ge
 
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        # Configure the model to use the JSON schema
         generation_config = genai.types.GenerationConfig(
             response_mime_type="application/json",
             response_schema=story_node_schema
         )
         
+        # Adding safety settings is best practice
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        }
+        
         response = gemini_model.generate_content(
             prompt,
             generation_config=generation_config,
-            safety_settings={
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            }
+            safety_settings=safety_settings
         )
         
         parsed_node = json.loads(response.text)
-
         return jsonify(parsed_node), 200
 
     except Exception as e:
         app.logger.error(f"Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
+        # Try to check if the response was blocked by safety filters
         try:
             if response.prompt_feedback.block_reason:
                 app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
-                return jsonify({"error": "The request was blocked for safety reasons. Please try a different topic."}), 400
+                return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
         except Exception:
              pass # Ignore if response object doesn't exist or doesn't have feedback
         
-        return jsonify({"error": f"An internal error occurred. The AI may be unable to generate a story for this topic."}), 500
-
+        return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
 # --- All other existing endpoints remain the same ---
 @app.route('/')
