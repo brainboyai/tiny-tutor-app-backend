@@ -16,7 +16,6 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
-# Import the specific types needed for schema definition
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
 load_dotenv()
@@ -81,7 +80,7 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# --- Story Mode Endpoint with JSON SCHEMA (Most Robust Method) ---
+# --- Story Mode Endpoint with Final, Robust Logic ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -97,106 +96,72 @@ def generate_story_node_route(current_user_id):
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
     base_prompt = """
-Role: You are an expert Curriculum Designer and Interactive Narrative Game Developer.
-Objective: Generate a SINGLE interaction cycle for an educational narrative game based on the provided inputs.
+Role: You are an expert Curriculum Designer and Interactive Narrative Game Developer. Your persona is the AI teacher, guiding the user directly and interactively.
+Objective: Generate a SINGLE, FOCUSED interaction cycle for an educational narrative game.
 Instructions:
-- The content must be engaging, game-like, and test the user's intuition before explaining concepts.
-- Dialogue should be from your AI teacher persona, concise, and age-appropriate (Grade 6).
-- Image Prompts must be purely educational and contextual.
-- User Interaction options must guide the user toward the learning goal.
-- You MUST populate the provided JSON schema. Your entire output must be ONLY the valid JSON object, with no other text or formatting.
+- Adhere Strictly to the JSON Output Structure. Your entire response MUST be only the valid JSON object.
+- Test Before You Teach: If introducing a new concept, first ask a relatable, common-sense question.
+- Break Down Complexity: Keep dialogue in each cycle brief (2-4 sentences) and focused on a single point.
+- Fresh, Self-Contained Images: Every image prompt must be written completely from scratch and describe a full scene. Do not include any text, letters, or numbers in the image itself.
+- Convergent Interaction: All user choices must ultimately guide them toward the learning goal.
 
-Input for this segment:
+I. Input for this Segment:
 - Learning Topic/Concept: "{topic}"
-- Target Audience/Grade Level: "Grade 6 Science"
-- Segment Goal/Learning Outcome: "User can visually identify and describe the difference between tap roots and fibrous roots."
-- Desired Visual Style for Images: "Clean and clear 2D educational illustrations"
+- Target Audience/Grade Level: Grade 6 Science
+- Segment Goal/Learning Outcome: The user can identify the essential inputs for the process being studied.
+- Tone: Exploratory and curious.
+- Desired Visual Style for Images: Clean and clear 2D educational illustrations.
 """
     if not history:
         prompt = base_prompt.format(topic=topic) + """
-- Segment Type: "Introduction with common-sense testing"
-Now, generate the VERY FIRST interaction cycle.
+- Current Task: Generate the VERY FIRST interaction cycle (the introduction).
 """
     else:
         prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
         prompt = base_prompt.format(topic=topic) + f"""
-- Brief Summary of Previous Segment: The conversation so far has been:\\n{prompt_history}
-- Segment Type: "Continuation or Question"
-The user has just made a choice that "Leads to: {last_choice_leads_to}". Now, generate the SINGLE, COMPLETE interaction cycle for "{last_choice_leads_to}".
+- Conversation History So Far:
+{prompt_history}
+- Current Task: The user has just made a choice that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for "{last_choice_leads_to}".
 """
     try:
         story_node_schema = {
             "type": "object",
             "properties": {
-                "dialogue": {"type": "string", "description": "The AI teacher's dialogue for this turn."},
-                "image_prompts": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "A list of prompts for images to display. Can be empty."
-                },
-                "interaction": {
-                    "type": "object",
-                    "properties": {
-                        "type": {"type": "string", "description": "Type of user interaction, e.g., 'Text-based Button Selection'."},
-                        "options": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "text": {"type": "string", "description": "The text to display on the user's choice button."},
-                                    "leads_to": {"type": "string", "description": "The identifier for the next dialogue block."}
-                                },
-                                "required": ["text", "leads_to"]
-                            },
-                             "description": "A list of choices for the user."
-                        }
-                    },
-                    "required": ["type", "options"]
-                }
-            },
-            "required": ["dialogue", "image_prompts", "interaction"]
-        }
+                "dialogue": {"type": "string"}, "image_prompts": {"type": "array", "items": {"type": "string"}},
+                "interaction": { "type": "object", "properties": { "type": {"type": "string"},
+                        "options": { "type": "array", "items": { "type": "object", "properties": {
+                                        "text": {"type": "string"}, "leads_to": {"type": "string"}},
+                                    "required": ["text", "leads_to"]}}}, "required": ["type", "options"]}},
+            "required": ["dialogue", "image_prompts", "interaction"]}
 
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        
-        generation_config = genai.types.GenerationConfig(
-            response_mime_type="application/json",
-            response_schema=story_node_schema
-        )
-        
-        # Adding safety settings is best practice
-        safety_settings = {
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
+        safety_settings = { HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
             HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
         }
         
-        response = gemini_model.generate_content(
-            prompt,
-            generation_config=generation_config,
-            safety_settings=safety_settings
-        )
-        
+        response = gemini_model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
         parsed_node = json.loads(response.text)
         return jsonify(parsed_node), 200
 
     except Exception as e:
-        app.logger.error(f"Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
-        # Try to check if the response was blocked by safety filters
+        app.logger.error(f"FATAL Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
         try:
-            if response.prompt_feedback.block_reason:
+            if response and response.prompt_feedback.block_reason:
                 app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
                 return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
         except Exception:
-             pass # Ignore if response object doesn't exist or doesn't have feedback
-        
+             pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+
 
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
+# (... The rest of your endpoints: /signup, /login, /generate_explanation, etc. remain unchanged ...)
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
