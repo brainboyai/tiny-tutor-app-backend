@@ -79,7 +79,48 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# --- Story Mode Endpoint with REFINED PROMPTS ---
+# --- NEW: Parser for the AI's structured text response ---
+def parse_interaction_cycle(text_blob):
+    try:
+        dialogue_match = re.search(r"Dialogue:\s*(.*?)(?=\nImage Prompt\(s\):|\nUser Interaction:)", text_blob, re.DOTALL)
+        dialogue = dialogue_match.group(1).strip() if dialogue_match else ""
+
+        image_prompts_text_match = re.search(r"Image Prompt\(s\):\s*(.*?)(?=\nUser Interaction:)", text_blob, re.DOTALL)
+        image_prompts = []
+        if image_prompts_text_match:
+            image_prompts_text = image_prompts_text_match.group(1).strip()
+            # Split prompts that start with "Image X:" or "Image A.B.C:"
+            prompts = re.split(r'\nImage [A-Z0-9\.]+: ', image_prompts_text)
+            image_prompts = [p.strip() for p in prompts if p.strip()]
+
+        interaction_text_match = re.search(r"User Interaction:\s*(.*)", text_blob, re.DOTALL)
+        interaction_text = interaction_text_match.group(1).strip() if interaction_text_match else ""
+        
+        interaction_type_match = re.search(r"Type of Interaction:\s*(.*)", interaction_text)
+        interaction_type = interaction_type_match.group(1).strip() if interaction_type_match else "Text-based Button Selection"
+        
+        options = []
+        option_matches = re.finditer(r"Option \d+:\s*\"(.*?)\"\s*Leads to:\s*(.*)", interaction_text)
+        for match in option_matches:
+            options.append({
+                "text": match.group(1),
+                "leads_to": match.group(2).strip()
+            })
+
+        return {
+            "dialogue": dialogue,
+            "image_prompts": image_prompts,
+            "interaction": {
+                "type": interaction_type,
+                "options": options
+            }
+        }
+    except Exception as e:
+        app.logger.error(f"Failed to parse AI response blob: {e}\nBlob was: {text_blob}")
+        return None
+
+
+# --- Story Mode Endpoint with UPGRADED PROMPT ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -90,65 +131,59 @@ def generate_story_node_route(current_user_id):
 
     topic = data.get('topic', '').strip()
     history = data.get('history', [])
+    last_choice_leads_to = data.get('leads_to') # The next block to generate, e.g., "Dialogue Block B.1"
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    prompt_history = "\n".join([f"{item['type']}: {item['text']}" for item in history])
-    
+    # The detailed prompt provided by the user.
+    base_prompt = """
+Role: You are an expert Curriculum Designer and Interactive Narrative Game Developer.
+Objective: Generate a SINGLE interaction cycle for an educational narrative game. The content must be engaging, game-like, and test the user's intuition before explaining concepts.
+Instructions:
+- Adhere strictly to the Dialogue > Image Prompt(s) > User Interaction output structure.
+- Dialogue should be from your AI teacher persona, be concise, and age-appropriate (Grade 6).
+- Image Prompts must be purely educational, contextual, and contain no text or illustrative characters.
+- User Interaction options must guide the user toward the learning goal.
+
+Input for this segment:
+- Learning Topic/Concept: "{topic}"
+- Target Audience/Grade Level: "Grade 6 Science"
+- Segment Goal/Learning Outcome: "User can visually identify and describe the difference between tap roots and fibrous roots."
+- Desired Visual Style for Images: "Clean and clear 2D educational illustrations"
+"""
+
     if not history:
-        # REFINED initial prompt
-        prompt = f"""
-You are an AI Socratic Learning Partner. A user has provided the topic: "{topic}".
-Your task is to start an engaging, interactive learning conversation for a beginner.
+        # Initial prompt to kick off the story
+        prompt = base_prompt.format(topic=topic) + """
+- Segment Type: "Introduction with common-sense testing"
 
-Follow these rules STRICTLY:
-1.  **AI Dialogue:** Your opening dialogue must be enthusiastic, simple, and brief (2-3 sentences).
-2.  **User Options:** Create two distinct user choices. These choices must be very short (under 8 words each).
-
-Respond ONLY in this strict JSON format:
-{{
-  "ai_dialogue": "Your enthusiastic, simple, and brief opening dialogue.",
-  "user_option_1": "Short choice 1.",
-  "user_option_2": "Short choice 2."
-}}
+Now, generate the VERY FIRST interaction cycle (the introduction).
 """
     else:
-        # REFINED subsequent prompt
-        last_user_choice = history[-1]['text'] if history and history[-1]['type'] == 'USER' else "the last dialogue"
-        prompt = f"""
-You are an AI Socratic Learning Partner in a conversation about "{topic}" with a beginner.
-Here is the conversation history:
+        # Subsequent prompt to continue the story
+        prompt_history = "\n".join([f"{item['type']}: {item['text']}" for item in history])
+        prompt = base_prompt.format(topic=topic) + f"""
+- Brief Summary of Previous Segment: The conversation so far has been:
 {prompt_history}
 
-The user just chose: "{last_user_choice}".
+- Segment Type: "Continuation or Question"
 
-Your task is to continue the story. Follow these rules STRICTLY:
-1.  **AI Dialogue:** Seamlessly continue from the user's choice. Your dialogue must be simple, encouraging, and brief (2-4 sentences).
-2.  **User Options:** Craft two new, distinct user choices. The choices must be very short (under 8 words each). They should sound like questions or thoughts a curious person would have.
-
-Respond ONLY in this strict JSON format:
-{{
-  "ai_dialogue": "Your simple, encouraging, and brief follow-up dialogue.",
-  "user_option_1": "Next short choice 1.",
-  "user_option_2": "Next short choice 2."
-}}
+The user has just made a choice that "Leads to: {last_choice_leads_to}".
+Now, generate the SINGLE, COMPLETE interaction cycle for "{last_choice_leads_to}".
 """
 
     try:
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = gemini_model.generate_content(prompt)
         
-        cleaned_text = response.text.strip().replace("```json", "").replace("```", "").strip()
-        story_node = json.loads(cleaned_text)
+        parsed_node = parse_interaction_cycle(response.text)
         
-        if not all(k in story_node for k in ["ai_dialogue", "user_option_1", "user_option_2"]):
-            raise ValueError("AI response did not contain the required JSON keys.")
+        if not parsed_node or not parsed_node.get("dialogue"):
+             app.logger.error(f"Parser failed for AI response. Text: {response.text}")
+             return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
-        return jsonify(story_node), 200
+        return jsonify(parsed_node), 200
 
-    except json.JSONDecodeError:
-        app.logger.error(f"Failed to decode JSON from AI response for topic '{topic}'. Response text: {response.text}")
-        return jsonify({"error": "The AI returned an invalid story format. Please try again."}), 500
     except Exception as e:
         app.logger.error(f"Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
@@ -158,7 +193,7 @@ Respond ONLY in this strict JSON format:
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
-
+# (... The rest of your endpoints: /signup, /login, /generate_explanation, etc. remain unchanged ...)
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
