@@ -79,7 +79,7 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# --- Story Mode Endpoint with ROBUST JSON PROMPT ---
+# --- Story Mode Endpoint with MORE RESILIENT PARSING ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -96,12 +96,11 @@ def generate_story_node_route(current_user_id):
 
     base_prompt = """
 Role: You are an expert Curriculum Designer and Interactive Narrative Game Developer.
-Objective: Generate a SINGLE interaction cycle for an educational narrative game. The content must be engaging, game-like, and test the user's intuition before explaining concepts.
+Objective: Generate a SINGLE interaction cycle for an educational narrative game.
 Instructions:
-- Dialogue should be from your AI teacher persona, be concise, and age-appropriate (Grade 6).
-- Image Prompts must be purely educational, contextual, and contain no text or illustrative characters.
-- User Interaction options must guide the user toward the learning goal.
-- Your entire output MUST be a single, valid JSON object. Do not include any text or markdown formatting before or after the JSON.
+- Dialogue should be from your AI teacher persona, concise, and age-appropriate (Grade 6).
+- Image Prompts must be purely educational and contextual.
+- Your entire output MUST be a single, valid JSON object. Do not add any text or markdown formatting like ```json before or after the JSON object.
 
 Input for this segment:
 - Learning Topic/Concept: "{topic}"
@@ -126,27 +125,27 @@ The user has just made a choice that "Leads to: {last_choice_leads_to}". Now, ge
     try:
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        # This is the key change: Tell the model to output JSON
-        generation_config = genai.types.GenerationConfig(
-            response_mime_type="application/json"
-        )
+        response = gemini_model.generate_content(prompt)
         
-        response = gemini_model.generate_content(
-            prompt,
-            generation_config=generation_config
-        )
+        # --- NEW: Resilient cleanup logic before parsing ---
+        text_to_parse = response.text.strip()
+        # Find the first '{' and the last '}' to extract the JSON object
+        start_index = text_to_parse.find('{')
+        end_index = text_to_parse.rfind('}')
+        if start_index != -1 and end_index != -1 and end_index > start_index:
+            json_string = text_to_parse[start_index:end_index+1]
+        else:
+            json_string = text_to_parse # Fallback if no brackets are found
+
+        parsed_node = json.loads(json_string)
         
-        # The response.text is now a reliable JSON string
-        parsed_node = json.loads(response.text)
-        
-        # Basic validation
         if not all(k in parsed_node for k in ["dialogue", "image_prompts", "interaction"]):
             raise ValueError("AI response JSON did not contain the required keys.")
 
         return jsonify(parsed_node), 200
 
     except (json.JSONDecodeError, ValueError) as e:
-        app.logger.error(f"Failed to process AI JSON response for topic '{topic}'. Error: {e}. Response text: {response.text}")
+        app.logger.error(f"Failed to process AI JSON response for topic '{topic}'. Error: {e}. Response text was: {response.text}")
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
     except Exception as e:
         app.logger.error(f"Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
