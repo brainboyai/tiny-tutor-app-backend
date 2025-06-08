@@ -81,7 +81,7 @@ def token_required(f):
     return decorated_function
 
 # --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
-# --- Story Mode Endpoint with NEW INTELLIGENT PROMPT (UPDATED FOR BETTER FLOW) ---
+# --- Story Mode Endpoint with NEW, SIMPLIFIED PROMPT FOR RELIABILITY ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -96,55 +96,54 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # --- NEW, HIGHLY-DETAILED PROMPT FOR BETTER CONVERSATIONAL FLOW ---
+    # --- NEW, FOCUSED PROMPT ---
+    # This prompt is designed to be lean, reducing the chance of model error.
     base_prompt = """
-You are an 'AI Interactive Learning Designer' for 'Tiny Tutor.' Your task is to generate the JSON for a SINGLE, very short interactive step for the topic: {topic}.
+You are 'Tiny Tutor,' an AI creating a single, short, interactive learning step for the topic: {topic}.
 
-**Core Principles - You MUST follow these:**
-1.  **Micro-Interactions:** Each dialogue must be extremely short (usually ONE sentence). Break down complex ideas into many small steps. Use a transition option like "Continue" or "Got it" to move to the next tiny piece of information. Do NOT cram multiple ideas into one dialogue.
-2.  **Start with Observation:** The first turn for ANY topic must be a simple, relatable question or observation to hook the learner.
-3.  **Mandatory Images:** EVERY node MUST have an `image_prompts` array with at least one high-quality, descriptive prompt for a static image.
-4.  **Follow the Example Flow:** The user wants a specific introductory flow. Your primary goal is to replicate this pattern.
+**Your Core Task:**
+Based *only* on the provided "Previous Turn Context," generate the JSON for the single next step in the conversation.
 
-**--- Gold-Standard Example Flow for "Evaporation" ---**
-* **Turn 1 (Initial Observation):**
-    * `dialogue`: "Welcome! Let's learn about evaporation. Ever notice how puddles disappear from the sidewalk on a sunny day?"
-    * `interaction`: Text buttons "Yes, I have!" and "No, not really."
-* **Turn 2 (If user chose "Yes"):**
-    * `dialogue`: "Great observation! That disappearing act is called evaporation. The sun's heat turns the water into an invisible gas called water vapor."
-    * `interaction`: Single transition button "Continue".
-* **Turn 3 (If user chose "No"):**
-    * `dialogue`: "No worries! It's a neat trick. It's called evaporation. The sun's heat turns the water in the puddle into an invisible gas, making it disappear."
-    * `interaction`: Single transition button "Continue".
-* **Turn 4 (After transition):**
-    * `dialogue`: "This happens with hot liquids, too. Think about steam rising from a hot cup of tea."
-    * `interaction`: Single transition button "Got it".
-* **Turn 5 (Image Question):**
-    * `dialogue`: "Which of these pictures shows evaporation happening?"
-    * `interaction`: Image Selection with two options (e.g., boiling water vs. an ice cube).
-* **Turn 6 (Feedback on Image Question):**
-    * `dialogue`: "Exactly! Boiling water creates steam, which is a fast form of evaporation. The heat gives the water energy to turn into a gas."
-    * `interaction`: Single transition button "What's next?".
-**--- End of Example ---**
+**Critical Rules:**
+1.  **Micro-Interactions:** Your generated `dialogue` must be extremely short (usually ONE sentence). Break down ideas into tiny steps.
+2.  **Strict Turn Order:**
+    * If the previous turn was an **explanation** (e.g., the user clicked "Continue"), you MUST generate a **question** now.
+    * If the previous turn was a **question**, you MUST generate an **explanation** now. Start the `dialogue` with feedback (e.g., "Correct! ...").
+3.  **Mandatory Images:** Every response MUST include at least one descriptive `image_prompts`.
+4.  **Initial Turn:** If there is no "Previous Turn Context," you are generating the very first turn. Start with a relatable, one-sentence observation about the topic and offer simple choices.
+
+**Example Introductory Flow:**
+* **Turn 1 (Observation):** `dialogue`: "Ever notice how puddles disappear on a sunny day?" -> `options`: ["Yes", "No"]
+* **Turn 2 (Explanation):** `dialogue`: "That's evaporation! The sun's heat turns water into an invisible gas." -> `options`: ["Continue"]
+* **Turn 3 (Question):** `dialogue`: "Which of these pictures shows evaporation?" -> `interaction`: "Image Selection"
 
 **Your Task Now:**
 - Learning Topic: "{topic}"
-- Conversation History: {history_str}
-- User's Last Choice led to: "{last_choice_leads_to}"
+- Previous Turn Context:
+{context_str}
+- The user's last choice "Leads To": "{last_choice_leads_to}"
 
-Generate the JSON for the **single next step**, strictly adhering to the Core Principles and the spirit of the Example Flow. Keep dialogues extremely short.
+Generate the JSON for the single next step.
 """
+    
+    # We now only send the most recent history to keep the prompt focused.
     if not history:
-        prompt = base_prompt.format(topic=topic, history_str="[]", last_choice_leads_to="N/A (First Turn)")
+        context_str = "N/A (This is the first turn)"
     else:
-        # Create a simplified string representation of the history
-        history_summary = []
-        for item in history:
-            if item['type'] == 'AI':
-                history_summary.append(f"AI said: '{item['text'][:50]}...'")
-            else:
-                history_summary.append(f"USER chose: '{item['text']}'")
-        prompt = base_prompt.format(topic=topic, history_str=json.dumps(history_summary), last_choice_leads_to=last_choice_leads_to)
+        # Get the last two items (AI's turn and User's turn) for context
+        recent_history = history[-2:]
+        context_items = []
+        for item in recent_history:
+            # Shorten dialogue for the prompt to keep it concise
+            text = (item['text'][:75] + '...') if len(item['text']) > 75 else item['text']
+            context_items.append(f"  - {item['type']}: '{text}'")
+        context_str = "\n".join(context_items)
+
+    prompt = base_prompt.format(
+        topic=topic,
+        context_str=context_str,
+        last_choice_leads_to=last_choice_leads_to or "N/A"
+    )
 
     try:
         story_node_schema = {
@@ -166,7 +165,6 @@ Generate the JSON for the **single next step**, strictly adhering to the Core Pr
             }, "required": ["dialogue", "image_prompts", "interaction"]
         }
 
-        # Use the more advanced model as requested
         gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
         safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
@@ -177,14 +175,20 @@ Generate the JSON for the **single next step**, strictly adhering to the Core Pr
 
     except Exception as e:
         app.logger.error(f"FATAL Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
+        # Log the prompt that might have caused the error for debugging
+        app.logger.error(f"Failing prompt for user {current_user_id}: {prompt}")
         try:
-            if response and response.prompt_feedback.block_reason:
+            # Check for specific response issues if possible
+            if 'response' in locals() and response.prompt_feedback.block_reason:
                 app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
                 return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
-        except Exception:
+            if 'response' in locals():
+                app.logger.error(f"Malformed AI response text: {response.text}")
+
+        except Exception as inner_e:
+             app.logger.error(f"Inner exception during error handling: {inner_e}")
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
-
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
