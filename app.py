@@ -81,7 +81,6 @@ def token_required(f):
     return decorated_function
 
 # --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
-# --- Story Mode Endpoint with NEW, SIMPLIFIED PROMPT FOR RELIABILITY ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -96,99 +95,64 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # --- NEW, FOCUSED PROMPT ---
-    # This prompt is designed to be lean, reducing the chance of model error.
     base_prompt = """
-You are 'Tiny Tutor,' an AI creating a single, short, interactive learning step for the topic: {topic}.
+You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game. Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
 
-**Your Core Task:**
-Based *only* on the provided "Previous Turn Context," generate the JSON for the single next step in the conversation.
+**Core Instructional Principles:**
+1.  **Follow the Screenplay Flow:** The conversation must follow a **Feedback -> Explain -> Transition -> Question** pattern. Do not merge these steps.
+2.  **Feedback First:** The `feedback_on_previous_answer` field is for direct, evaluative feedback (e.g., "Correct!", "Not quite..."). This field MUST BE an empty string if it's the first turn or if the previous turn was a simple transition (like clicking "Continue").
+3.  **Explain a Single Concept:** After feedback, the `dialogue` should explain ONE new concept concisely (2-3 sentences). This turn must end with a single, simple transition option like "Continue" or "Got it, what's next?".
+4.  **Ask a Question on a New Turn:** After the user clicks a transition button, the next turn should be dedicated to asking a question about the concept you just explained. The `dialogue` will contain the question.
+5.  **Contextual Integrity:** All questions and options must ONLY relate to information already provided in the conversation history or common-sense analogies.
+6.  **Image for Every Step:** Every turn MUST have at least one `image_prompt`. For image-based questions, provide one distinct prompt for each clickable option. Ensure the number of image prompts matches the number of options.
 
-**Critical Rules:**
-1.  **Micro-Interactions:** Your generated `dialogue` must be extremely short (usually ONE sentence). Break down ideas into tiny steps.
-2.  **Strict Turn Order:**
-    * If the previous turn was an **explanation** (e.g., the user clicked "Continue"), you MUST generate a **question** now.
-    * If the previous turn was a **question**, you MUST generate an **explanation** now. Start the `dialogue` with feedback (e.g., "Correct! ...").
-3.  **Mandatory Images:** Every response MUST include at least one descriptive `image_prompts`.
-4.  **Initial Turn:** If there is no "Previous Turn Context," you are generating the very first turn. Start with a relatable, one-sentence observation about the topic and offer simple choices.
-
-**Example Introductory Flow:**
-* **Turn 1 (Observation):** `dialogue`: "Ever notice how puddles disappear on a sunny day?" -> `options`: ["Yes", "No"]
-* **Turn 2 (Explanation):** `dialogue`: "That's evaporation! The sun's heat turns water into an invisible gas." -> `options`: ["Continue"]
-* **Turn 3 (Question):** `dialogue`: "Which of these pictures shows evaporation?" -> `interaction`: "Image Selection"
-
-**Your Task Now:**
-- Learning Topic: "{topic}"
-- Previous Turn Context:
-{context_str}
-- The user's last choice "Leads To": "{last_choice_leads_to}"
-
-Generate the JSON for the single next step.
+**Your Input for This Turn:**
+- Learning Topic/Concept: "{topic}"
+- Target Audience/Grade Level: Grade 6 Science
+- Tone: Exploratory and curious.
 """
-    
-    # We now only send the most recent history to keep the prompt focused.
     if not history:
-        context_str = "N/A (This is the first turn)"
+        prompt = base_prompt.format(topic=topic) + """
+- **Current Task:** Generate the VERY FIRST interaction cycle. Introduce the topic with a relatable, common-sense question. The `feedback_on_previous_answer` field MUST be an empty string.
+"""
     else:
-        # Get the last two items (AI's turn and User's turn) for context
-        recent_history = history[-2:]
-        context_items = []
-        for item in recent_history:
-            # Shorten dialogue for the prompt to keep it concise
-            text = (item['text'][:75] + '...') if len(item['text']) > 75 else item['text']
-            context_items.append(f"  - {item['type']}: '{text}'")
-        context_str = "\n".join(context_items)
-
-    prompt = base_prompt.format(
-        topic=topic,
-        context_str=context_str,
-        last_choice_leads_to=last_choice_leads_to or "N/A"
-    )
-
+        prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
+        prompt = base_prompt.format(topic=topic) + f"""
+- **Conversation History So Far:**
+{prompt_history}
+- **Current Task:** The user chose an option that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
+"""
     try:
         story_node_schema = {
             "type": "object",
             "properties": {
-                "dialogue": {"type": "string", "description": "A very short dialogue (usually one sentence). It can include feedback at the beginning if appropriate (e.g., 'Correct! ...')."},
-                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "List of detailed text-to-image prompts. MUST have at least one."},
-                "interaction": {
-                    "type": "object", "properties": {
-                        "type": {"type": "string", "enum": ["Text Button Selection", "Image Selection"]},
-                        "options": {"type": "array", "items": {
-                            "type": "object", "properties": {
-                                "text": {"type": "string"},
-                                "leads_to": {"type": "string"}
-                            }, "required": ["text", "leads_to"]
-                        }}
-                    }, "required": ["type", "options"]
-                }
-            }, "required": ["dialogue", "image_prompts", "interaction"]
-        }
+                "feedback_on_previous_answer": {"type": "string", "description": "Direct feedback on the user's last choice. Empty string for the first turn or after a 'continue' button."},
+                "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn (either an explanation or a question)."},
+                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. For image questions, the order must match the options."},
+                "interaction": { "type": "object", "properties": { "type": {"type": "string", "description": "e.g., 'Text-based Button Selection' or 'Image Selection'."},
+                        "options": { "type": "array", "items": { "type": "object", "properties": {
+                                        "text": {"type": "string"}, "leads_to": {"type": "string"}},
+                                    "required": ["text", "leads_to"]}}}, "required": ["type", "options"]}},
+            "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]}
 
-        gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
         safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
-
+        
         response = gemini_model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
         parsed_node = json.loads(response.text)
         return jsonify(parsed_node), 200
 
     except Exception as e:
         app.logger.error(f"FATAL Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
-        # Log the prompt that might have caused the error for debugging
-        app.logger.error(f"Failing prompt for user {current_user_id}: {prompt}")
         try:
-            # Check for specific response issues if possible
-            if 'response' in locals() and response.prompt_feedback.block_reason:
+            if response and response.prompt_feedback.block_reason:
                 app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
                 return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
-            if 'response' in locals():
-                app.logger.error(f"Malformed AI response text: {response.text}")
-
-        except Exception as inner_e:
-             app.logger.error(f"Inner exception during error handling: {inner_e}")
+        except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
