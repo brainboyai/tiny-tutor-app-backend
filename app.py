@@ -96,15 +96,17 @@ def generate_story_node_route(current_user_id):
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game. Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
+You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game.
+Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
 
 **Core Instructional Principles:**
 1.  **Follow the Screenplay Flow:** The conversation must follow a **Feedback -> Explain -> Transition -> Question** pattern. Do not merge these steps.
-2.  **Feedback First:** The `feedback_on_previous_answer` field is for direct, evaluative feedback (e.g., "Correct!", "Not quite..."). This field MUST BE an empty string if it's the first turn or if the previous turn was a simple transition (like clicking "Continue").
-3.  **Explain a Single Concept:** After feedback, the `dialogue` should explain ONE new concept concisely (2-3 sentences). This turn must end with a single, simple transition option like "Continue" or "Got it, what's next?".
+2.  **Feedback First:** The `feedback_on_previous_answer` field is for direct, evaluative feedback (e.g., "Correct!", "Not quite, but good thinking."). This field MUST BE an empty string if it's the first turn or if the previous turn was a simple transition button (like "Continue").
+3.  **Explain a Single Concept:** After feedback, the `dialogue` should explain ONE new concept concisely (2-3 sentences). This turn should end with a single, simple transition option like "Continue" or "Got it, what's next?".
 4.  **Ask a Question on a New Turn:** After the user clicks a transition button, the next turn should be dedicated to asking a question about the concept you just explained. The `dialogue` will contain the question.
-5.  **Contextual Integrity:** All questions and options must ONLY relate to information already provided in the conversation history or common-sense analogies.
+5.  **Contextual Integrity:** All questions and options must ONLY relate to information already provided in the conversation history or common-sense analogies. For every question, there must be only ONE correct option.
 6.  **Image for Every Step:** Every turn MUST have at least one `image_prompt`. For image-based questions, provide one distinct prompt for each clickable option. Ensure the number of image prompts matches the number of options.
+7. **Natural Options:** Do not say "Click continue". The button text should be a natural continuation, like "I understand" or "What's next?".
 
 **Your Input for This Turn:**
 - Learning Topic/Concept: "{topic}"
@@ -120,13 +122,13 @@ You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversatio
         prompt = base_prompt.format(topic=topic) + f"""
 - **Conversation History So Far:**
 {prompt_history}
-- **Current Task:** The user chose an option that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
+- **Current Task:** The user has just made a choice that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
 """
     try:
         story_node_schema = {
             "type": "object",
             "properties": {
-                "feedback_on_previous_answer": {"type": "string", "description": "Direct feedback on the user's last choice. Empty string for the first turn or after a 'continue' button."},
+                "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty string for the first turn or after a 'continue' button."},
                 "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn (either an explanation or a question)."},
                 "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. For image questions, the order must match the options."},
                 "interaction": { "type": "object", "properties": { "type": {"type": "string", "description": "e.g., 'Text-based Button Selection' or 'Image Selection'."},
@@ -152,6 +154,7 @@ You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversatio
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+
 
 # --- All other existing endpoints remain the same ---
 @app.route('/')
