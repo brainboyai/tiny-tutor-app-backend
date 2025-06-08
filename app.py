@@ -96,7 +96,7 @@ def generate_story_node_route(current_user_id):
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator creating a natural, interactive learning game.
+You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game.
 Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
 
 **Core Instructional Principles:**
@@ -108,14 +108,17 @@ Your task is to generate the next single turn in the conversation, following the
 4.  **Flawless Continuity:** Ensure the conversation flows logically. Your response must seamlessly connect to the user's last choice.
 5.  **Image for Every Step:** Every dialogue turn must have at least one associated `image_prompt`. The image should visually support the dialogue. Do not put text in the images.
 
-**Your Input for This Turn:**
+**Your Current Task:**
+Based on the user's topic and history, generate the next single turn in the conversation, following all principles above.
+
+**Input for this Segment:**
 - Learning Topic/Concept: "{topic}"
 - Target Audience/Grade Level: Grade 6 Science
 - Tone: Exploratory and curious.
 """
     if not history:
         prompt = base_prompt.format(topic=topic) + """
-- **Current Task:** Generate the VERY FIRST interaction cycle. Introduce the topic with a relatable, common-sense question. The `feedback_on_previous_answer` field MUST be an empty string.
+- **Current Task:** This is the VERY FIRST turn. Introduce the topic with a relatable, common-sense question. The `feedback_on_previous_answer` field MUST be an empty string.
 """
     else:
         prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
@@ -160,6 +163,7 @@ Your task is to generate the next single turn in the conversation, following the
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
+# (... The rest of your endpoints: /signup, /login, etc. remain unchanged ...)
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
