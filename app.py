@@ -95,71 +95,46 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # This is the new, more intelligent master prompt.
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game. Your goal is to explain any topic to any beginner.
+You are 'Tiny Tutor,' an expert AI educator creating a natural, interactive learning game.
+Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
 
 **Core Instructional Principles:**
-1.  **Feedback First:** ALWAYS start your dialogue by giving feedback on the user's previous answer (e.g., "That's right!", "Good thinking, but let's look closer..."). For the very first turn of the conversation, this feedback should be an empty string.
-2.  **Explain, THEN Ask:** After giving feedback, present a single, concise explanation (2-3 sentences). Then, provide a SINGLE "continue" button (e.g., "Got it!"). The user's click on this button will then lead to a new turn where you ask a question. DO NOT explain and ask in the same turn.
-3.  **Test Before Teaching:** When you do ask a question, frame it to test the user's intuition or common sense *before* you teach the formal concept.
-4.  **Simple & Encouraging:** Use simple, natural language suitable for a 6th grader. Be encouraging and patient.
-5.  **Flawless Flow:** Ensure the conversation connects logically. Reference the history if needed to maintain context.
+1.  **Feedback First:** Always start by giving direct feedback on the user's previous answer in the `feedback_on_previous_answer` field. Use phrases like "Exactly!", "Correct!", "Not quite, but good thinking.", "Let's look closer." If it's the first turn of the conversation or after a simple 'continue' button, this field must be an empty string.
+2.  **Separate Explanation & Questioning:** Create a natural rhythm. Do not explain a new concept and ask a question in the same turn.
+    * **Explanation Turn:** After giving feedback, provide a concise explanation (2-3 sentences). This turn should end with a single "Continue" or "Got it!" option.
+    * **Question Turn:** After the user clicks "Continue," the next turn should introduce a new interactive question (either text or image-based) with multiple choices.
+3.  **Test Before You Teach:** Frame your questions to probe the user's common sense or intuition about a topic *before* you formally explain it.
+4.  **Flawless Continuity:** Ensure the conversation flows logically. Your response must seamlessly connect to the user's last choice.
+5.  **Image for Every Step:** Every dialogue turn must have at least one associated `image_prompt`. The image should visually support the dialogue. Do not put text in the images.
 
-**Example 1: Science Topic (Photosynthesis)**
--   *User has just chosen "From the sun and air?"*
--   **(Your Turn - Feedback & Explanation):**
-    -   `feedback_on_previous_answer`: "You've hit on two of the most important ingredients! That's excellent intuition."
-    -   `dialogue`: "Plants use energy from sunlight, water from the soil, and a gas from the air called carbon dioxide to make their food. This amazing process is called photosynthesis."
-    -   `interaction`: A single "Got it!" button.
--   **(User clicks "Got it!")**
--   **(Your NEXT Turn - Question):**
-    -   `feedback_on_previous_answer`: "" (empty, because the last turn was just a continue button)
-    -   `dialogue`: "Now, let's think about our own planet. Which of these things do you think is the biggest and most important producer using photosynthesis?"
-    -   `interaction`: An image selection question with prompts for "A giant redwood tree," "A beautiful rose bush," and "The world's oceans (full of tiny algae)."
-
-**Example 2: Abstract Topic (Gravity)**
--   *User has just answered a question about what happens when they jump.*
--   **(Your Turn - Feedback & Explanation):**
-    -   `feedback_on_previous_answer`: "Exactly! You always come back down. You can't just float away."
-    -   `dialogue`: "That invisible force pulling you down is called gravity. It's not just on Earth; any object with mass, like a planet or a star, has its own gravity."
-    -   `interaction`: A single "Tell me more!" button.
-
-**Your Current Task:**
-Based on the user's topic and history, generate the next single turn in the conversation, following all principles above.
-
-**Input for this Segment:**
+**Your Input for This Turn:**
 - Learning Topic/Concept: "{topic}"
-- Target Audience/Grade Level: Grade 6
+- Target Audience/Grade Level: Grade 6 Science
 - Tone: Exploratory and curious.
-- Desired Visual Style: Clean and clear 2D educational illustrations.
 """
     if not history:
         prompt = base_prompt.format(topic=topic) + """
-- Current Task: This is the VERY FIRST turn. Introduce the topic with a common-sense question. Your `feedback_on_previous_answer` key must be an empty string.
+- **Current Task:** Generate the VERY FIRST interaction cycle. Introduce the topic with a relatable, common-sense question. The `feedback_on_previous_answer` field MUST be an empty string.
 """
     else:
         prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
         prompt = base_prompt.format(topic=topic) + f"""
-- Conversation History So Far:
+- **Conversation History So Far:**
 {prompt_history}
-- Current Task: The user has just made a choice that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step. Remember to provide feedback!
+- **Current Task:** The user has just made a choice that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
 """
     try:
-        # The new, more complex schema the AI must follow.
         story_node_schema = {
             "type": "object",
             "properties": {
                 "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty string for the first turn or after a 'continue' button."},
                 "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn (either an explanation or a question)."},
-                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. Can be empty."},
-                "interaction": {"type": "object", "properties": {
-                        "type": {"type": "string", "description": "e.g., 'Text-based Button Selection' or 'Image Selection'."},
-                        "options": {"type": "array", "items": {
-                                "type": "object", "properties": {
-                                    "text": {"type": "string"}, "leads_to": {"type": "string"}},
-                                "required": ["text", "leads_to"]}}},
-                    "required": ["type", "options"]}},
+                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. Must contain at least one prompt."},
+                "interaction": { "type": "object", "properties": { "type": {"type": "string", "description": "e.g., 'Text-based Button Selection' or 'Image Selection'."},
+                        "options": { "type": "array", "items": { "type": "object", "properties": {
+                                        "text": {"type": "string"}, "leads_to": {"type": "string"}},
+                                    "required": ["text", "leads_to"]}}}, "required": ["type", "options"]}},
             "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]}
 
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -180,8 +155,8 @@ Based on the user's topic and history, generate the next single turn in the conv
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
+
 # --- All other existing endpoints remain the same ---
-# (... The rest of your endpoints: /home, /signup, /login, etc. remain unchanged ...)
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
