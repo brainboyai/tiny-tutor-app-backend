@@ -81,7 +81,7 @@ def token_required(f):
     return decorated_function
 
 # --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
-# --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
+# --- Story Mode Endpoint with NEW INTELLIGENT PROMPT (UPDATED) ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -96,7 +96,7 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # --- NEW, UPGRADED PROMPT ---
+    # --- UPDATED PROMPT ---
     base_prompt = """
 You are an 'AI Interactive Learning Designer' for 'Tiny Tutor,' creating an engaging, step-by-step learning module for the topic: {topic}.
 Your mission is to generate the JSON for a SINGLE interactive step in a larger learning journey.
@@ -106,19 +106,16 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
 
 **CRITICAL INSTRUCTIONS - Follow these for EVERY node:**
 
-1.  **Strict "Teach then Test" Flow:** The learning path consists of two types of turns that you must generate alternately:
+1.  **Combine Feedback and Dialogue:** If the user just answered a question, the `dialogue` MUST begin with concise feedback (e.g., "That's right! ... " or "Not quite... ") followed by a newline, and then the main text for the current turn. If it's a new turn after a 'Continue' button, there is no feedback.
+
+2.  **Strict "Teach then Test" Flow:** The learning path consists of two types of turns that you must generate alternately:
     * **EXPLAIN Turn:** The `dialogue` explains ONE small concept in 1-2 simple sentences. The `interaction` for this turn MUST be a single transition button like "Continue" or "Got it!".
-    * **QUESTION Turn:** After an EXPLAIN turn, the next turn MUST ask a question about the concept just taught. The `dialogue` contains the question. The `interaction` provides choices for the user. This can be text buttons or an image tap test.
+    * **QUESTION Turn:** After an EXPLAIN turn, the next turn MUST ask a question about the concept just taught. The `dialogue` contains the question. The `interaction` provides choices for the user.
 
-2.  **Mandatory High-Quality Image Prompts:** EVERY node you generate MUST have at least one image prompt in the `image_prompts` array.
-    * **Be Specific:** State the main Subject, its important visual Properties/Details, and the context.
-    * **Define the Style:** Use styles like "Realistic illustration," "Clear photo-like depiction," "Detailed simple scientific diagram," "Cheerful children's book illustration."
-    * **Static Images Only:** Describe a single, unmoving scene.
+3.  **Mandatory High-Quality Image Prompts:** EVERY node you generate MUST have at least one image prompt in the `image_prompts` array.
+    * **Be Specific:** State the main Subject, its visual Properties/Details, and the context.
+    * **Define the Style:** Use styles like "Realistic illustration," "Clear photo-like depiction," "Detailed simple scientific diagram," or "Cheerful children's book illustration."
     * **For Image Questions:** For an 'Image Selection' interaction, you MUST provide one image prompt for EACH choice. The order of `image_prompts` must exactly match the order of `interaction.options`.
-
-3.  **Feedback First:**
-    * If the user just answered a question, the `feedback_on_previous_answer` field is your FIRST priority. Start with direct feedback (e.g., "That's right!", "Not quite...").
-    * This field MUST BE an empty string for the very first turn of a topic, or on a turn that immediately follows a simple "Continue" transition.
 
 **Your Input for This Turn:**
 - Learning Topic: "{topic}"
@@ -126,7 +123,7 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
     if not history:
         # Instructions for the very first node of the lesson
         prompt = base_prompt.format(topic=topic) + """
-- **Current Task:** This is the VERY FIRST turn. Your task is to generate an **EXPLAIN** turn. Introduce the topic in a fun, relatable way (1-2 sentences). The `feedback_on_previous_answer` field MUST be an empty string. The interaction must be a single button to begin the lesson.
+- **Current Task:** This is the VERY FIRST turn. Your task is to generate an **EXPLAIN** turn. Introduce the topic in a fun, relatable way (1-2 sentences). The interaction must be a single button to begin the lesson.
 """
     else:
         # Instructions for all subsequent nodes
@@ -136,22 +133,18 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
 {prompt_history}
 - **User's Last Choice:** The user chose an option where the 'leads_to' field was: "{last_choice_leads_to}"
 
-- **Current Task:** Generate the SINGLE, COMPLETE JSON object for the very next step. Analyze the history and the user's last choice to decide what comes next, strictly following the "Teach then Test" flow.
+- **Current Task:** Generate the SINGLE, COMPLETE JSON object for the very next step. Analyze the history and the user's last choice to decide what comes next.
   - If the last turn was an EXPLAIN turn (user clicked "Continue"), you MUST generate a QUESTION turn now.
-  - If the last turn was a QUESTION turn (user picked an answer), you MUST generate an EXPLAIN turn now. Start with feedback in the `feedback_on_previous_answer` field, then explain the next small concept.
+  - If the last turn was a QUESTION turn (user picked an answer), you MUST generate an EXPLAIN turn now. Start the dialogue with feedback based on their choice, then explain the next small concept.
 """
     try:
-        # --- NEW, ENHANCED JSON SCHEMA ---
+        # --- UPDATED, SIMPLIFIED JSON SCHEMA ---
         story_node_schema = {
             "type": "object",
             "properties": {
-                "feedback_on_previous_answer": {
-                    "type": "string",
-                    "description": "Feedback on the user's last answer. E.g., 'Correct! Plants use sunlight.' Empty for the first turn or after a simple 'Continue' transition."
-                },
                 "dialogue": {
                     "type": "string",
-                    "description": "The AI's dialogue for this turn (a short explanation OR a clear question)."
+                    "description": "The AI's dialogue. If providing feedback, it should be at the start of this string. E.g., 'Correct! Plants use sunlight.\\nNow let's talk about water.'"
                 },
                 "image_prompts": {
                     "type": "array",
@@ -171,8 +164,8 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
                             "items": {
                                 "type": "object",
                                 "properties": {
-                                    "text": {"type": "string", "description": "The text on the button. For 'Image Selection', this can be a simple label like 'A' or an empty string."},
-                                    "leads_to": {"type": "string", "description": "A short, descriptive key for the outcome of this choice (e.g., 'Correct Answer', 'Incorrect Answer', 'Next Concept')."}
+                                    "text": {"type": "string", "description": "The text on the button. For 'Image Selection', this can be a label like 'A' or an empty string."},
+                                    "leads_to": {"type": "string", "description": "A short, descriptive key for the outcome of this choice (e.g., 'Correct Answer', 'Incorrect Answer')."}
                                 },
                                 "required": ["text", "leads_to"]
                             }
@@ -181,11 +174,10 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
                     "required": ["type", "options"]
                 }
             },
-            "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]
+            "required": ["dialogue", "image_prompts", "interaction"]
         }
 
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        # Ensure you are using a recent library version that supports the new schema features
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
         safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
 
@@ -195,7 +187,6 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
 
     except Exception as e:
         app.logger.error(f"FATAL Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
-        # ... (rest of your error handling)
         try:
             if response and response.prompt_feedback.block_reason:
                 app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
@@ -203,7 +194,6 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
-
 
 # --- All other existing endpoints remain the same ---
 @app.route('/')
