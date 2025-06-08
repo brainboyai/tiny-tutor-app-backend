@@ -96,49 +96,45 @@ def generate_story_node_route(current_user_id):
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game.
-Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
+You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game based on a screenplay.
+Your task is to generate the next single turn in the conversation, following these core principles.
 
 **Core Instructional Principles:**
-1.  **Feedback First:** Always start by giving direct feedback on the user's previous answer in the `feedback_on_previous_answer` field. Use phrases like "Exactly!", "Correct!", "Not quite, but good thinking.", "Let's look closer." If it's the first turn of the conversation or after a simple 'continue' button, this field must be an empty string.
-2.  **Separate Explanation & Questioning:** Create a natural rhythm. Do not explain a new concept and ask a question in the same turn.
-    * **Explanation Turn:** After giving feedback, provide a concise explanation (2-3 sentences). This turn should end with a single "Continue" or "Got it!" option.
-    * **Question Turn:** After the user clicks "Continue," the next turn should introduce a new interactive question (either text or image-based) with multiple choices.
-3.  **Test Before You Teach:** Frame your questions to probe the user's common sense or intuition about a topic *before* you formally explain it.
-4.  **Flawless Continuity:** Ensure the conversation flows logically. Your response must seamlessly connect to the user's last choice.
-5.  **Image for Every Step:** Every dialogue turn must have at least one associated `image_prompt`. The image should visually support the dialogue. Do not put text in the images.
+1.  **Follow the Screenplay Flow:** The conversation must follow a **Feedback -> Explain -> Transition -> Question** pattern. Do not merge these steps.
+2.  **Feedback First:** Always start your `dialogue` by giving direct, evaluative feedback on the user's previous answer (e.g., "Correct!", "Not quite, but let's look closer."). This feedback should be the first sentence of your main dialogue. For the very first turn of the conversation, or after a simple transition button like "Continue", you should begin directly without feedback.
+3.  **Explain a Single Concept:** After feedback, explain ONE new concept or part of a concept concisely (2-3 sentences). This turn should end with a single, simple transition option like "Continue" or "Got it, what's next?".
+4.  **Ask a Question on a New Turn:** After the user clicks "Continue," the *next* turn should be dedicated to asking a question about the concept you just explained. This question can be text-based with options, or an image-based question.
+5.  **Contextual Questions:** All questions and options must ONLY relate to information already provided in the conversation history or common-sense analogies.
+6.  **Image for Every Step:** Every turn MUST have at least one `image_prompt`. For image-based questions, provide one prompt for each clickable option. Ensure the number of image prompts matches the number of options.
 
-**Your Current Task:**
-Based on the user's topic and history, generate the next single turn in the conversation, following all principles above.
-
-**Input for this Segment:**
+**Your Input for This Turn:**
 - Learning Topic/Concept: "{topic}"
 - Target Audience/Grade Level: Grade 6 Science
 - Tone: Exploratory and curious.
 """
     if not history:
         prompt = base_prompt.format(topic=topic) + """
-- **Current Task:** This is the VERY FIRST turn. Introduce the topic with a relatable, common-sense question. The `feedback_on_previous_answer` field MUST be an empty string.
+- **Current Task:** Generate the VERY FIRST interaction cycle. Introduce the topic with a relatable, common-sense question.
 """
     else:
         prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
         prompt = base_prompt.format(topic=topic) + f"""
 - **Conversation History So Far:**
 {prompt_history}
-- **Current Task:** The user has just made a choice that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
+- **Current Task:** The user chose an option that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
 """
     try:
         story_node_schema = {
             "type": "object",
             "properties": {
-                "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty string for the first turn or after a 'continue' button."},
-                "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn (either an explanation or a question)."},
-                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. Must contain at least one prompt."},
+                "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn. This MUST include the feedback (e.g., 'Correct!') as the first sentence if applicable."},
+                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. For image questions, the order must match the options."},
                 "interaction": { "type": "object", "properties": { "type": {"type": "string", "description": "e.g., 'Text-based Button Selection' or 'Image Selection'."},
                         "options": { "type": "array", "items": { "type": "object", "properties": {
-                                        "text": {"type": "string"}, "leads_to": {"type": "string"}},
+                                        "text": {"type": "string", "description": "The text for the button. For image selections, this can be a short identifier like 'Image 1'."}, 
+                                        "leads_to": {"type": "string"}},
                                     "required": ["text", "leads_to"]}}}, "required": ["type", "options"]}},
-            "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]}
+            "required": ["dialogue", "image_prompts", "interaction"]}
 
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
