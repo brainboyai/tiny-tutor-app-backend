@@ -81,7 +81,7 @@ def token_required(f):
     return decorated_function
 
 # --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
-# --- Story Mode Endpoint with NEW INTELLIGENT PROMPT (UPDATED) ---
+# --- Story Mode Endpoint with NEW INTELLIGENT PROMPT (UPDATED FOR BETTER FLOW) ---
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -96,88 +96,78 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # --- UPDATED PROMPT ---
+    # --- NEW, HIGHLY-DETAILED PROMPT FOR BETTER CONVERSATIONAL FLOW ---
     base_prompt = """
-You are an 'AI Interactive Learning Designer' for 'Tiny Tutor,' creating an engaging, step-by-step learning module for the topic: {topic}.
-Your mission is to generate the JSON for a SINGLE interactive step in a larger learning journey.
+You are an 'AI Interactive Learning Designer' for 'Tiny Tutor.' Your task is to generate the JSON for a SINGLE, very short interactive step for the topic: {topic}.
 
-**Target Audience:** Ages 9-14 (Middle School)
-**Tone:** Friendly, encouraging, clear, and direct.
+**Core Principles - You MUST follow these:**
+1.  **Micro-Interactions:** Each dialogue must be extremely short (usually ONE sentence). Break down complex ideas into many small steps. Use a transition option like "Continue" or "Got it" to move to the next tiny piece of information. Do NOT cram multiple ideas into one dialogue.
+2.  **Start with Observation:** The first turn for ANY topic must be a simple, relatable question or observation to hook the learner.
+3.  **Mandatory Images:** EVERY node MUST have an `image_prompts` array with at least one high-quality, descriptive prompt for a static image.
+4.  **Follow the Example Flow:** The user wants a specific introductory flow. Your primary goal is to replicate this pattern.
 
-**CRITICAL INSTRUCTIONS - Follow these for EVERY node:**
+**--- Gold-Standard Example Flow for "Evaporation" ---**
+* **Turn 1 (Initial Observation):**
+    * `dialogue`: "Welcome! Let's learn about evaporation. Ever notice how puddles disappear from the sidewalk on a sunny day?"
+    * `interaction`: Text buttons "Yes, I have!" and "No, not really."
+* **Turn 2 (If user chose "Yes"):**
+    * `dialogue`: "Great observation! That disappearing act is called evaporation. The sun's heat turns the water into an invisible gas called water vapor."
+    * `interaction`: Single transition button "Continue".
+* **Turn 3 (If user chose "No"):**
+    * `dialogue`: "No worries! It's a neat trick. It's called evaporation. The sun's heat turns the water in the puddle into an invisible gas, making it disappear."
+    * `interaction`: Single transition button "Continue".
+* **Turn 4 (After transition):**
+    * `dialogue`: "This happens with hot liquids, too. Think about steam rising from a hot cup of tea."
+    * `interaction`: Single transition button "Got it".
+* **Turn 5 (Image Question):**
+    * `dialogue`: "Which of these pictures shows evaporation happening?"
+    * `interaction`: Image Selection with two options (e.g., boiling water vs. an ice cube).
+* **Turn 6 (Feedback on Image Question):**
+    * `dialogue`: "Exactly! Boiling water creates steam, which is a fast form of evaporation. The heat gives the water energy to turn into a gas."
+    * `interaction`: Single transition button "What's next?".
+**--- End of Example ---**
 
-1.  **Combine Feedback and Dialogue:** If the user just answered a question, the `dialogue` MUST begin with concise feedback (e.g., "That's right! ... " or "Not quite... ") followed by a newline, and then the main text for the current turn. If it's a new turn after a 'Continue' button, there is no feedback.
-
-2.  **Strict "Teach then Test" Flow:** The learning path consists of two types of turns that you must generate alternately:
-    * **EXPLAIN Turn:** The `dialogue` explains ONE small concept in 1-2 simple sentences. The `interaction` for this turn MUST be a single transition button like "Continue" or "Got it!".
-    * **QUESTION Turn:** After an EXPLAIN turn, the next turn MUST ask a question about the concept just taught. The `dialogue` contains the question. The `interaction` provides choices for the user.
-
-3.  **Mandatory High-Quality Image Prompts:** EVERY node you generate MUST have at least one image prompt in the `image_prompts` array.
-    * **Be Specific:** State the main Subject, its visual Properties/Details, and the context.
-    * **Define the Style:** Use styles like "Realistic illustration," "Clear photo-like depiction," "Detailed simple scientific diagram," or "Cheerful children's book illustration."
-    * **For Image Questions:** For an 'Image Selection' interaction, you MUST provide one image prompt for EACH choice. The order of `image_prompts` must exactly match the order of `interaction.options`.
-
-**Your Input for This Turn:**
+**Your Task Now:**
 - Learning Topic: "{topic}"
+- Conversation History: {history_str}
+- User's Last Choice led to: "{last_choice_leads_to}"
+
+Generate the JSON for the **single next step**, strictly adhering to the Core Principles and the spirit of the Example Flow. Keep dialogues extremely short.
 """
     if not history:
-        # Instructions for the very first node of the lesson
-        prompt = base_prompt.format(topic=topic) + """
-- **Current Task:** This is the VERY FIRST turn. Your task is to generate an **EXPLAIN** turn. Introduce the topic in a fun, relatable way (1-2 sentences). The interaction must be a single button to begin the lesson.
-"""
+        prompt = base_prompt.format(topic=topic, history_str="[]", last_choice_leads_to="N/A (First Turn)")
     else:
-        # Instructions for all subsequent nodes
-        prompt_history = "\\n".join([f"- {item['type']}: {item['text']}" for item in history])
-        prompt = base_prompt.format(topic=topic) + f"""
-- **Conversation History So Far:**
-{prompt_history}
-- **User's Last Choice:** The user chose an option where the 'leads_to' field was: "{last_choice_leads_to}"
+        # Create a simplified string representation of the history
+        history_summary = []
+        for item in history:
+            if item['type'] == 'AI':
+                history_summary.append(f"AI said: '{item['text'][:50]}...'")
+            else:
+                history_summary.append(f"USER chose: '{item['text']}'")
+        prompt = base_prompt.format(topic=topic, history_str=json.dumps(history_summary), last_choice_leads_to=last_choice_leads_to)
 
-- **Current Task:** Generate the SINGLE, COMPLETE JSON object for the very next step. Analyze the history and the user's last choice to decide what comes next.
-  - If the last turn was an EXPLAIN turn (user clicked "Continue"), you MUST generate a QUESTION turn now.
-  - If the last turn was a QUESTION turn (user picked an answer), you MUST generate an EXPLAIN turn now. Start the dialogue with feedback based on their choice, then explain the next small concept.
-"""
     try:
-        # --- UPDATED, SIMPLIFIED JSON SCHEMA ---
         story_node_schema = {
             "type": "object",
             "properties": {
-                "dialogue": {
-                    "type": "string",
-                    "description": "The AI's dialogue. If providing feedback, it should be at the start of this string. E.g., 'Correct! Plants use sunlight.\\nNow let's talk about water.'"
-                },
-                "image_prompts": {
-                    "type": "array",
-                    "items": {"type": "string"},
-                    "description": "List of detailed text-to-image prompts. For 'Image Selection', the order MUST match the options array."
-                },
+                "dialogue": {"type": "string", "description": "A very short dialogue (usually one sentence). It can include feedback at the beginning if appropriate (e.g., 'Correct! ...')."},
+                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "List of detailed text-to-image prompts. MUST have at least one."},
                 "interaction": {
-                    "type": "object",
-                    "properties": {
-                        "type": {
-                            "type": "string",
-                            "enum": ["Text Button Selection", "Image Selection"],
-                            "description": "'Text Button Selection' for multiple-choice text. 'Image Selection' for a tap-the-image question."
-                        },
-                        "options": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "text": {"type": "string", "description": "The text on the button. For 'Image Selection', this can be a label like 'A' or an empty string."},
-                                    "leads_to": {"type": "string", "description": "A short, descriptive key for the outcome of this choice (e.g., 'Correct Answer', 'Incorrect Answer')."}
-                                },
-                                "required": ["text", "leads_to"]
-                            }
-                        }
-                    },
-                    "required": ["type", "options"]
+                    "type": "object", "properties": {
+                        "type": {"type": "string", "enum": ["Text Button Selection", "Image Selection"]},
+                        "options": {"type": "array", "items": {
+                            "type": "object", "properties": {
+                                "text": {"type": "string"},
+                                "leads_to": {"type": "string"}
+                            }, "required": ["text", "leads_to"]
+                        }}
+                    }, "required": ["type", "options"]
                 }
-            },
-            "required": ["dialogue", "image_prompts", "interaction"]
+            }, "required": ["dialogue", "image_prompts", "interaction"]
         }
 
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Use the more advanced model as requested
+        gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
         safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
 
