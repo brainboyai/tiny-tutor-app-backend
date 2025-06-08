@@ -177,7 +177,7 @@ Your mission is to generate the JSON for a SINGLE interactive step in a larger l
             "required": ["dialogue", "image_prompts", "interaction"]
         }
 
-        gemini_model = genai.GenerativeModel('gemini-1.5-pro-latest')
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
         safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
 
