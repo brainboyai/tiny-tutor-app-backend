@@ -97,8 +97,7 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # This prompt structure is based on the version that produced the best conversational flow.
-    # It integrates the fixes for positional bias and image quality more subtly.
+    # This version simplifies and strengthens the image rules based on the latest feedback.
     base_prompt = """
 You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
 
@@ -115,7 +114,6 @@ You MUST generate a response that strictly matches the turn type determined by t
 
 * If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** turn.
     * **Dialogue:** Ask ONE multiple-choice question about the concept you JUST explained.
-    * **First Question Rule:** Try to make the very first question of the game a relatable, common-sense question (e.g., "Why are leaves green?").
     * **Interaction:** ONE option must have `leads_to: 'Correct'`. All others must have `leads_to: 'Incorrect'`.
 
 * If `last_choice_leads_to` is **'Correct'** or **'Incorrect'** -> Generate a **FEEDBACK & REINFORCEMENT** turn.
@@ -129,8 +127,11 @@ You MUST generate a response that strictly matches the turn type determined by t
     * **Interaction:** ONE option with `leads_to: 'end_story'`.
 
 **--- Universal Principles ---**
-1.  **Image Prompts:** Every turn MUST have 1 or 2 `image_prompts`. These prompts must be descriptive (10+ words) and suggest an artistic style (e.g., 'photorealistic', 'watercolor illustration', 'scientific diagram').
-2.  **Randomize Correct Answer:** The position of the 'Correct' option in the `options` array MUST be randomized. It should not always be the first choice.
+1.  **Image Prompt Mandate:** This is a strict, non-negotiable rule.
+    * **Quantity:** Every single turn MUST have EXACTLY ONE `image_prompt`. Not zero, not two. Exactly one.
+    * **Style:** The prompt must call for a 'photorealistic' style wherever the subject matter makes it possible. For abstract concepts or diagrams, use 'scientific diagram' or 'digital art'.
+    * **Quality:** The prompt must be descriptive and detailed (15+ words) to create a high-quality, informative image.
+2.  **Randomize Correct Answer:** The position of the 'Correct' option in the `options` array MUST be randomized for every question.
 3.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
 """
 
@@ -142,7 +143,7 @@ You MUST generate a response that strictly matches the turn type determined by t
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
-        f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
+        f"Strictly follow the State Machine rules and Universal Principles, especially the Image Prompt Mandate, to generate the correct JSON object for this state."
     )
 
     try:
@@ -151,7 +152,7 @@ You MUST generate a response that strictly matches the turn type determined by t
             "properties": {
                 "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty unless it is a FEEDBACK turn."},
                 "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn."},
-                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. For image questions, the order must match the options."},
+                "image_prompts": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}, "description": "A list containing exactly one prompt for an image to display."},
                 "interaction": { "type": "object", "properties": { "type": {"type": "string", "enum": ["Text-based Button Selection", "Image Selection"], "description": "The type of interaction required."},
                         "options": { "type": "array", "items": { "type": "object", "properties": {
                                         "text": {"type": "string"}, "leads_to": {"type": "string"}},
