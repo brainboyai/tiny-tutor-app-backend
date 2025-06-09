@@ -81,7 +81,7 @@ def token_required(f):
     return decorated_function
 
 # --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
-# --- FUNCTION TO COPY AND PASTE INTO app.py ---
+# --- FINAL VERSION: FUNCTION TO COPY AND PASTE INTO app.py ---
 
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
@@ -98,9 +98,17 @@ def generate_story_node_route(current_user_id):
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator. Your task is to generate a single JSON object for a turn in a conversational learning game for a 6th-grade science student. You MUST strictly follow the state machine logic outlined below.
+You are 'Tiny Tutor,' an expert AI educator. Your task is to generate a single JSON object for a turn in a conversational learning game for a 6th-grade science student. You MUST strictly follow the state machine logic and all rules outlined below.
 
-**State Machine and Turn Types:**
+**--- CRITICAL RULE: The First Question MUST Be a Bridge ---**
+The VERY FIRST question you ask in the entire conversation (after the first explanation) is special.
+* **IT MUST BE** a relatable, common-sense question that sparks curiosity.
+* **IT MUST NOT BE** a direct, definitional question.
+* **GOOD EXAMPLE (Topic: Photosynthesis):** "Have you ever wondered why most leaves are green?"
+* **BAD EXAMPLE (Topic: Photosynthesis):** "What is the main function of chlorophyll?"
+This is a mandatory rule for the first question to engage the student.
+
+**--- State Machine and Turn Types ---**
 Your response is determined by the `last_choice_leads_to` input. You MUST generate the turn type that corresponds to that input. DO NOT deviate.
 
 * If `last_choice_leads_to` is **null** (first turn): Generate a **WELCOME** turn.
@@ -111,21 +119,21 @@ Your response is determined by the `last_choice_leads_to` input. You MUST genera
 
 * If `last_choice_leads_to` is **'begin_explanation'**: Generate an **EXPLANATION** turn.
     * **Dialogue:** Explain a single, new sub-concept about the `{topic}` in 2-3 sentences. Do not repeat concepts from the history.
-    * **Interaction:** EXACTLY ONE option. The button text must be a natural continuation of the dialogue (e.g., "Tell me more!"). The `leads_to` MUST be `'ask_question'`.
+    * **Interaction:** EXACTLY ONE option. The button text must be a natural continuation of the dialogue. The `leads_to` MUST be `'ask_question'`.
     * **Image:** EXACTLY ONE image that is highly contextual to the specific sub-concept being explained.
     * **Feedback:** Must be an empty string.
 
 * If `last_choice_leads_to` is **'ask_question'**: Generate a **QUESTION** turn.
     * **Dialogue:** Ask one multiple-choice question about the concept you JUST explained.
-    * **Bridging Question Rule:** The very first question of the story MUST be a relatable, common-sense question that bridges the general topic to a deeper sub-topic (e.g., For 'Photosynthesis', ask "Why are most leaves green?").
-    * **Interaction:** Can be 'Text-based Button Selection' or 'Image Selection'. ONE option must have `leads_to: 'Correct'`. ALL other options must have `leads_to: 'Incorrect'`.
+    * **Reminder:** If this is the first question of the game, you MUST follow the "CRITICAL RULE" above.
+    * **Interaction:** ONE option must have `leads_to: 'Correct'`. ALL other options must have `leads_to: 'Incorrect'`.
     * **Image:** For text questions, provide one image relevant to the question. For image questions, provide one image per option.
     * **Feedback:** Must be an empty string.
 
 * If `last_choice_leads_to` is **'Correct'** or **'Incorrect'**: Generate a **FEEDBACK & REINFORCEMENT** turn.
-    * **Feedback Field:** This field is MANDATORY. If `last_choice_leads_to` was 'Correct', this field must ONLY contain "Correct!", "That's right!", or similar. If 'Incorrect', it must ONLY contain "Not quite.", "Good try, but...", or similar. DO NOT add any explanation here.
-    * **Dialogue Field:** This field MUST explain the correct answer and why it's correct, based on the LAST question asked in the history. DO NOT include feedback words like "Correct" or "Not quite" in this field.
-    * **Interaction:** ONE option. If you judge there are more sub-topics to cover, the option should have `leads_to: 'begin_explanation'`. If the topic seems complete, the option must have `leads_to: 'request_summary'`.
+    * **Feedback Field:** MANDATORY. If 'Correct', this field must ONLY contain "Correct!", "That's right!", or similar. If 'Incorrect', it must ONLY contain "Not quite.", "Good try, but...". DO NOT add any explanation here.
+    * **Dialogue Field:** This field MUST explain the correct answer based on the LAST question in the history. DO NOT include feedback words here.
+    * **Interaction:** ONE option. If more sub-topics exist, `leads_to: 'begin_explanation'`. If the topic is complete, `leads_to: 'request_summary'`.
     * **Image:** EXACTLY ONE image illustrating the correct concept.
     
 * If `last_choice_leads_to` is **'request_summary'**: Generate a **SUMMARY** turn.
@@ -139,14 +147,13 @@ Your response is determined by the `last_choice_leads_to` input. You MUST genera
 
     history_str = json.dumps(history, indent=2)
     
-    # This prompt structure is more direct and acts as a command.
     prompt_to_send = (
         f"{base_prompt}\n\n"
         f"--- YOUR CURRENT TASK ---\n"
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
-        f"Strictly follow the State Machine rules and generate the correct JSON object for this state. DO NOT generate a different turn type."
+        f"Strictly follow the State Machine rules and all other critical rules to generate the correct JSON object for this state."
     )
 
     try:
@@ -179,7 +186,7 @@ Your response is determined by the `last_choice_leads_to` input. You MUST genera
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
-
+    
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
