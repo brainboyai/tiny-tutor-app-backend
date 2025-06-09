@@ -104,33 +104,31 @@ You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single 
 You MUST generate a response that strictly matches the turn type determined by the `last_choice_leads_to` input. DO NOT merge turn types.
 
 * If `last_choice_leads_to` is **null** -> Generate a **WELCOME** turn.
-    * **Dialogue:** Welcome the user, introduce the `{topic}`, and briefly explain its real-world importance to hook the student.
     * **Interaction:** ONE option with `leads_to: 'begin_explanation'`.
 
 * If `last_choice_leads_to` is **'begin_explanation'** -> Generate an **EXPLANATION** turn.
-    * **Dialogue:** Explain ONE new sub-concept about the `{topic}`. Keep it concise (2-3 sentences).
     * **Interaction:** EXACTLY ONE option with `leads_to: 'ask_question'`.
 
-* If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** turn.
-    * **Dialogue:** Ask ONE multiple-choice question about the concept you JUST explained.
-    * **Interaction:** ONE option must have `leads_to: 'Correct'`. All others must have `leads_to: 'Incorrect'`.
+* If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** or a **GAME** turn.
+    * **Decision:** After several successful explanations and questions, you can choose to generate a `'Multi-Select Image Game'` to test understanding in a more interactive way. Otherwise, generate a standard `'Text-based Button Selection'` question.
+    * **QUESTION Turn (`'Text-based Button Selection'`):**
+        * **Dialogue:** Ask ONE multiple-choice question about the concept you JUST explained.
+        * **Interaction:** ONE option must have `leads_to: 'Correct'`. All others must have `leads_to: 'Incorrect'`.
+    * **GAME Turn (`'Multi-Select Image Game'`):**
+        * **Dialogue:** Give an instruction like "Tap on all the items that are..."
+        * **Interaction:** Provide a mix of `options`. Some must have `is_correct: true` and some must have `is_correct: false`. This is how the frontend will know the right answers. All game options should have a `leads_to: 'game_answer'` value, which is just a placeholder.
 
 * If `last_choice_leads_to` is **'Correct'** or **'Incorrect'** -> Generate a **FEEDBACK & REINFORCEMENT** turn.
-    * **This turn is critical. DO NOT ask a new question here.**
     * **`feedback_on_previous_answer` field:** MUST contain ONLY feedback words (e.g., "Correct!", "Not quite.").
     * **`dialogue` field:** MUST ONLY contain the explanation for the correct answer to the last question asked.
-    * **Interaction:** ONE option. `leads_to` should be `'begin_explanation'` to introduce the next sub-topic, or `'request_summary'` if the lesson is logically complete.
+    * **Interaction:** ONE option. `leads_to` should be `'begin_explanation'` or `'request_summary'`.
 
 * If `last_choice_leads_to` is **'request_summary'** -> Generate a **SUMMARY** turn.
-    * **Dialogue:** Briefly summarize the 2-4 key concepts learned during the conversation.
     * **Interaction:** ONE option with `leads_to: 'end_story'`.
 
 **--- Universal Principles ---**
-1.  **Image Prompt Mandate:** This is a strict, non-negotiable rule.
-    * **Quantity:** Every single turn MUST have EXACTLY ONE `image_prompt`. Not zero, not two. Exactly one.
-    * **Style:** The prompt must call for a 'photorealistic' style wherever the subject matter makes it possible. For abstract concepts or diagrams, use 'scientific diagram' or 'digital art'.
-    * **Quality:** The prompt must be descriptive and detailed (15+ words) to create a high-quality, informative image.
-2.  **Randomize Correct Answer:** The position of the 'Correct' option in the `options` array MUST be randomized for every question.
+1.  **Image Prompts:** Every turn MUST have exactly ONE `image_prompt`. For the `'Multi-Select Image Game'`, each option has its own image prompt instead. All prompts must be descriptive (15+ words) and request a 'photorealistic' style where possible.
+2.  **MANDATORY - Randomize Options:** For both `'Text-based Button Selection'` and `'Multi-Select Image Game'`, the final `options` array you generate MUST be shuffled. The position of the correct answer(s) must be random. Do not place the correct answer first.
 3.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
 """
 
@@ -142,23 +140,36 @@ You MUST generate a response that strictly matches the turn type determined by t
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
-        f"Strictly follow the State Machine rules and Universal Principles, especially the Image Prompt Mandate, to generate the correct JSON object for this state."
+        f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
     )
 
     try:
-        # --- THIS IS THE FIX ---
-        # The 'minItems' and 'maxItems' fields have been removed from the image_prompts schema
-        # as they are not supported by the Gemini API's schema validator.
         story_node_schema = {
             "type": "object",
             "properties": {
                 "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty unless it is a FEEDBACK turn."},
                 "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn."},
-                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list containing exactly one prompt for an image to display."},
-                "interaction": { "type": "object", "properties": { "type": {"type": "string", "enum": ["Text-based Button Selection", "Image Selection"], "description": "The type of interaction required."},
-                        "options": { "type": "array", "items": { "type": "object", "properties": {
-                                        "text": {"type": "string"}, "leads_to": {"type": "string"}},
-                                    "required": ["text", "leads_to"]}}}, "required": ["type", "options"]}},
+                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "For standard turns, a list with one prompt. For game turns, each option has its own prompt."},
+                "interaction": {
+                    "type": "object",
+                    "properties": {
+                        "type": {"type": "string", "enum": ["Text-based Button Selection", "Image Selection", "Multi-Select Image Game"], "description": "The type of interaction required."},
+                        "options": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "text": {"type": "string"},
+                                    "leads_to": {"type": "string"},
+                                    "is_correct": {"type": "boolean", "description": "Used only for Multi-Select Image Game to mark correct answers."}
+                                },
+                                "required": ["text", "leads_to"]
+                            }
+                        }
+                    },
+                    "required": ["type", "options"]
+                }
+            },
             "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]}
 
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -178,6 +189,7 @@ You MUST generate a response that strictly matches the turn type determined by t
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+    
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
