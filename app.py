@@ -97,7 +97,6 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    # This version simplifies and strengthens the image rules based on the latest feedback.
     base_prompt = """
 You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
 
@@ -147,12 +146,15 @@ You MUST generate a response that strictly matches the turn type determined by t
     )
 
     try:
+        # --- THIS IS THE FIX ---
+        # The 'minItems' and 'maxItems' fields have been removed from the image_prompts schema
+        # as they are not supported by the Gemini API's schema validator.
         story_node_schema = {
             "type": "object",
             "properties": {
                 "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty unless it is a FEEDBACK turn."},
                 "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn."},
-                "image_prompts": {"type": "array", "minItems": 1, "maxItems": 1, "items": {"type": "string"}, "description": "A list containing exactly one prompt for an image to display."},
+                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list containing exactly one prompt for an image to display."},
                 "interaction": { "type": "object", "properties": { "type": {"type": "string", "enum": ["Text-based Button Selection", "Image Selection"], "description": "The type of interaction required."},
                         "options": { "type": "array", "items": { "type": "object", "properties": {
                                         "text": {"type": "string"}, "leads_to": {"type": "string"}},
