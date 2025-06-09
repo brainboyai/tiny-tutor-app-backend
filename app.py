@@ -97,69 +97,52 @@ def generate_story_node_route(current_user_id):
 
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
+    # This prompt structure is based on the version that produced the best conversational flow.
+    # It integrates the fixes for positional bias and image quality more subtly.
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator. Your task is to generate a single JSON object for a turn in a conversational learning game for a 6th-grade science student. You MUST strictly follow all rules, especially the new rules on answer randomization and image prompt quality.
+You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
 
-**--- Image Prompt Quality Standard ---**
-This is a strict requirement. Image prompts must be descriptive and artistic to generate beautiful, informative images.
-1.  **Length and Detail:** Prompts MUST be at least 10-15 words long.
-2.  **Content:** Describe the subject, the setting, and the action.
-3.  **Style:** Specify a style (e.g., 'photorealistic', 'watercolor illustration', 'scientific diagram', 'micrograph', 'vibrant digital art').
-4.  **Example:**
-    * **BAD:** 'Chloroplast'
-    * **GOOD:** 'A detailed, vibrant micrograph of a plant cell, clearly showing the oval-shaped, green chloroplasts with visible internal thylakoid stacks, in a photorealistic scientific style.'
+**--- Core State Machine ---**
+You MUST generate a response that strictly matches the turn type determined by the `last_choice_leads_to` input. DO NOT merge turn types.
 
-**--- CRITICAL RULE: The First Question MUST Be a Bridge ---**
-The VERY FIRST question you ask in the entire conversation (after the first explanation) is special.
-* **IT MUST BE** a relatable, common-sense question that sparks curiosity.
-* **IT MUST NOT BE** a direct, definitional question.
-* **GOOD EXAMPLE (Topic: Photosynthesis):** "Have you ever wondered why most leaves are green?"
-* **BAD EXAMPLE (Topic: Photosynthesis):** "What is the main function of chlorophyll?"
-
-**--- State Machine and Turn Types ---**
-Your response is determined by the `last_choice_leads_to` input. You MUST generate the turn type that corresponds to that input. DO NOT deviate.
-
-* If `last_choice_leads_to` is **null**: Generate a **WELCOME** turn.
+* If `last_choice_leads_to` is **null** -> Generate a **WELCOME** turn.
+    * **Dialogue:** Welcome the user, introduce the `{topic}`, and briefly explain its real-world importance to hook the student.
     * **Interaction:** ONE option with `leads_to: 'begin_explanation'`.
-    * **Image:** Follow the Image Prompt Quality Standard.
 
-* If `last_choice_leads_to` is **'begin_explanation'**: Generate an **EXPLANATION** turn.
-    * **Interaction:** EXACTLY ONE option. The `leads_to` MUST be `'ask_question'`.
-    * **Image:** Follow the Image Prompt Quality Standard.
+* If `last_choice_leads_to` is **'begin_explanation'** -> Generate an **EXPLANATION** turn.
+    * **Dialogue:** Explain ONE new sub-concept about the `{topic}`. Keep it concise (2-3 sentences).
+    * **Interaction:** EXACTLY ONE option with `leads_to: 'ask_question'`.
 
-* If `last_choice_leads_to` is **'ask_question'**: Generate a **QUESTION** turn.
-    * **Reminder:** If this is the first question of the game, you MUST follow the "CRITICAL RULE" for a bridging question.
-    * **Interaction:** ONE option must have `leads_to: 'Correct'`. ALL others must have `leads_to: 'Incorrect'`.
-    * **Image:** Follow the Image Prompt Quality Standard.
+* If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** turn.
+    * **Dialogue:** Ask ONE multiple-choice question about the concept you JUST explained.
+    * **First Question Rule:** Try to make the very first question of the game a relatable, common-sense question (e.g., "Why are leaves green?").
+    * **Interaction:** ONE option must have `leads_to: 'Correct'`. All others must have `leads_to: 'Incorrect'`.
 
-* If `last_choice_leads_to` is **'Correct'** or **'Incorrect'**: Generate a **FEEDBACK & REINFORCEMENT** turn.
-    * **Feedback Field:** MANDATORY. If 'Correct', must ONLY contain "Correct!", etc. If 'Incorrect', must ONLY contain "Not quite.", etc. No explanations here.
-    * **Dialogue Field:** MUST explain the correct answer based on the LAST question. No feedback words here.
-    * **Interaction:** ONE option. `leads_to` is either `'begin_explanation'` or `'request_summary'`.
-    * **Image:** Follow the Image Prompt Quality Standard.
-    
-* If `last_choice_leads_to` is **'request_summary'**: Generate a **SUMMARY** turn.
+* If `last_choice_leads_to` is **'Correct'** or **'Incorrect'** -> Generate a **FEEDBACK & REINFORCEMENT** turn.
+    * **This turn is critical. DO NOT ask a new question here.**
+    * **`feedback_on_previous_answer` field:** MUST contain ONLY feedback words (e.g., "Correct!", "Not quite.").
+    * **`dialogue` field:** MUST ONLY contain the explanation for the correct answer to the last question asked.
+    * **Interaction:** ONE option. `leads_to` should be `'begin_explanation'` to introduce the next sub-topic, or `'request_summary'` if the lesson is logically complete.
+
+* If `last_choice_leads_to` is **'request_summary'** -> Generate a **SUMMARY** turn.
+    * **Dialogue:** Briefly summarize the 2-4 key concepts learned during the conversation.
     * **Interaction:** ONE option with `leads_to: 'end_story'`.
-    * **Image:** Follow the Image Prompt Quality Standard.
 
 **--- Universal Principles ---**
-1.  **Randomize Correct Answer Position:** The position of the correct answer in the `options` array MUST be randomized for every question. It must not consistently be the first option.
-2.  **No Repetition:** Never repeat content. Use the conversation history to ensure you are always introducing a NEW concept or asking a NEW question.
+1.  **Image Prompts:** Every turn MUST have 1 or 2 `image_prompts`. These prompts must be descriptive (10+ words) and suggest an artistic style (e.g., 'photorealistic', 'watercolor illustration', 'scientific diagram').
+2.  **Randomize Correct Answer:** The position of the 'Correct' option in the `options` array MUST be randomized. It should not always be the first choice.
+3.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
 """
 
     history_str = json.dumps(history, indent=2)
     
-    # Check if this is the first question turn
-    is_first_question = len(history) == 3 and history[2]['type'] == 'AI'
-
     prompt_to_send = (
         f"{base_prompt}\n\n"
         f"--- YOUR CURRENT TASK ---\n"
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
-        f"Strictly follow the State Machine rules and all other principles to generate the correct JSON object for this state. "
-        f"{'CRITICAL: This is the first question turn. You MUST follow the Bridging Question Rule.' if is_first_question else ''}"
+        f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
     )
 
     try:
@@ -192,7 +175,6 @@ Your response is determined by the `last_choice_leads_to` input. You MUST genera
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
-    
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
