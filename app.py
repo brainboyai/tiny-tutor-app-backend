@@ -81,6 +81,7 @@ def token_required(f):
     return decorated_function
 
 # --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
+
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
@@ -96,42 +97,77 @@ def generate_story_node_route(current_user_id):
     if not topic: return jsonify({"error": "Topic is required"}), 400
 
     base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator creating an interactive, conversational learning game.
-Your task is to generate the next single turn in the conversation, following these core principles inspired by expert teaching methods.
+You are 'Tiny Tutor,' an expert AI educator building an interactive, conversational learning game for a 6th-grade science student. Your tone should be exploratory and curious. Your task is to generate the JSON for a single turn in the conversation, strictly adhering to the turn types and principles below.
 
-**Core Instructional Principles:**
-1.  **Follow the Screenplay Flow:** The conversation must follow a **Feedback -> Explain -> Transition -> Question** pattern. Do not merge these steps.
-2.  **Feedback First:** The `feedback_on_previous_answer` field is for direct, evaluative feedback (e.g., "Correct!", "Not quite, but good thinking."). This field MUST BE an empty string if it's the first turn or if the previous turn was a simple transition button (like "Continue").
-3.  **Explain a Single Concept:** After feedback, the `dialogue` should explain ONE new concept concisely (2-3 sentences). This turn should end with a single, simple transition option like "Continue" or "Got it, what's next?".
-4.  **Ask a Question on a New Turn:** After the user clicks a transition button, the next turn should be dedicated to asking a question about the concept you just explained. The `dialogue` will contain the question.
-5.  **Contextual Integrity:** All questions and options must ONLY relate to information already provided in the conversation history or common-sense analogies. For every question, there must be only ONE correct option.
-6.  **Image for Every Step:** Every turn MUST have at least one `image_prompt`. For image-based questions, provide one distinct prompt for each clickable option. Ensure the number of image prompts matches the number of options.
-7. **Natural Options:** Do not say "Click continue". The button text should be a natural continuation, like "I understand" or "What's next?".
+**Turn-Based Screenplay Structure:**
+You must generate one, and only one, of the following turn types at a time. The user's last choice (`leads_to` input) will determine which turn you generate next.
 
-**Your Input for This Turn:**
-- Learning Topic/Concept: "{topic}"
-- Target Audience/Grade Level: Grade 6 Science
-- Tone: Exploratory and curious.
+1.  **WELCOME Turn (Start of Conversation):**
+    * **Task:** This is the very first turn. Introduce the `{topic}` in an engaging way.
+    * **Dialogue:** Must explain what the student will learn and why it's interesting or important in the real world (2-3 sentences).
+    * **Interaction:** Provide a single option with text like "I'm ready to learn!" or "Let's start!". The `leads_to` for this option MUST be `begin_explanation`.
+    * **Feedback:** `feedback_on_previous_answer` must be an empty string.
+
+2.  **EXPLANATION Turn (Teaching a Concept):**
+    * **Task:** Explain a single, new sub-concept related to the `{topic}`.
+    * **Dialogue:** Concisely explain the concept in 2-3 sentences.
+    * **Interaction:** Provide EXACTLY ONE option to continue. The button `text` MUST be a direct, natural continuation of your dialogue (e.g., if you end with "Ready to see how it works?", the button could be "Show me how!"). The `leads_to` for this option MUST be `ask_question`.
+    * **Feedback:** `feedback_on_previous_answer` must be an empty string.
+
+3.  **QUESTION Turn (Checking Understanding):**
+    * **Task:** Ask a multiple-choice question about the concept you JUST explained in the previous turn.
+    * **Bridging Question:** The VERY FIRST question of the story (after the first explanation) MUST be a relatable, common-sense question. This question should be designed to pique curiosity and create a bridge from the main topic to a deeper sub-topic. For example, for "Photosynthesis," a good first question would be "Have you ever wondered why most leaves are green?" instead of a dry definitional question.
+    * **Interaction Types:**
+        * For a **'Text-based Button Selection'**, provide text options.
+        * For an **'Image Selection'**, the user will click an image to answer. Your question in the `dialogue` must make this clear (e.g., "Which of these images shows...?"). The `options` text can be simple like "Image 1", "Image 2", etc.
+    * **Options Logic:**
+        * There must be only ONE correct option.
+        * The `leads_to` for the correct option MUST be `Correct`.
+        * The `leads_to` for ALL incorrect options MUST be `Incorrect`.
+    * **Feedback:** `feedback_on_previous_answer` must be an empty string.
+
+4.  **FEEDBACK & REINFORCEMENT Turn (Responding to an Answer):**
+    * **Task:** This turn directly follows a `QUESTION` turn. It provides feedback and reinforces the correct answer.
+    * **Feedback:** Your `feedback_on_previous_answer` field is MANDATORY here. It MUST be "Correct!", "That's right!", or similar if `last_choice_leads_to` was 'Correct'. It MUST be "Not quite.", "Good try, but...", or similar if `last_choice_leads_to` was 'Incorrect'.
+    * **Dialogue:** REGARDLESS of whether the user was right or wrong, the `dialogue` MUST explain the correct answer and why it is correct. This ensures every user gets the right information.
+    * **Interaction:** Provide ONE transition option. If more sub-topics exist, the text should be like "Got it, what's next?" with `leads_to: 'begin_explanation'`. If the topic is complete, the text should be "Summarize what I learned" with `leads_to: 'request_summary'`.
+
+5.  **SUMMARY Turn (Ending the Conversation):**
+    * **Task:** This is the final turn.
+    * **Dialogue:** Provide a brief summary of the key concepts the user learned during the conversation.
+    * **Interaction:** Provide a single option like "Finish Story" or "Back to menu". The `leads_to` for this option MUST be `end_story`.
+    * **Feedback:** `feedback_on_previous_answer` must be an empty string.
+
+**Universal Principles:**
+* **Progression:** Never repeat a question or concept already covered in the history. Always introduce a new sub-topic in each `EXPLANATION` turn.
+* **Image Prompts:** Every single turn, regardless of type, MUST have one or two `image_prompt`s that are highly contextual to the `dialogue` content. For `Image Selection` questions, the number of prompts must exactly match the number of options.
+* **Contextual Integrity:** Only ask questions about information you have already provided.
 """
+
+    history_str = json.dumps(history) # Pass history as a JSON string for better context
+    prompt_to_send = ""
+
     if not history:
-        prompt = base_prompt.format(topic=topic) + """
-- **Current Task:** Generate the VERY FIRST interaction cycle. Introduce the topic with a relatable, common-sense question. The `feedback_on_previous_answer` field MUST be an empty string.
+        # First turn of the conversation
+        task_prompt = f"""
+- **Current Task:** Generate the `WELCOME` turn for the topic "{topic}".
 """
+        prompt_to_send = base_prompt.format(topic=topic, history_str=history_str, last_choice_leads_to="None") + task_prompt
     else:
-        prompt_history = "\\n".join([f"{item['type']}: {item['text']}" for item in history])
-        prompt = base_prompt.format(topic=topic) + f"""
-- **Conversation History So Far:**
-{prompt_history}
-- **Current Task:** The user has just made a choice that "Leads to: {last_choice_leads_to}". Generate the SINGLE, COMPLETE interaction cycle for this next step, strictly following all core instructional principles.
+        # Subsequent turns based on user's last choice
+        task_prompt = f"""
+- **Current Task:** The user's last choice `leads_to` was "{last_choice_leads_to}". Based on this, generate the appropriate next turn by strictly following the Turn-Based Screenplay Structure.
 """
+        prompt_to_send = base_prompt.format(topic=topic, history_str=history_str, last_choice_leads_to=last_choice_leads_to) + task_prompt
+
     try:
         story_node_schema = {
             "type": "object",
             "properties": {
-                "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty string for the first turn or after a 'continue' button."},
-                "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn (either an explanation or a question)."},
+                "feedback_on_previous_answer": {"type": "string", "description": "Feedback on the user's last choice. Empty unless it is a FEEDBACK turn."},
+                "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn."},
                 "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list of prompts for images to display. For image questions, the order must match the options."},
-                "interaction": { "type": "object", "properties": { "type": {"type": "string", "description": "e.g., 'Text-based Button Selection' or 'Image Selection'."},
+                "interaction": { "type": "object", "properties": { "type": {"type": "string", "enum": ["Text-based Button Selection", "Image Selection"], "description": "The type of interaction required."},
                         "options": { "type": "array", "items": { "type": "object", "properties": {
                                         "text": {"type": "string"}, "leads_to": {"type": "string"}},
                                     "required": ["text", "leads_to"]}}}, "required": ["type", "options"]}},
@@ -141,7 +177,7 @@ Your task is to generate the next single turn in the conversation, following the
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
         safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
         
-        response = gemini_model.generate_content(prompt, generation_config=generation_config, safety_settings=safety_settings)
+        response = gemini_model.generate_content(prompt_to_send, generation_config=generation_config, safety_settings=safety_settings)
         parsed_node = json.loads(response.text)
         return jsonify(parsed_node), 200
 
@@ -154,7 +190,6 @@ Your task is to generate the next single turn in the conversation, following the
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
-
 
 # --- All other existing endpoints remain the same ---
 @app.route('/')
