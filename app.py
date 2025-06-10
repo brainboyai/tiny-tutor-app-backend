@@ -25,10 +25,10 @@ load_dotenv()
 
 # --- App Initialization ---
 app = Flask(__name__)
-CORS(app, 
-     resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, 
-     supports_credentials=True, 
-     expose_headers=["Content-Type", "Authorization"], 
+CORS(app,
+     resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}},
+     supports_credentials=True,
+     expose_headers=["Content-Type", "Authorization"],
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 
 # --- Configuration ---
@@ -68,7 +68,6 @@ else:
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
 
 # --- In-memory Job Store for Game Generation ---
-# In a production environment, use a more persistent store like Redis or a database.
 game_jobs = {}
 
 # --- Helper Functions & Decorators ---
@@ -84,6 +83,7 @@ def token_required(f):
     """Decorator to protect routes with JWT authentication."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        # This decorator correctly handles the CORS pre-flight OPTIONS request.
         if request.method == 'OPTIONS':
             return current_app.make_default_options_response()
         
@@ -112,9 +112,10 @@ def token_required(f):
 # --- Game Generation Background Task ---
 def generate_game_in_background(job_id, topic, history):
     """Runs the AI game generation in a separate thread."""
-    app.logger.info(f"Starting background game generation for job_id: {job_id}")
-    
-    game_generation_prompt = f"""
+    with app.app_context():
+        app.logger.info(f"Starting background game generation for job_id: {job_id}")
+        
+        game_generation_prompt = f"""
 You are an expert game developer AI. Your task is to create a simple, playable, 2D HTML game based on a given science topic.
 
 **Topic:** {topic}
@@ -135,35 +136,35 @@ You are an expert game developer AI. Your task is to create a simple, playable, 
 Now, generate the complete HTML code for a game based on the topic: **"{topic}"**.
 """
 
-    try:
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        generation_config = genai.types.GenerationConfig(
-            response_mime_type="text/plain",
-            temperature=0.7 
-        )
-        safety_settings = {
-            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-        }
-        
-        response = gemini_model.generate_content(
-            game_generation_prompt,
-            generation_config=generation_config,
-            safety_settings=safety_settings
-        )
-        
-        game_html = response.text
-        if game_html.strip().startswith("```html"):
-            game_html = game_html.strip()[7:-3].strip()
+        try:
+            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            generation_config = genai.types.GenerationConfig(
+                response_mime_type="text/plain",
+                temperature=0.7 
+            )
+            safety_settings = {
+                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            }
+            
+            response = gemini_model.generate_content(
+                game_generation_prompt,
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
+            
+            game_html = response.text
+            if game_html.strip().startswith("```html"):
+                game_html = game_html.strip()[7:-3].strip()
 
-        game_jobs[job_id] = {"status": "completed", "game_html": game_html}
-        app.logger.info(f"Game generation COMPLETED for job_id: {job_id}")
+            game_jobs[job_id] = {"status": "completed", "game_html": game_html}
+            app.logger.info(f"Game generation COMPLETED for job_id: {job_id}")
 
-    except Exception as e:
-        app.logger.error(f"FATAL Error in background generation for job '{job_id}': {e}")
-        game_jobs[job_id] = {"status": "failed", "error": "The AI failed to generate the game. Please try a different topic."}
+        except Exception as e:
+            app.logger.error(f"FATAL Error in background generation for job '{job_id}': {e}")
+            game_jobs[job_id] = {"status": "failed", "error": "The AI failed to generate the game. Please try a different topic."}
 
 # --- API Endpoints ---
 @app.route('/')
@@ -173,7 +174,7 @@ def home():
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
-    # (Implementation from your provided file)
+    # (Implementation is unchanged)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -203,7 +204,7 @@ def signup_user():
 @app.route('/login', methods=['POST'])
 @limiter.limit("30 per minute")
 def login_user():
-    # (Implementation from your provided file)
+    # (Implementation is unchanged)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -238,7 +239,6 @@ def login_user():
 @app.route('/profile', methods=['GET'])
 @token_required
 def get_user_profile(current_user_id):
-    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     try:
         user_doc_ref = db.collection('users').document(current_user_id)
@@ -299,7 +299,6 @@ def get_user_profile(current_user_id):
 @app.route('/toggle_favorite', methods=['POST'])
 @token_required
 def toggle_favorite_word(current_user_id):
-    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     word_to_toggle = data.get('word', '').strip()
@@ -327,7 +326,6 @@ def toggle_favorite_word(current_user_id):
 @app.route('/save_streak', methods=['POST'])
 @token_required
 def save_user_streak(current_user_id):
-    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -372,7 +370,6 @@ def save_user_streak(current_user_id):
 @app.route('/save_quiz_attempt', methods=['POST'])
 @token_required
 def save_quiz_attempt_route(current_user_id):
-    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No data provided"}), 400
@@ -421,7 +418,6 @@ def save_quiz_attempt_route(current_user_id):
 @token_required
 @limiter.limit("150/hour")
 def generate_explanation_route(current_user_id):
-    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
     data = request.get_json()
@@ -563,7 +559,6 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
 @token_required
 @limiter.limit("200/hour")
 def generate_story_node_route(current_user_id):
-    # (Implementation from your provided file)
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -671,9 +666,9 @@ You MUST generate a response that strictly matches the turn type determined by t
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
-# --- NEW ASYNC GAME ENDPOINTS ---
+# --- ASYNC GAME ENDPOINTS (CORRECTED) ---
 
-@app.route('/request_game_generation', methods=['POST', 'OPTIONS'])
+@app.route('/request_game_generation', methods=['POST'])
 @token_required
 @limiter.limit("30/hour")
 def request_game_generation_route(current_user_id):
@@ -699,9 +694,9 @@ def request_game_generation_route(current_user_id):
     thread.start()
     
     app.logger.info(f"Game generation job created for user {current_user_id} with job_id: {job_id}")
-    return jsonify({"job_id": job_id}), 202 # 202 Accepted: The request has been accepted for processing
+    return jsonify({"job_id": job_id}), 202
 
-@app.route('/get_game_status/<job_id>', methods=['GET', 'OPTIONS'])
+@app.route('/get_game_status/<job_id>', methods=['GET'])
 @token_required
 def get_game_status_route(current_user_id, job_id):
     """Polls for the status of a game generation job."""
