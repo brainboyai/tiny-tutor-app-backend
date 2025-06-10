@@ -31,6 +31,7 @@ CORS(app,
      expose_headers=["Content-Type", "Authorization"],
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 
+
 # --- Configuration ---
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'a_super_secret_fallback_key_for_development')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
