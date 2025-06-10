@@ -26,35 +26,23 @@ load_dotenv()
 # --- App Initialization ---
 app = Flask(__name__)
 # --- CORS Configuration ---
-# NOTE: While Flask-CORS is here, we will add a manual override to ensure headers are set.
 CORS(app,
      resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}},
-     supports_credentials=True,
-     expose_headers=["Content-Type", "Authorization"],
-     allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
+     supports_credentials=True)
 
 # --- NEW: Manual CORS Header Override ---
 @app.after_request
 def add_cors_headers(response):
-    """
-    This function runs after each request and manually adds CORS headers
-    to the response. This is a more forceful way to ensure they are present.
-    """
-    frontend_url = 'https://tiny-tutor-app-frontend.onrender.com'
-    # For local development, you might want to check request.origin and set it dynamically
-    # For now, we are locking it to the deployed frontend.
-    
-    response.headers.add('Access-Control-Allow-Origin', frontend_url)
+    response.headers.add('Access-Control-Allow-Origin', 'https://tiny-tutor-app-frontend.onrender.com')
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
     response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
     response.headers.add('Access-Control-Allow-Credentials', 'true')
     return response
 
-# --- Configuration ---
+# --- Configuration & Initializations ---
+# ... (rest of the initializations are the same) ...
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'a_super_secret_fallback_key_for_development')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
-
-# --- Firebase Initialization ---
 db = None
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 if service_account_key_base64:
@@ -65,31 +53,18 @@ if service_account_key_base64:
         if not firebase_admin._apps:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
-            app.logger.info("Firebase Admin SDK initialized successfully.")
         db = firestore.client()
     except Exception as e:
         app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
-else:
-    app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
-# --- Google Gemini API Initialization ---
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
-    try:
-        genai.configure(api_key=gemini_api_key)
-        app.logger.info("Google Gemini API configured successfully.")
-    except Exception as e:
-        app.logger.error(f"Failed to configure Google Gemini API: {e}")
-else:
-    app.logger.warning("GEMINI_API_KEY not found. Google Gemini API not configured.")
+    genai.configure(api_key=gemini_api_key)
 
-# --- Rate Limiting ---
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
-
-# --- In-memory Job Store for Game Generation ---
 game_jobs = {}
 
-# --- Helper Functions & Decorators ---
+# ... (All other helper functions and routes are the same) ...
 def sanitize_word_for_id(word: str) -> str:
     if not isinstance(word, str): return "invalid_input"
     sanitized = word.lower()
@@ -100,21 +75,14 @@ def sanitize_word_for_id(word: str) -> str:
 def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # The preflight request is now handled by the @app.after_request decorator globally
         if request.method == 'OPTIONS':
-            return '', 204 # Return empty response for OPTIONS
-            
+            return '', 204
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
-            try:
-                token = auth_header.split(" ")[1]
-            except IndexError:
-                return jsonify({"error": "Bearer token malformed"}), 401
-        
+            token = auth_header.split(" ")[1]
         if not token:
             return jsonify({"error": "Token is missing"}), 401
-        
         try:
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
             current_user_id = payload['user_id']
@@ -122,7 +90,6 @@ def token_required(f):
             return jsonify({"error": "Token has expired"}), 401
         except jwt.InvalidTokenError:
             return jsonify({"error": "Token is invalid"}), 401
-        
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
@@ -164,6 +131,12 @@ Now, generate the complete HTML code for a game based on the topic: **"{topic}"*
     except Exception as e:
         app.logger.error(f"FATAL Error in background generation for job '{job_id}': {e}")
         game_jobs[job_id] = {"status": "failed", "error": "The AI failed to generate the game. Please try a different topic."}
+
+# --- NEW VERSION TEST ENDPOINT ---
+@app.route('/version')
+def version():
+    return jsonify({"version": "2.1", "status": "CORS_FIX_APPLIED"})
+
 
 # --- API Endpoints ---
 @app.route('/')
@@ -564,20 +537,17 @@ You MUST generate a response that strictly matches the turn type determined by t
 @token_required
 @limiter.limit("30/hour")
 def request_game_generation_route(current_user_id):
-    """Initiates a game generation job and returns a job ID."""
     if not gemini_api_key:
         return jsonify({"error": "AI service not configured"}), 500
-    
     data = request.get_json()
     if not data:
         return jsonify({"error": "No input data provided"}), 400
     topic = data.get('topic', '').strip()
-    history = data.get('history', []) 
     if not topic:
         return jsonify({"error": "Topic is required"}), 400
     job_id = str(uuid.uuid4())
     game_jobs[job_id] = {"status": "pending"}
-    thread = threading.Thread(target=generate_game_in_background, args=(job_id, topic, history))
+    thread = threading.Thread(target=generate_game_in_background, args=(job_id, topic, []))
     thread.start()
     app.logger.info(f"Game generation job created for user {current_user_id} with job_id: {job_id}")
     return jsonify({"job_id": job_id}), 202
@@ -585,7 +555,6 @@ def request_game_generation_route(current_user_id):
 @app.route('/get_game_status/<job_id>', methods=['GET', 'OPTIONS'])
 @token_required
 def get_game_status_route(current_user_id, job_id):
-    """Polls for the status of a game generation job."""
     if not job_id:
         return jsonify({"error": "Job ID is required"}), 400
     job = game_jobs.get(job_id)
