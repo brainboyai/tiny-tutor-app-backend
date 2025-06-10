@@ -25,18 +25,17 @@ load_dotenv()
 
 # --- App Initialization ---
 app = Flask(__name__)
+
+# This main CORS configuration is still important for the rest of the app.
 CORS(app,
      resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}},
      supports_credentials=True,
      expose_headers=["Content-Type", "Authorization"],
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 
-
-# --- Configuration ---
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'a_super_secret_fallback_key_for_development')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
-# --- Firebase Initialization ---
 db = None
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 if service_account_key_base64:
@@ -47,29 +46,22 @@ if service_account_key_base64:
         if not firebase_admin._apps:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
-            app.logger.info("Firebase Admin SDK initialized successfully.")
         db = firestore.client()
+        app.logger.info("Firebase Admin SDK initialized successfully.")
     except Exception as e:
         app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
 else:
-    app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
+    app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. SDK not initialized.")
 
-# --- Google Gemini API Initialization ---
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
-    try:
-        genai.configure(api_key=gemini_api_key)
-        app.logger.info("Google Gemini API configured successfully.")
-    except Exception as e:
-        app.logger.error(f"Failed to configure Google Gemini API: {e}")
+    genai.configure(api_key=gemini_api_key)
+    app.logger.info("Google Gemini API configured successfully.")
 else:
-    app.logger.warning("GEMINI_API_KEY not found. Google Gemini API not configured.")
+    app.logger.warning("GEMINI_API_KEY not found.")
 
-# --- Rate Limiting ---
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
 
-# --- In-memory Job Store for Game Generation ---
-game_jobs = {}
 
 # --- Helper Functions & Decorators ---
 def sanitize_word_for_id(word: str) -> str:
