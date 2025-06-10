@@ -92,6 +92,7 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
+# CORRECTED VERSION OF THE GAME GENERATION ROUTE
 @app.route('/generate_game', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("50/hour")
@@ -123,19 +124,20 @@ def generate_game_route(current_user_id):
             # If not in cache, define prompt and generate the game
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            prompt_template = """
+            # This prompt now uses f-string with escaped curly braces for JS template literals
+            prompt = f"""
 You are an expert game developer who creates simple, educational, 2D web games.
-Your task is to create a complete, playable game about the topic: "TOPIC_PLACEHOLDER".
+Your task is to create a complete, playable game about the topic: "{topic}".
 
 **MUST-FOLLOW RULES:**
 1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the HTML using `<style>` and `<script>` tags. DO NOT use any external file references.
 2.  **NO EXTERNAL LIBRARIES:** Do not use any external game libraries like Phaser, PixiJS, or Three.js. Use only vanilla JavaScript and standard Web APIs (Canvas API, Web Audio API, etc.).
 3.  **RESPONSIVE & CROSS-INPUT:** The game must work on both desktop (mouse clicks) and mobile (touch events). The canvas should dynamically resize to fit its container.
 4.  **COMPLETE & PLAYABLE:** The game must be fully functional, including a clear win condition, a lose condition (e.g., a timer), and a simple scoring or progress system.
-5.  **RELEVANT MECHANICS:** The game mechanics must be directly and cleverly related to the educational topic of "TOPIC_PLACEHOLDER".
+5.  **RELEVANT MECHANICS:** The game mechanics must be directly and cleverly related to the educational topic of "{topic}".
 
 **EXAMPLE BLUEPRINT (for a game about 'Photosynthesis'):**
-This is the quality and structure you must replicate for the topic "TOPIC_PLACEHOLDER".
+This is the quality and structure you must replicate for the topic "{topic}".
 
 ```html
 <!DOCTYPE html>
@@ -145,17 +147,17 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Photosynthesis Game</title>
     <style>
-        body { margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
-        #game-container { width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }
-        #ui-container { flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
-        .progress-bar-container { flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}
-        .progress-bar { width: 100%; background-color: #555; border-radius: 5px; overflow: hidden; }
-        .progress-fill { height: 15px; background-color: #4CAF50; width: 0%; transition: width 0.2s; }
-        #timer, #starch-counter { font-size: 1.1em; font-weight: bold; flex-shrink: 0; }
-        #canvas-container { flex-grow: 1; position: relative; width: 100%; height: 100%; }
-        canvas { display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
-        #win-lose-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
-        #win-lose-screen h1 { font-size: 3em; }
+        body {{ margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }}
+        #game-container {{ width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }}
+        #ui-container {{ flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }}
+        .progress-bar-container {{ flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}}
+        .progress-bar {{ width: 100%; background-color: #555; border-radius: 5px; overflow: hidden; }}
+        .progress-fill {{ height: 15px; background-color: #4CAF50; width: 0%; transition: width 0.2s; }}
+        #timer, #starch-counter {{ font-size: 1.1em; font-weight: bold; flex-shrink: 0; }}
+        #canvas-container {{ flex-grow: 1; position: relative; width: 100%; height: 100%; }}
+        canvas {{ display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
+        #win-lose-screen {{ position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }}
+        #win-lose-screen h1 {{ font-size: 3em; }}
     </style>
 </head>
 <body>
@@ -196,26 +198,26 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
         let gameOver = false;
         const gameObjects = [];
 
-        function resizeCanvas() {
+        function resizeCanvas() {{
             canvas.width = canvasContainer.clientWidth;
             canvas.height = canvasContainer.clientHeight;
-        }
+        }}
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        function drawPlant() {
+        function drawPlant() {{
             ctx.fillStyle = '#654321'; // Trunk
             ctx.fillRect(canvas.width / 2 - 10, canvas.height - 60, 20, 60);
             ctx.fillStyle = '#228B22'; // Leaves
             ctx.beginPath();
             ctx.arc(canvas.width / 2, canvas.height - 80, 40, 0, Math.PI * 2);
             ctx.fill();
-        }
+        }}
 
-        function GameObject(x, y, type) {
+        function GameObject(x, y, type) {{
             this.x = x; this.y = y; this.type = type;
             this.radius = 15; this.speed = Math.random() * 1.5 + 0.5;
-            this.draw = function() {
+            this.draw = function() {{
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 if (this.type === 'sun') ctx.fillStyle = 'yellow';
@@ -228,46 +230,46 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
                 let text = this.type === 'water' ? 'H₂O' : this.type === 'co2' ? 'CO₂' : 'Sun';
                 ctx.font = '12px sans-serif';
                 ctx.fillText(text, this.x, this.y);
-            };
-            this.update = function() { this.y -= this.speed; };
-        }
+            }};
+            this.update = function() {{ this.y -= this.speed; }};
+        }}
 
-        function spawnObject() {
+        function spawnObject() {{
             if (gameOver) return;
             const types = ['sun', 'co2', 'water'];
             const type = types[Math.floor(Math.random() * types.length)];
             const x = Math.random() * (canvas.width - 30) + 15;
             gameObjects.push(new GameObject(x, canvas.height + 20, type));
-        }
+        }}
 
-        function updateProgressBars() {
-            sunProgress.style.width = `${(sun / required) * 100}%`;
-            co2Progress.style.width = `${(co2 / required) * 100}%`;
-            h2oProgress.style.width = `${(water / required) * 100}%`;
-            starchCounter.textContent = `Starch: ${starch} / ${starchGoal}`;
-        }
+        function updateProgressBars() {{
+            sunProgress.style.width = `${{(sun / required) * 100}}%`;
+            co2Progress.style.width = `${{(co2 / required) * 100}}%`;
+            h2oProgress.style.width = `${{(water / required) * 100}}%`;
+            starchCounter.textContent = `Starch: ${{starch}} / ${{starchGoal}}`;
+        }}
 
-        function checkPhotosynthesis() {
-            if (sun >= required && co2 >= required && water >= required) {
+        function checkPhotosynthesis() {{
+            if (sun >= required && co2 >= required && water >= required) {{
                 sun -= required; co2 -= required; water -= required;
                 starch++;
                 updateProgressBars();
-                if (starch >= starchGoal) {
+                if (starch >= starchGoal) {{
                     endGame(true);
-                }
-            }
-        }
+                }}
+            }}
+        }}
 
-        function handleInteraction(event) {
+        function handleInteraction(event) {{
             if (gameOver) return;
             const rect = canvas.getBoundingClientRect();
             const x = (event.clientX || event.touches[0].clientX) - rect.left;
             const y = (event.clientY || event.touches[0].clientY) - rect.top;
 
-            for (let i = gameObjects.length - 1; i >= 0; i--) {
+            for (let i = gameObjects.length - 1; i >= 0; i--) {{
                 const obj = gameObjects[i];
                 const distance = Math.sqrt((x - obj.x)**2 + (y - obj.y)**2);
-                if (distance < obj.radius) {
+                if (distance < obj.radius) {{
                     if (obj.type === 'sun') sun = Math.min(sun + 1, required);
                     else if (obj.type === 'co2') co2 = Math.min(co2 + 1, required);
                     else if (obj.type === 'water') water = Math.min(water + 1, required);
@@ -275,45 +277,44 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
                     updateProgressBars();
                     checkPhotosynthesis();
                     break;
-                }
-            }
-        }
+                }}
+            }}
+        }}
         
         canvas.addEventListener('click', handleInteraction);
-        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInteraction(e); }, { passive: false });
+        canvas.addEventListener('touchstart', (e) => {{ e.preventDefault(); handleInteraction(e); }}, {{ passive: false }});
         
-        function endGame(isWin) {
+        function endGame(isWin) {{
             gameOver = true;
             winLoseScreen.style.display = 'flex';
             winLoseMessage.textContent = isWin ? 'You Win!' : 'Time Up!';
-        }
+        }}
 
-        let lastFrameTime = 0;
-        function gameLoop(timestamp) {
+        function gameLoop() {{
             if (gameOver) return;
             requestAnimationFrame(gameLoop);
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawPlant();
-            gameObjects.forEach((obj, index) => {
+            gameObjects.forEach((obj, index) => {{
                 obj.update();
                 obj.draw();
                 if (obj.y < -obj.radius) gameObjects.splice(index, 1);
-            });
-        }
+            }});
+        }}
 
         setInterval(spawnObject, 1000);
-        const timerInterval = setInterval(() => {
-            if (gameOver) {
+        const timerInterval = setInterval(() => {{
+            if (gameOver) {{
                 clearInterval(timerInterval);
                 return;
-            }
+            }}
             timeLeft--;
-            timerDisplay.textContent = `Time: ${timeLeft}`;
-            if (timeLeft <= 0) {
+            timerDisplay.textContent = `Time: ${{timeLeft}}`;
+            if (timeLeft <= 0) {{
                 endGame(false);
-            }
-        }, 1000);
+            }}
+        }}, 1000);
 
         updateProgressBars();
         requestAnimationFrame(gameLoop);
@@ -324,31 +325,34 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
 
 Now, based on that blueprint, create the game for "{topic}".
 """
-        # Configure and call the Gemini API
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        safety_settings = {HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
-        response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
-        
-        generated_html = response.text.strip()
-        
-        if generated_html.startswith("```html"):
-            generated_html = generated_html[7:]
-        if generated_html.endswith("```"):
-            generated_html = generated_html[:-3]
+            
+            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            safety_settings = {{HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}}
+            response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
+            
+            generated_html = response.text.strip()
+            
+            if generated_html.startswith("```html"):
+                generated_html = generated_html[7:]
+            if generated_html.endswith("```"):
+                generated_html = generated_html[:-3]
 
-        update_payload = {
-            'word': topic,
-            'last_explored_at': firestore.SERVER_TIMESTAMP,
-            'generated_content_cache.game_html': generated_html
-        }
-        user_word_history_ref.set(update_payload, merge=True)
-        app.logger.info(f"Successfully generated and cached game for topic '{topic}' for user {current_user_id}.")
-        
-        return jsonify({"topic": topic, "game_html": generated_html, "source": "generated"}), 200
+            update_payload = {{
+                'word': topic,
+                'last_explored_at': firestore.SERVER_TIMESTAMP,
+                'generated_content_cache.game_html': generated_html
+            }}
+            user_word_history_ref.set(update_payload, merge=True)
+            app.logger.info(f"Successfully generated and cached game for topic '{{topic}}' for user {{current_user_id}}.")
+            
+            return jsonify({{"topic": topic, "game_html": generated_html, "source": "generated"}}), 200
 
     except Exception as e:
-        app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
-    return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
+        app.logger.error(f"Error in /generate_game for user {{current_user_id}}, topic '{{topic}}': {{e}}")
+        return jsonify({{"error": f"An internal AI error occurred while trying to build the game: {{e}}"}}), 500
+
+# --- The rest of the app.py file (story mode, explore mode, etc.) remains unchanged ---
+# ... (paste the rest of your app.py code here)
 
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
@@ -789,9 +793,7 @@ def save_user_streak(current_user_id):
             streak = doc.to_dict()
             completed_at_val = streak.get("completed_at")
             streak_history_list.append({
-                "id": doc.id,
-                "words": streak.get("words", []),
-                "score": streak.get("score", 0),
+                "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
                 "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val) if completed_at_val else None,
             })
             
