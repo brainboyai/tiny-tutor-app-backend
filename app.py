@@ -27,6 +27,7 @@ load_dotenv()
 app = Flask(__name__)
 
 # This main CORS configuration is still important for the rest of the app.
+# This main CORS configuration is still important for the rest of the app.
 CORS(app,
      resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}},
      supports_credentials=True,
@@ -37,6 +38,8 @@ app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'a_super_secret_fallb
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
 db = None
+# (Firebase and Gemini initialization code remains the same as your working file)
+# ... (omitted for brevity)
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 if service_account_key_base64:
     try:
@@ -47,18 +50,13 @@ if service_account_key_base64:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
         db = firestore.client()
-        app.logger.info("Firebase Admin SDK initialized successfully.")
     except Exception as e:
         app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
-else:
-    app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. SDK not initialized.")
 
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
     genai.configure(api_key=gemini_api_key)
-    app.logger.info("Google Gemini API configured successfully.")
-else:
-    app.logger.warning("GEMINI_API_KEY not found.")
+
 
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
 
@@ -70,7 +68,6 @@ def sanitize_word_for_id(word: str) -> str:
 def _build_cors_preflight_response():
     """Builds a valid response for a CORS pre-flight OPTIONS request."""
     response = make_response()
-    # IMPORTANT: The origin must match your frontend's URL exactly.
     response.headers.add("Access-Control-Allow-Origin", "https://tiny-tutor-app-frontend.onrender.com")
     response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
     response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
@@ -83,11 +80,9 @@ def token_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
         # THE DEFINITIVE FIX: Handle the OPTIONS pre-flight request FIRST.
-        # This approves the browser's permission check before any token logic runs.
         if request.method == 'OPTIONS':
             return _build_cors_preflight_response()
 
-        # If it's not a pre-flight request, proceed with token validation.
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
