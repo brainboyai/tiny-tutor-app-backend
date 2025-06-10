@@ -110,10 +110,16 @@ def token_required(f):
     return decorated_function
 
 # --- Game Generation Background Task ---
-def generate_game_in_background(job_id, topic, history):
-    """Runs the AI game generation in a separate thread."""
+def generate_game_in_background(job_id, topic):
+    """
+    Runs the AI game generation in a background thread and updates the job status in Firestore.
+    """
     with app.app_context():
-        app.logger.info(f"Starting background game generation for job_id: {job_id}")
+        if not db:
+            app.logger.error(f"Firestore not initialized. Cannot process job {job_id}.")
+            return
+
+        job_ref = db.collection('game_jobs').document(job_id)
         
         game_generation_prompt = f"""
 You are an expert game developer AI. Your task is to create a simple, playable, 2D HTML game based on a given science topic.
@@ -137,34 +143,35 @@ Now, generate the complete HTML code for a game based on the topic: **"{topic}"*
 """
 
         try:
+            app.logger.info(f"Starting background game generation for job_id: {job_id}")
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            generation_config = genai.types.GenerationConfig(
-                response_mime_type="text/plain",
-                temperature=0.7 
-            )
+            generation_config = genai.types.GenerationConfig(response_mime_type="text/plain", temperature=0.7)
             safety_settings = {
                 HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
                 HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
                 HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
                 HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
             }
-            
-            response = gemini_model.generate_content(
-                game_generation_prompt,
-                generation_config=generation_config,
-                safety_settings=safety_settings
-            )
+            response = gemini_model.generate_content(game_generation_prompt, generation_config=generation_config, safety_settings=safety_settings)
             
             game_html = response.text
             if game_html.strip().startswith("```html"):
                 game_html = game_html.strip()[7:-3].strip()
 
-            game_jobs[job_id] = {"status": "completed", "game_html": game_html}
+            job_ref.update({
+                'status': 'completed',
+                'game_html': game_html,
+                'updated_at': firestore.SERVER_TIMESTAMP
+            })
             app.logger.info(f"Game generation COMPLETED for job_id: {job_id}")
 
         except Exception as e:
-            app.logger.error(f"FATAL Error in background generation for job '{job_id}': {e}")
-            game_jobs[job_id] = {"status": "failed", "error": "The AI failed to generate the game. Please try a different topic."}
+            app.logger.error(f"Error in background generation for job '{job_id}': {e}")
+            job_ref.update({
+                'status': 'failed',
+                'error': 'The AI failed to generate the game code. Please try a different topic.',
+                'updated_at': firestore.SERVER_TIMESTAMP
+            })
 
 # --- API Endpoints ---
 @app.route('/')
@@ -667,48 +674,67 @@ You MUST generate a response that strictly matches the turn type determined by t
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
 # --- ASYNC GAME ENDPOINTS (CORRECTED) ---
-
 @app.route('/request_game_generation', methods=['POST'])
 @token_required
 @limiter.limit("30/hour")
 def request_game_generation_route(current_user_id):
-    """Initiates a game generation job and returns a job ID."""
-    if not gemini_api_key:
-        return jsonify({"error": "AI service not configured"}), 500
+    if not db: return jsonify({"error": "Database not configured"}), 500
     
     data = request.get_json()
-    if not data:
-        return jsonify({"error": "No input data provided"}), 400
-
     topic = data.get('topic', '').strip()
-    history = data.get('history', []) 
+    if not topic: return jsonify({"error": "Topic is required"}), 400
 
-    if not topic:
-        return jsonify({"error": "Topic is required"}), 400
+    try:
+        job_id = str(uuid.uuid4())
+        job_ref = db.collection('game_jobs').document(job_id)
+        job_ref.set({
+            'user_id': current_user_id,
+            'topic': topic,
+            'status': 'pending',
+            'created_at': firestore.SERVER_TIMESTAMP,
+            'updated_at': firestore.SERVER_TIMESTAMP
+        })
+        
+        thread = threading.Thread(target=generate_game_in_background, args=(job_id, topic))
+        thread.start()
+        
+        app.logger.info(f"Game job {job_id} created for user {current_user_id}")
+        return jsonify({"job_id": job_id}), 202
 
-    job_id = str(uuid.uuid4())
-    game_jobs[job_id] = {"status": "pending"}
+    except Exception as e:
+        app.logger.error(f"Failed to create game job in Firestore: {e}")
+        return jsonify({"error": "Could not initiate game generation."}), 500
 
-    # Start the game generation in a separate thread
-    thread = threading.Thread(target=generate_game_in_background, args=(job_id, topic, history))
-    thread.start()
-    
-    app.logger.info(f"Game generation job created for user {current_user_id} with job_id: {job_id}")
-    return jsonify({"job_id": job_id}), 202
 
 @app.route('/get_game_status/<job_id>', methods=['GET'])
 @token_required
 def get_game_status_route(current_user_id, job_id):
-    """Polls for the status of a game generation job."""
-    if not job_id:
-        return jsonify({"error": "Job ID is required"}), 400
+    if not db: return jsonify({"error": "Database not configured"}), 500
+    
+    try:
+        job_ref = db.collection('game_jobs').document(job_id)
+        job_doc = job_ref.get()
+
+        if not job_doc.exists:
+            return jsonify({"error": "Job not found"}), 404
         
-    job = game_jobs.get(job_id)
+        job_data = job_doc.to_dict()
 
-    if not job:
-        return jsonify({"error": "Job not found"}), 404
+        if job_data.get('user_id') != current_user_id:
+            return jsonify({"error": "Unauthorized"}), 403
 
-    return jsonify(job), 200
+        response_data = {'status': job_data.get('status'), 'topic': job_data.get('topic')}
+        if job_data.get('status') == 'completed':
+            response_data['game_html'] = job_data.get('game_html')
+        elif job_data.get('status') == 'failed':
+            response_data['error'] = job_data.get('error')
+
+        return jsonify(response_data), 200
+
+    except Exception as e:
+        app.logger.error(f"Failed to get game status for job {job_id}: {e}")
+        return jsonify({"error": "Could not retrieve game status."}), 500
+
 
 # --- Main Execution ---
 if __name__ == '__main__':
