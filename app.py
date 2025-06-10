@@ -62,24 +62,32 @@ else:
 
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
 
-
 # --- Helper Functions & Decorators ---
 def sanitize_word_for_id(word: str) -> str:
-    """Creates a Firestore-safe document ID from a string."""
     if not isinstance(word, str): return "invalid_input"
-    sanitized = word.lower()
-    sanitized = re.sub(r'\s+', '_', sanitized)
-    sanitized = re.sub(r'[^a-z0-9_]', '', sanitized)
-    return sanitized if sanitized else "empty_word"
+    return re.sub(r'[^a-z0-9_]', '', re.sub(r'\s+', '_', word.lower())) or "empty_word"
+
+def _build_cors_preflight_response():
+    """Builds a valid response for a CORS pre-flight OPTIONS request."""
+    response = make_response()
+    # IMPORTANT: The origin must match your frontend's URL exactly.
+    response.headers.add("Access-Control-Allow-Origin", "https://tiny-tutor-app-frontend.onrender.com")
+    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
+    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
+    return response
 
 def token_required(f):
-    """Decorator to protect routes with JWT authentication."""
+    """
+    Decorator that handles JWT authentication and correctly responds to CORS pre-flight requests.
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # This decorator correctly handles the CORS pre-flight OPTIONS request.
+        # THE DEFINITIVE FIX: Handle the OPTIONS pre-flight request FIRST.
+        # This approves the browser's permission check before any token logic runs.
         if request.method == 'OPTIONS':
-            return current_app.make_default_options_response()
-        
+            return _build_cors_preflight_response()
+
+        # If it's not a pre-flight request, proceed with token validation.
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
@@ -94,10 +102,8 @@ def token_required(f):
         try:
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
             current_user_id = payload['user_id']
-        except jwt.ExpiredSignatureError:
-            return jsonify({"error": "Token has expired"}), 401
-        except jwt.InvalidTokenError:
-            return jsonify({"error": "Token is invalid"}), 401
+        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
+            return jsonify({"error": "Token is invalid or expired"}), 401
         
         return f(current_user_id, *args, **kwargs)
     return decorated_function
