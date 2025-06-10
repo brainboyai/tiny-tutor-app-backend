@@ -673,7 +673,7 @@ You MUST generate a response that strictly matches the turn type determined by t
 
 # --- NEW ASYNC GAME ENDPOINTS ---
 
-@app.route('/request_game_generation', methods=['POST'])
+@app.route('/request_game_generation', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("30/hour")
 def request_game_generation_route(current_user_id):
@@ -701,7 +701,7 @@ def request_game_generation_route(current_user_id):
     app.logger.info(f"Game generation job created for user {current_user_id} with job_id: {job_id}")
     return jsonify({"job_id": job_id}), 202 # 202 Accepted: The request has been accepted for processing
 
-@app.route('/get_game_status/<job_id>', methods=['GET'])
+@app.route('/get_game_status/<job_id>', methods=['GET', 'OPTIONS'])
 @token_required
 def get_game_status_route(current_user_id, job_id):
     """Polls for the status of a game generation job."""
