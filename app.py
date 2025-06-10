@@ -25,21 +25,18 @@ load_dotenv()
 
 # --- App Initialization ---
 app = Flask(__name__)
-
-# This main CORS configuration is still important for the rest of the app.
-# This main CORS configuration is still important for the rest of the app.
-CORS(app,
-     resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}},
-     supports_credentials=True,
-     expose_headers=["Content-Type", "Authorization"],
+CORS(app, 
+     resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, 
+     supports_credentials=True, 
+     expose_headers=["Content-Type", "Authorization"], 
      allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 
+# --- Configuration ---
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'a_super_secret_fallback_key_for_development')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
+# --- Firebase Initialization ---
 db = None
-# (Firebase and Gemini initialization code remains the same as your working file)
-# ... (omitted for brevity)
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 if service_account_key_base64:
     try:
@@ -49,40 +46,47 @@ if service_account_key_base64:
         if not firebase_admin._apps:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
+            app.logger.info("Firebase Admin SDK initialized successfully.")
         db = firestore.client()
     except Exception as e:
         app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
+else:
+    app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
+# --- Google Gemini API Initialization ---
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
+    try:
+        genai.configure(api_key=gemini_api_key)
+        app.logger.info("Google Gemini API configured successfully.")
+    except Exception as e:
+        app.logger.error(f"Failed to configure Google Gemini API: {e}")
+else:
+    app.logger.warning("GEMINI_API_KEY not found. Google Gemini API not configured.")
 
-
+# --- Rate Limiting ---
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
+
+# --- In-memory Job Store for Game Generation ---
+# In a production environment, use a more persistent store like Redis or a database.
+game_jobs = {}
 
 # --- Helper Functions & Decorators ---
 def sanitize_word_for_id(word: str) -> str:
+    """Creates a Firestore-safe document ID from a string."""
     if not isinstance(word, str): return "invalid_input"
-    return re.sub(r'[^a-z0-9_]', '', re.sub(r'\s+', '_', word.lower())) or "empty_word"
-
-def _build_cors_preflight_response():
-    """Builds a valid response for a CORS pre-flight OPTIONS request."""
-    response = make_response()
-    response.headers.add("Access-Control-Allow-Origin", "https://tiny-tutor-app-frontend.onrender.com")
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,POST,OPTIONS')
-    return response
+    sanitized = word.lower()
+    sanitized = re.sub(r'\s+', '_', sanitized)
+    sanitized = re.sub(r'[^a-z0-9_]', '', sanitized)
+    return sanitized if sanitized else "empty_word"
 
 def token_required(f):
-    """
-    Decorator that handles JWT authentication and correctly responds to CORS pre-flight requests.
-    """
+    """Decorator to protect routes with JWT authentication."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        # THE DEFINITIVE FIX: Handle the OPTIONS pre-flight request FIRST.
         if request.method == 'OPTIONS':
-            return _build_cors_preflight_response()
-
+            return current_app.make_default_options_response()
+        
         token = None
         auth_header = request.headers.get('Authorization')
         if auth_header and auth_header.startswith('Bearer '):
@@ -97,25 +101,20 @@ def token_required(f):
         try:
             payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
             current_user_id = payload['user_id']
-        except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
-            return jsonify({"error": "Token is invalid or expired"}), 401
+        except jwt.ExpiredSignatureError:
+            return jsonify({"error": "Token has expired"}), 401
+        except jwt.InvalidTokenError:
+            return jsonify({"error": "Token is invalid"}), 401
         
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
 # --- Game Generation Background Task ---
-def generate_game_in_background(job_id, topic):
-    """
-    Runs the AI game generation in a background thread and updates the job status in Firestore.
-    """
-    with app.app_context():
-        if not db:
-            app.logger.error(f"Firestore not initialized. Cannot process job {job_id}.")
-            return
-
-        job_ref = db.collection('game_jobs').document(job_id)
-        
-        game_generation_prompt = f"""
+def generate_game_in_background(job_id, topic, history):
+    """Runs the AI game generation in a separate thread."""
+    app.logger.info(f"Starting background game generation for job_id: {job_id}")
+    
+    game_generation_prompt = f"""
 You are an expert game developer AI. Your task is to create a simple, playable, 2D HTML game based on a given science topic.
 
 **Topic:** {topic}
@@ -136,36 +135,35 @@ You are an expert game developer AI. Your task is to create a simple, playable, 
 Now, generate the complete HTML code for a game based on the topic: **"{topic}"**.
 """
 
-        try:
-            app.logger.info(f"Starting background game generation for job_id: {job_id}")
-            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            generation_config = genai.types.GenerationConfig(response_mime_type="text/plain", temperature=0.7)
-            safety_settings = {
-                HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-                HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
-            }
-            response = gemini_model.generate_content(game_generation_prompt, generation_config=generation_config, safety_settings=safety_settings)
-            
-            game_html = response.text
-            if game_html.strip().startswith("```html"):
-                game_html = game_html.strip()[7:-3].strip()
+    try:
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        generation_config = genai.types.GenerationConfig(
+            response_mime_type="text/plain",
+            temperature=0.7 
+        )
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        }
+        
+        response = gemini_model.generate_content(
+            game_generation_prompt,
+            generation_config=generation_config,
+            safety_settings=safety_settings
+        )
+        
+        game_html = response.text
+        if game_html.strip().startswith("```html"):
+            game_html = game_html.strip()[7:-3].strip()
 
-            job_ref.update({
-                'status': 'completed',
-                'game_html': game_html,
-                'updated_at': firestore.SERVER_TIMESTAMP
-            })
-            app.logger.info(f"Game generation COMPLETED for job_id: {job_id}")
+        game_jobs[job_id] = {"status": "completed", "game_html": game_html}
+        app.logger.info(f"Game generation COMPLETED for job_id: {job_id}")
 
-        except Exception as e:
-            app.logger.error(f"Error in background generation for job '{job_id}': {e}")
-            job_ref.update({
-                'status': 'failed',
-                'error': 'The AI failed to generate the game code. Please try a different topic.',
-                'updated_at': firestore.SERVER_TIMESTAMP
-            })
+    except Exception as e:
+        app.logger.error(f"FATAL Error in background generation for job '{job_id}': {e}")
+        game_jobs[job_id] = {"status": "failed", "error": "The AI failed to generate the game. Please try a different topic."}
 
 # --- API Endpoints ---
 @app.route('/')
@@ -175,7 +173,7 @@ def home():
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
-    # (Implementation is unchanged)
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -205,7 +203,7 @@ def signup_user():
 @app.route('/login', methods=['POST'])
 @limiter.limit("30 per minute")
 def login_user():
-    # (Implementation is unchanged)
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -240,6 +238,7 @@ def login_user():
 @app.route('/profile', methods=['GET'])
 @token_required
 def get_user_profile(current_user_id):
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     try:
         user_doc_ref = db.collection('users').document(current_user_id)
@@ -300,6 +299,7 @@ def get_user_profile(current_user_id):
 @app.route('/toggle_favorite', methods=['POST'])
 @token_required
 def toggle_favorite_word(current_user_id):
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     word_to_toggle = data.get('word', '').strip()
@@ -327,6 +327,7 @@ def toggle_favorite_word(current_user_id):
 @app.route('/save_streak', methods=['POST'])
 @token_required
 def save_user_streak(current_user_id):
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -371,6 +372,7 @@ def save_user_streak(current_user_id):
 @app.route('/save_quiz_attempt', methods=['POST'])
 @token_required
 def save_quiz_attempt_route(current_user_id):
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No data provided"}), 400
@@ -419,6 +421,7 @@ def save_quiz_attempt_route(current_user_id):
 @token_required
 @limiter.limit("150/hour")
 def generate_explanation_route(current_user_id):
+    # (Implementation from your provided file)
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
     data = request.get_json()
@@ -560,6 +563,7 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
 @token_required
 @limiter.limit("200/hour")
 def generate_story_node_route(current_user_id):
+    # (Implementation from your provided file)
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
@@ -667,68 +671,49 @@ You MUST generate a response that strictly matches the turn type determined by t
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
-# --- ASYNC GAME ENDPOINTS (CORRECTED) ---
+# --- NEW ASYNC GAME ENDPOINTS ---
+
 @app.route('/request_game_generation', methods=['POST'])
 @token_required
 @limiter.limit("30/hour")
 def request_game_generation_route(current_user_id):
-    if not db: return jsonify({"error": "Database not configured"}), 500
+    """Initiates a game generation job and returns a job ID."""
+    if not gemini_api_key:
+        return jsonify({"error": "AI service not configured"}), 500
     
     data = request.get_json()
+    if not data:
+        return jsonify({"error": "No input data provided"}), 400
+
     topic = data.get('topic', '').strip()
-    if not topic: return jsonify({"error": "Topic is required"}), 400
+    history = data.get('history', []) 
 
-    try:
-        job_id = str(uuid.uuid4())
-        job_ref = db.collection('game_jobs').document(job_id)
-        job_ref.set({
-            'user_id': current_user_id,
-            'topic': topic,
-            'status': 'pending',
-            'created_at': firestore.SERVER_TIMESTAMP,
-            'updated_at': firestore.SERVER_TIMESTAMP
-        })
-        
-        thread = threading.Thread(target=generate_game_in_background, args=(job_id, topic))
-        thread.start()
-        
-        app.logger.info(f"Game job {job_id} created for user {current_user_id}")
-        return jsonify({"job_id": job_id}), 202
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
 
-    except Exception as e:
-        app.logger.error(f"Failed to create game job in Firestore: {e}")
-        return jsonify({"error": "Could not initiate game generation."}), 500
+    job_id = str(uuid.uuid4())
+    game_jobs[job_id] = {"status": "pending"}
 
+    # Start the game generation in a separate thread
+    thread = threading.Thread(target=generate_game_in_background, args=(job_id, topic, history))
+    thread.start()
+    
+    app.logger.info(f"Game generation job created for user {current_user_id} with job_id: {job_id}")
+    return jsonify({"job_id": job_id}), 202 # 202 Accepted: The request has been accepted for processing
 
 @app.route('/get_game_status/<job_id>', methods=['GET'])
 @token_required
 def get_game_status_route(current_user_id, job_id):
-    if not db: return jsonify({"error": "Database not configured"}), 500
-    
-    try:
-        job_ref = db.collection('game_jobs').document(job_id)
-        job_doc = job_ref.get()
-
-        if not job_doc.exists:
-            return jsonify({"error": "Job not found"}), 404
+    """Polls for the status of a game generation job."""
+    if not job_id:
+        return jsonify({"error": "Job ID is required"}), 400
         
-        job_data = job_doc.to_dict()
+    job = game_jobs.get(job_id)
 
-        if job_data.get('user_id') != current_user_id:
-            return jsonify({"error": "Unauthorized"}), 403
+    if not job:
+        return jsonify({"error": "Job not found"}), 404
 
-        response_data = {'status': job_data.get('status'), 'topic': job_data.get('topic')}
-        if job_data.get('status') == 'completed':
-            response_data['game_html'] = job_data.get('game_html')
-        elif job_data.get('status') == 'failed':
-            response_data['error'] = job_data.get('error')
-
-        return jsonify(response_data), 200
-
-    except Exception as e:
-        app.logger.error(f"Failed to get game status for job {job_id}: {e}")
-        return jsonify({"error": "Could not retrieve game status."}), 500
-
+    return jsonify(job), 200
 
 # --- Main Execution ---
 if __name__ == '__main__':
