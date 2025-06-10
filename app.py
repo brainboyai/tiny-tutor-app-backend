@@ -92,7 +92,8 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# CORRECTED VERSION OF THE GAME GENERATION ROUTE
+# In app.py, replace the existing generate_game_route with this one.
+
 @app.route('/generate_game', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("50/hour")
@@ -114,27 +115,25 @@ def generate_game_route(current_user_id):
 
     try:
         word_doc = user_word_history_ref.get()
-        # Check if the document and the cached game_html exist
         if word_doc.exists and 'game_html' in word_doc.to_dict().get('generated_content_cache', {}):
             app.logger.info(f"Serving cached game for topic '{topic}' to user {current_user_id}.")
             cached_html = word_doc.to_dict()['generated_content_cache']['game_html']
             return jsonify({"topic": topic, "game_html": cached_html, "source": "cache"}), 200
         
         else:
-            # If not in cache, define prompt and generate the game
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # This prompt now uses f-string with escaped curly braces for JS template literals
+            # DEFINITIVE FIX: Using an f-string with ALL JS template literals properly escaped using double curly braces.
             prompt = f"""
 You are an expert game developer who creates simple, educational, 2D web games.
 Your task is to create a complete, playable game about the topic: "{topic}".
 
 **MUST-FOLLOW RULES:**
-1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the HTML using `<style>` and `<script>` tags. DO NOT use any external file references.
-2.  **NO EXTERNAL LIBRARIES:** Do not use any external game libraries like Phaser, PixiJS, or Three.js. Use only vanilla JavaScript and standard Web APIs (Canvas API, Web Audio API, etc.).
-3.  **RESPONSIVE & CROSS-INPUT:** The game must work on both desktop (mouse clicks) and mobile (touch events). The canvas should dynamically resize to fit its container.
-4.  **COMPLETE & PLAYABLE:** The game must be fully functional, including a clear win condition, a lose condition (e.g., a timer), and a simple scoring or progress system.
-5.  **RELEVANT MECHANICS:** The game mechanics must be directly and cleverly related to the educational topic of "{topic}".
+1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded.
+2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs.
+3.  **RESPONSIVE & CROSS-INPUT:** The game must work on desktop (mouse) and mobile (touch).
+4.  **COMPLETE & PLAYABLE:** The game must be fully functional with clear win/lose conditions.
+5.  **RELEVANT MECHANICS:** The mechanics must be directly related to the topic of "{topic}".
 
 **EXAMPLE BLUEPRINT (for a game about 'Photosynthesis'):**
 This is the quality and structure you must replicate for the topic "{topic}".
@@ -148,6 +147,7 @@ This is the quality and structure you must replicate for the topic "{topic}".
     <title>Photosynthesis Game</title>
     <style>
         body {{ margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }}
+        /* ... other styles ... */
         #game-container {{ width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }}
         #ui-container {{ flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }}
         .progress-bar-container {{ flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}}
@@ -162,7 +162,7 @@ This is the quality and structure you must replicate for the topic "{topic}".
 </head>
 <body>
     <div id="game-container">
-        <div id="ui-container">
+         <div id="ui-container">
             <div class="progress-bar-container">Sun <div class="progress-bar"><div id="sun-progress" class="progress-fill"></div></div></div>
             <div class="progress-bar-container">CO2 <div class="progress-bar"><div id="co2-progress" class="progress-fill"></div></div></div>
             <div class="progress-bar-container">H2O <div class="progress-bar"><div id="h2o-progress" class="progress-fill"></div></div></div>
@@ -180,6 +180,7 @@ This is the quality and structure you must replicate for the topic "{topic}".
         </div>
     </div>
     <script>
+        // ... (variable declarations) ...
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const sunProgress = document.getElementById('sun-progress');
@@ -197,7 +198,8 @@ This is the quality and structure you must replicate for the topic "{topic}".
         let timeLeft = 60;
         let gameOver = false;
         const gameObjects = [];
-
+        
+        // ... (functions like resizeCanvas, drawPlant, GameObject, etc.) ...
         function resizeCanvas() {{
             canvas.width = canvasContainer.clientWidth;
             canvas.height = canvasContainer.clientHeight;
@@ -206,17 +208,17 @@ This is the quality and structure you must replicate for the topic "{topic}".
         resizeCanvas();
 
         function drawPlant() {{
-            ctx.fillStyle = '#654321'; // Trunk
+            ctx.fillStyle = '#654321';
             ctx.fillRect(canvas.width / 2 - 10, canvas.height - 60, 20, 60);
-            ctx.fillStyle = '#228B22'; // Leaves
+            ctx.fillStyle = '#228B22';
             ctx.beginPath();
             ctx.arc(canvas.width / 2, canvas.height - 80, 40, 0, Math.PI * 2);
             ctx.fill();
         }}
-
+        
         function GameObject(x, y, type) {{
-            this.x = x; this.y = y; this.type = type;
-            this.radius = 15; this.speed = Math.random() * 1.5 + 0.5;
+            this.x = x; this.y = y; this.type = type; this.radius = 15;
+            this.speed = Math.random() * 1.5 + 0.5;
             this.draw = function() {{
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
@@ -241,14 +243,16 @@ This is the quality and structure you must replicate for the topic "{topic}".
             const x = Math.random() * (canvas.width - 30) + 15;
             gameObjects.push(new GameObject(x, canvas.height + 20, type));
         }}
-
+        
         function updateProgressBars() {{
+            // DEFINITIVE FIX APPLIED HERE:
             sunProgress.style.width = `${{(sun / required) * 100}}%`;
             co2Progress.style.width = `${{(co2 / required) * 100}}%`;
             h2oProgress.style.width = `${{(water / required) * 100}}%`;
             starchCounter.textContent = `Starch: ${{starch}} / ${{starchGoal}}`;
         }}
 
+        // ... (other functions like checkPhotosynthesis, handleInteraction, etc.) ...
         function checkPhotosynthesis() {{
             if (sun >= required && co2 >= required && water >= required) {{
                 sun -= required; co2 -= required; water -= required;
@@ -289,7 +293,7 @@ This is the quality and structure you must replicate for the topic "{topic}".
             winLoseScreen.style.display = 'flex';
             winLoseMessage.textContent = isWin ? 'You Win!' : 'Time Up!';
         }}
-
+        
         function gameLoop() {{
             if (gameOver) return;
             requestAnimationFrame(gameLoop);
@@ -310,6 +314,7 @@ This is the quality and structure you must replicate for the topic "{topic}".
                 return;
             }}
             timeLeft--;
+            // DEFINITIVE FIX APPLIED HERE:
             timerDisplay.textContent = `Time: ${{timeLeft}}`;
             if (timeLeft <= 0) {{
                 endGame(false);
@@ -327,30 +332,29 @@ Now, based on that blueprint, create the game for "{topic}".
 """
             
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            safety_settings = {{HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}}
-            response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
-            
-            generated_html = response.text.strip()
-            
-            if generated_html.startswith("```html"):
-                generated_html = generated_html[7:]
-            if generated_html.endswith("```"):
-                generated_html = generated_html[:-3]
+        safety_settings = {{HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}}
+        response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
+        
+        generated_html = response.text.strip()
+        
+        if generated_html.startswith("```html"):
+            generated_html = generated_html[7:]
+        if generated_html.endswith("```"):
+            generated_html = generated_html[:-3]
 
-            update_payload = {{
-                'word': topic,
-                'last_explored_at': firestore.SERVER_TIMESTAMP,
-                'generated_content_cache.game_html': generated_html
-            }}
-            user_word_history_ref.set(update_payload, merge=True)
-            app.logger.info(f"Successfully generated and cached game for topic '{{topic}}' for user {{current_user_id}}.")
-            
-            return jsonify({{"topic": topic, "game_html": generated_html, "source": "generated"}}), 200
+        update_payload = {{
+            'word': topic,
+            'last_explored_at': firestore.SERVER_TIMESTAMP,
+            'generated_content_cache.game_html': generated_html
+        }}
+        user_word_history_ref.set(update_payload, merge=True)
+        app.logger.info(f"Successfully generated and cached game for topic '{{topic}}' for user {{current_user_id}}.")
+        
+        return jsonify({{"topic": topic, "game_html": generated_html, "source": "generated"}}), 200
 
     except Exception as e:
         app.logger.error(f"Error in /generate_game for user {{current_user_id}}, topic '{{topic}}': {{e}}")
-        return jsonify({{"error": f"An internal AI error occurred while trying to build the game: {{e}}"}}), 500
-
+    return jsonify({{"error": f"An internal AI error occurred while trying to build the game: {{e}}"}}), 500
 # --- The rest of the app.py file (story mode, explore mode, etc.) remains unchanged ---
 # ... (paste the rest of your app.py code here)
 
