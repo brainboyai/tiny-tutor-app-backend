@@ -581,6 +581,85 @@ def save_quiz_attempt_route(current_user_id):
         app.logger.error(f"Failed to save quiz attempt stats for user {current_user_id}, word '{word}': {e}")
         return jsonify({"error": f"Failed to save quiz attempt: {e}"}), 500
 
+ #-------------------------------------------------------------------------------
+# --- ADD THIS NEW ENDPOINT TO YOUR app.py FILE ---
+
+@app.route('/generate_game', methods=['POST', 'OPTIONS'])
+@token_required
+@limiter.limit("30/hour") # Stricter limit for this more intensive task
+def generate_game_route(current_user_id):
+    if not gemini_api_key:
+        return jsonify({"error": "AI service not configured"}), 500
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No input data provided"}), 400
+
+    topic = data.get('topic', '').strip()
+    history = data.get('history', []) # The story history can provide context
+
+    if not topic:
+        return jsonify({"error": "Topic is required for game generation"}), 400
+
+    # The prompt for our Game Generation Agent
+    game_generation_prompt = f"""
+You are an expert game developer AI. Your task is to create a simple, playable, 2D HTML game based on a given science topic.
+
+**Topic:** {topic}
+
+**Core Requirements:**
+1.  **Single HTML File:** You MUST generate a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the file using `<style>` and `<script>` tags. Do not use any external file paths (`./`, `src=`, `href=`) except for the CDN import of Tone.js.
+2.  **HTML Canvas:** The game MUST be rendered on an HTML `<canvas>` element. The canvas should be responsive and fill the available viewport.
+3.  **Gameplay:** The game must be interactive and test the user's understanding of the topic. It should involve clicking or tapping on moving objects.
+4.  **Game Mechanics & Goal:**
+    * **Objective:** There must be a clear goal (e.g., fill a progress bar, achieve a certain score, survive for a set time).
+    * **Objects:** Create game objects that are relevant to the topic. For example, for "Photosynthesis," you would have objects for the sun, water droplets, CO2, O2, and starch. Draw these as simple shapes on the canvas. DO NOT use `<img>` tags or external image assets.
+    * **Dynamics:** The game objects must move (e.g., float up or across the screen). The user must interact with them by clicking/tapping.
+    * **Win/Loss Conditions:** The game must have clear win and loss conditions (e.g., timer runs out, progress bar fills). When the game ends, display a "You Win!" or "Game Over!" message on the canvas.
+5.  **Audio/Visual Feedback (Mandatory):**
+    * **Sound:** You MUST include sound effects for key interactions. Use Tone.js for this. You can import it via this CDN link: `<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>`. For example, create a simple synth and play a short note when a correct object is clicked.
+    * **Effects:** When an object is collected, it should disappear with a simple particle effect (e.g., a few exploding dots).
+
+**Example Game Idea for "Photosynthesis":**
+The player must help a plant grow by tapping on floating water droplets, CO2 molecules, and sun icons. Tapping the correct ingredients fills a "Starch" progress bar. Tapping an incorrect object (like a nitrogen molecule) might slightly decrease the bar. The player wins if the bar is filled before the timer runs out.
+
+Now, generate the complete HTML code for a game based on the topic: **"{topic}"**.
+"""
+
+    try:
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # We expect a plain text (HTML) response, not JSON
+        generation_config = genai.types.GenerationConfig(
+            response_mime_type="text/plain",
+            temperature=0.7 # A little more creativity for game design
+        )
+        safety_settings = {
+            HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+            HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH,
+        }
+        
+        response = gemini_model.generate_content(
+            game_generation_prompt,
+            generation_config=generation_config,
+            safety_settings=safety_settings
+        )
+        
+        # The response text is the HTML code for the game
+        game_html = response.text
+        
+        # Clean the response to ensure it's just HTML
+        # The model sometimes wraps the code in ```html ... ```
+        if game_html.strip().startswith("```html"):
+            game_html = game_html.strip()[7:-3].strip()
+
+        return jsonify({"game_html": game_html}), 200
+
+    except Exception as e:
+        app.logger.error(f"FATAL Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
+        return jsonify({"error": "The AI failed to generate the game. Please try a different topic."}), 500
+    #-------------------------------------------------------------------------------
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     debug_mode = os.environ.get('FLASK_DEBUG', 'False').lower() in ['true', '1', 't']
