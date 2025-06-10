@@ -18,6 +18,226 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
+# --- HELPER FUNCTION TO RUN IN A BACKGROUND THREAD ---
+def generate_game_in_background(app, topic, job_id, current_user_id):
+    with app.app_context():
+        try:
+            # This is the same powerful prompt from before
+            game_generation_prompt = f"""
+You are an expert game developer AI. Your task is to create a simple, playable, 2D HTML game based on a given science topic.
+
+**Topic:** {topic}
+
+**Core Requirements:**
+1.  **Single HTML File:** You MUST generate a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the file using `<style>` and `<script>` tags. Do not use any external file paths (`./`, `src=`, `href=`) except for the CDN import of Tone.js.
+2.  **HTML Canvas:** The game MUST be rendered on an HTML `<canvas>` element. The canvas should be responsive and fill the available viewport.
+3.  **Gameplay:** The game must be interactive and test the user's understanding of the topic. It should involve clicking or tapping on moving objects.
+4.  **Game Mechanics & Goal:**
+    * **Objective:** There must be a clear goal (e.g., fill a progress bar, achieve a certain score, survive for a set time).
+    * **Objects:** Create game objects that are relevant to the topic. For example, for "Photosynthesis," you would have objects for the sun, water droplets, CO2, O2, and starch. Draw these as simple shapes on the canvas. DO NOT use `<img>` tags or external image assets.
+    * **Dynamics:** The game objects must move (e.g., float up or across the screen). The user must interact with them by clicking/tapping.
+    * **Win/Loss Conditions:** The game must have clear win and loss conditions (e.g., timer runs out, progress bar fills). When the game ends, display a "You Win!" or "Game Over!" message on the canvas.
+5.  **Audio/Visual Feedback (Mandatory):**
+    * **Sound:** You MUST include sound effects for key interactions. Use Tone.js for this. You can import it via this CDN link: `<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>`. For example, create a simple synth and play a short note when a correct object is clicked.
+    * **Effects:** When an object is collected, it should disappear with a simple particle effect (e.g., a few exploding dots).
+
+Now, generate the complete HTML code for a game based on the topic: **"{topic}"**.
+"""
+            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            generation_config = genai.types.GenerationConfig(
+                response_mime_type="text/plain",
+                temperature=0.7
+            )
+            safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
+
+            response = gemini_model.generate_content(
+                game_generation_prompt,
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
+            game_html = response.text
+            if game_html.strip().startswith("```html"):
+                game_html = game_html.strip()[7:-3].strip()
+
+            # Update the job document in Firestore with the completed HTML
+            db.collection('game_jobs').document(job_id).set({
+                'status': 'completed',
+                'game_html': game_html,
+                'completed_at': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            app.logger.info(f"Game generation job {job_id} completed successfully.")
+
+        except Exception as e:
+            app.logger.error(f"Error in background game generation for job {job_id}: {e}")
+            db.collection('game_jobs').document(job_id).set({
+                'status': 'failed',
+                'error': str(e),
+                'completed_at': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+
+# --- Endpoint to START the game generation ---
+@app.route('/request_game_generation', methods=['POST'])
+@token_required
+@limiter.limit("30/hour")
+def request_game_generation_route(current_user_id):
+    if not db:
+        return jsonify({"error": "Database not configured"}), 500
+    data = request.get_json()
+    topic = data.get('topic', '').strip()
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    job_id = str(uuid.uuid4())
+    job_ref = db.collection('game_jobs').document(job_id)
+    job_ref.set({
+        'user_id': current_user_id,
+        'topic': topic,
+        'status': 'pending',
+        'created_at': firestore.SERVER_TIMESTAMP
+    })
+
+    # Start the generation in a background thread so the request can return immediately
+    thread = Thread(target=generate_game_in_background, args=(app, topic, job_id, current_user_id))
+    thread.daemon = True
+    thread.start()
+    
+    app.logger.info(f"Started game generation job {job_id} for topic '{topic}'.")
+    return jsonify({"job_id": job_id}), 202 # 202 Accepted
+
+# --- Endpoint to POLL for game status ---
+@app.route('/get_game_status/<job_id>', methods=['GET'])
+@token_required
+def get_game_status_route(current_user_id, job_id):
+    if not db:
+        return jsonify({"error": "Database not configured"}), 500
+    try:
+        job_ref = db.collection('game_jobs').document(job_id)
+        job_doc = job_ref.get()
+
+        if not job_doc.exists:
+            return jsonify({"error": "Job not found"}), 404
+
+        job_data = job_doc.to_dict()
+        
+        # Security check: Ensure the user requesting the job is the one who created it
+        if job_data.get('user_id') != current_user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        return jsonify(job_data), 200
+    except Exception as e:
+        app.logger.error(f"Error fetching status for job {job_id}: {e}")
+        return jsonify({"error": "Failed to fetch job status"}), 500
+# --- HELPER FUNCTION TO RUN IN A BACKGROUND THREAD ---
+def generate_game_in_background(app, topic, job_id, current_user_id):
+    with app.app_context():
+        try:
+            # This is the same powerful prompt from before
+            game_generation_prompt = f"""
+You are an expert game developer AI. Your task is to create a simple, playable, 2D HTML game based on a given science topic.
+
+**Topic:** {topic}
+
+**Core Requirements:**
+1.  **Single HTML File:** You MUST generate a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the file using `<style>` and `<script>` tags. Do not use any external file paths (`./`, `src=`, `href=`) except for the CDN import of Tone.js.
+2.  **HTML Canvas:** The game MUST be rendered on an HTML `<canvas>` element. The canvas should be responsive and fill the available viewport.
+3.  **Gameplay:** The game must be interactive and test the user's understanding of the topic. It should involve clicking or tapping on moving objects.
+4.  **Game Mechanics & Goal:**
+    * **Objective:** There must be a clear goal (e.g., fill a progress bar, achieve a certain score, survive for a set time).
+    * **Objects:** Create game objects that are relevant to the topic. For example, for "Photosynthesis," you would have objects for the sun, water droplets, CO2, O2, and starch. Draw these as simple shapes on the canvas. DO NOT use `<img>` tags or external image assets.
+    * **Dynamics:** The game objects must move (e.g., float up or across the screen). The user must interact with them by clicking/tapping.
+    * **Win/Loss Conditions:** The game must have clear win and loss conditions (e.g., timer runs out, progress bar fills). When the game ends, display a "You Win!" or "Game Over!" message on the canvas.
+5.  **Audio/Visual Feedback (Mandatory):**
+    * **Sound:** You MUST include sound effects for key interactions. Use Tone.js for this. You can import it via this CDN link: `<script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.77/Tone.js"></script>`. For example, create a simple synth and play a short note when a correct object is clicked.
+    * **Effects:** When an object is collected, it should disappear with a simple particle effect (e.g., a few exploding dots).
+
+Now, generate the complete HTML code for a game based on the topic: **"{topic}"**.
+"""
+            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            generation_config = genai.types.GenerationConfig(
+                response_mime_type="text/plain",
+                temperature=0.7
+            )
+            safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
+
+            response = gemini_model.generate_content(
+                game_generation_prompt,
+                generation_config=generation_config,
+                safety_settings=safety_settings
+            )
+            game_html = response.text
+            if game_html.strip().startswith("```html"):
+                game_html = game_html.strip()[7:-3].strip()
+
+            # Update the job document in Firestore with the completed HTML
+            db.collection('game_jobs').document(job_id).set({
+                'status': 'completed',
+                'game_html': game_html,
+                'completed_at': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+            app.logger.info(f"Game generation job {job_id} completed successfully.")
+
+        except Exception as e:
+            app.logger.error(f"Error in background game generation for job {job_id}: {e}")
+            db.collection('game_jobs').document(job_id).set({
+                'status': 'failed',
+                'error': str(e),
+                'completed_at': firestore.SERVER_TIMESTAMP
+            }, merge=True)
+
+# --- Endpoint to START the game generation ---
+@app.route('/request_game_generation', methods=['POST'])
+@token_required
+@limiter.limit("30/hour")
+def request_game_generation_route(current_user_id):
+    if not db:
+        return jsonify({"error": "Database not configured"}), 500
+    data = request.get_json()
+    topic = data.get('topic', '').strip()
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    job_id = str(uuid.uuid4())
+    job_ref = db.collection('game_jobs').document(job_id)
+    job_ref.set({
+        'user_id': current_user_id,
+        'topic': topic,
+        'status': 'pending',
+        'created_at': firestore.SERVER_TIMESTAMP
+    })
+
+    # Start the generation in a background thread so the request can return immediately
+    thread = Thread(target=generate_game_in_background, args=(app, topic, job_id, current_user_id))
+    thread.daemon = True
+    thread.start()
+    
+    app.logger.info(f"Started game generation job {job_id} for topic '{topic}'.")
+    return jsonify({"job_id": job_id}), 202 # 202 Accepted
+
+# --- Endpoint to POLL for game status ---
+@app.route('/get_game_status/<job_id>', methods=['GET'])
+@token_required
+def get_game_status_route(current_user_id, job_id):
+    if not db:
+        return jsonify({"error": "Database not configured"}), 500
+    try:
+        job_ref = db.collection('game_jobs').document(job_id)
+        job_doc = job_ref.get()
+
+        if not job_doc.exists:
+            return jsonify({"error": "Job not found"}), 404
+
+        job_data = job_doc.to_dict()
+        
+        # Security check: Ensure the user requesting the job is the one who created it
+        if job_data.get('user_id') != current_user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+
+        return jsonify(job_data), 200
+    except Exception as e:
+        app.logger.error(f"Error fetching status for job {job_id}: {e}")
+        return jsonify({"error": "Failed to fetch job status"}), 500
+
+
 load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
