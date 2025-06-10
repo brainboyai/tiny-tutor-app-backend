@@ -25,10 +25,7 @@ load_dotenv()
 
 # --- App Initialization ---
 app = Flask(__name__)
-# --- CORS Configuration ---
-CORS(app,
-     resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}},
-     supports_credentials=True)
+
 
 # --- NEW: Manual CORS Header Override ---
 @app.after_request
