@@ -27,17 +27,16 @@ load_dotenv()
 app = Flask(__name__)
 
 
-# --- NEW: Manual CORS Header Override ---
+# --- Manual CORS Header Decorator (Replaces Flask-CORS) ---
 @app.after_request
 def add_cors_headers(response):
-    response.headers.add('Access-Control-Allow-Origin', 'https://tiny-tutor-app-frontend.onrender.com')
-    response.headers.add('Access-Control-Allow-Headers', 'Content-Type,Authorization,X-Requested-With')
-    response.headers.add('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE,OPTIONS')
-    response.headers.add('Access-Control-Allow-Credentials', 'true')
+    response.headers.set('Access-Control-Allow-Origin', 'https://tiny-tutor-app-frontend.onrender.com')
+    response.headers.set('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE')
+    response.headers.set('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+    response.headers.set('Access-Control-Allow-Credentials', 'true')
     return response
 
 # --- Configuration & Initializations ---
-# ... (rest of the initializations are the same) ...
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'a_super_secret_fallback_key_for_development')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 db = None
@@ -45,21 +44,40 @@ service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 if service_account_key_base64:
     try:
         decoded_key_bytes = base64.b64decode(service_account_key_base64)
-        decoded_key_str = decoded_key_bytes.decode('utf-8')
-        service_account_info = json.loads(decoded_key_str)
+        service_account_info = json.loads(decoded_key_bytes.decode('utf-8'))
         if not firebase_admin._apps:
             cred = credentials.Certificate(service_account_info)
             firebase_admin.initialize_app(cred)
         db = firestore.client()
     except Exception as e:
-        app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
+        app.logger.error(f"Firebase Init Error: {e}")
 
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
     genai.configure(api_key=gemini_api_key)
 
-limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
+limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"])
 game_jobs = {}
+
+# --- Helper Functions & Decorators ---
+def token_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if request.method == 'OPTIONS':
+            return jsonify({}) # Let the @after_request handle headers
+        token = None
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(" ")[1]
+        if not token:
+            return jsonify({"error": "Token is missing"}), 401
+        try:
+            payload = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=['HS256'])
+            current_user_id = payload['user_id']
+        except Exception as e:
+            return jsonify({"error": f"Token is invalid: {e}"}), 401
+        return f(current_user_id, *args, **kwargs)
+    return decorated_function
 
 # ... (All other helper functions and routes are the same) ...
 def sanitize_word_for_id(word: str) -> str:
