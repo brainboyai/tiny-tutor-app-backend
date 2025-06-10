@@ -92,18 +92,11 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# In app.py, replace the existing generate_game_route with this one.
-
-# In app.py, replace the existing generate_game_route with this corrected version.
-
+# CORRECTED AND FINAL VERSION OF THE GAME GENERATION ROUTE
 @app.route('/generate_game', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("50/hour")
 def generate_game_route(current_user_id):
-    """
-    Generates a self-contained HTML/CSS/JS game based on a topic using an AI model.
-    Caches the result in Firestore to avoid repeated generation.
-    """
     if not gemini_api_key:
         return jsonify({"error": "AI service not configured"}), 500
     
@@ -125,18 +118,16 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # DEFINITIVE FIX: The prompt is now a regular string (no 'f' prefix)
-            # We use .replace() to safely insert the topic.
             prompt_template = """
 You are an expert game developer who creates simple, educational, 2D web games.
 Your task is to create a complete, playable game about the topic: "TOPIC_PLACEHOLDER".
 
 **MUST-FOLLOW RULES:**
-1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file.
-2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs.
-3.  **RESPONSIVE & CROSS-INPUT:** The game must work on desktop (mouse) and mobile (touch).
-4.  **COMPLETE & PLAYABLE:** The game must be fully functional with clear win/lose conditions.
-5.  **RELEVANT MECHANICS:** The mechanics must be directly related to "TOPIC_PLACEHOLDER".
+1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the HTML using `<style>` and `<script>` tags. DO NOT use any external file references.
+2.  **NO EXTERNAL LIBRARIES:** Do not use any external game libraries like Phaser, PixiJS, or Three.js. Use only vanilla JavaScript and standard Web APIs (Canvas API, Web Audio API, etc.).
+3.  **RESPONSIVE & CROSS-INPUT:** The game must work on both desktop (mouse clicks) and mobile (touch events). The canvas should dynamically resize to fit its container.
+4.  **COMPLETE & PLAYABLE:** The game must be fully functional, including a clear win condition, a lose condition (e.g., a timer), and a simple scoring or progress system.
+5.  **RELEVANT MECHANICS:** The game mechanics must be directly and cleverly related to the educational topic of "TOPIC_PLACEHOLDER".
 
 **EXAMPLE BLUEPRINT (for a game about 'Photosynthesis'):**
 This is the quality and structure you must replicate for the topic "TOPIC_PLACEHOLDER".
@@ -323,34 +314,37 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
     </script>
 </body>
 </html>
-"""
-            
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        safety_settings = {{HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}}
-        response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
-        
-        generated_html = response.text.strip()
-        
-        if generated_html.startswith("```html"):
-            generated_html = generated_html[7:]
-        if generated_html.endswith("```"):
-            generated_html = generated_html[:-3]
+```
 
-        update_payload = {{
-            'word': topic,
-            'last_explored_at': firestore.SERVER_TIMESTAMP,
-            'generated_content_cache.game_html': generated_html
-        }}
-        user_word_history_ref.set(update_payload, merge=True)
-        app.logger.info(f"Successfully generated and cached game for topic '{{topic}}' for user {{current_user_id}}.")
-        
-        return jsonify({{"topic": topic, "game_html": generated_html, "source": "generated"}}), 200
+Now, based on that blueprint, create the game for "TOPIC_PLACEHOLDER".
+"""
+            prompt = prompt_template.replace("TOPIC_PLACEHOLDER", topic)
+            
+            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+            safety_settings = {HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
+            response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
+            
+            generated_html = response.text.strip()
+            
+            if generated_html.startswith("```html"):
+                generated_html = generated_html[7:]
+            if generated_html.endswith("```"):
+                generated_html = generated_html[:-3]
+
+            update_payload = {
+                'word': topic,
+                'last_explored_at': firestore.SERVER_TIMESTAMP,
+                'generated_content_cache.game_html': generated_html
+            }
+            user_word_history_ref.set(update_payload, merge=True)
+            app.logger.info(f"Successfully generated and cached game for topic '{topic}' for user {current_user_id}.")
+            
+            return jsonify({"topic": topic, "game_html": generated_html, "source": "generated"}), 200
 
     except Exception as e:
-        app.logger.error(f"Error in /generate_game for user {{current_user_id}}, topic '{{topic}}': {{e}}")
-    return jsonify({{"error": f"An internal AI error occurred while trying to build the game: {{e}}"}}), 500
-# --- The rest of the app.py file (story mode, explore mode, etc.) remains unchanged ---
-# ... (paste the rest of your app.py code here)
+        app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
+        return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
+
 
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
@@ -463,7 +457,6 @@ You MUST generate a response that strictly matches the turn type determined by t
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
 
-# --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
@@ -635,7 +628,7 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
         
         current_modes_set = set(db_modes_generated)
         current_modes_set.add(mode)
-        modes_already_generated = sorted(list(current_modes_set))
+        modes_already_generated = sorted(list(set(current_modes_set)))
 
         payload_for_db = {
             'word': word, 
