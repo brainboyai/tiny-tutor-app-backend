@@ -18,15 +18,23 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
+# Load environment variables from .env file
 load_dotenv()
 app = Flask(__name__)
+
+# Configure Cross-Origin Resource Sharing (CORS)
 CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
+
+# Configure JWT settings
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
+
+# Initialize Firebase Admin SDK
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 db = None
 if service_account_key_base64:
     try:
+        # Decode the Base64 encoded service account key
         decoded_key_bytes = base64.b64decode(service_account_key_base64)
         decoded_key_str = decoded_key_bytes.decode('utf-8')
         service_account_info = json.loads(decoded_key_str)
@@ -43,6 +51,7 @@ if service_account_key_base64:
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
+# Configure Google Gemini API
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
     try:
@@ -53,9 +62,11 @@ if gemini_api_key:
 else:
     app.logger.warning("GEMINI_API_KEY not found. Google Gemini API not configured.")
 
+# Configure API rate limiting
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
 
 def sanitize_word_for_id(word: str) -> str:
+    """Sanitizes a string to be used as a Firestore document ID."""
     if not isinstance(word, str): return "invalid_input"
     sanitized = word.lower()
     sanitized = re.sub(r'\s+', '_', sanitized)
@@ -63,6 +74,7 @@ def sanitize_word_for_id(word: str) -> str:
     return sanitized if sanitized else "empty_word"
 
 def token_required(f):
+    """Decorator to protect routes that require a valid JWT token."""
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if request.method == 'OPTIONS':
@@ -80,8 +92,268 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# --- Story Mode Endpoint with NEW INTELLIGENT PROMPT ---
-# --- FINAL VERSION: FUNCTION TO COPY AND PASTE INTO app.py ---
+@app.route('/generate_game', methods=['POST', 'OPTIONS'])
+@token_required
+@limiter.limit("50/hour") # Games are expensive to generate, so limit more strictly
+def generate_game_route(current_user_id):
+    """
+    Generates a self-contained HTML/CSS/JS game based on a topic using an AI model.
+    Caches the result in Firestore to avoid repeated generation.
+    """
+    if not gemini_api_key:
+        return jsonify({"error": "AI service not configured"}), 500
+    
+    data = request.get_json()
+    if not data or not data.get('topic'):
+        return jsonify({"error": "Topic is required to generate a game"}), 400
+
+    topic = data.get('topic').strip()
+    sanitized_topic_id = sanitize_word_for_id(topic)
+    user_word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_topic_id)
+
+    try:
+        # Check for a cached version first to save on API calls
+        word_doc = user_word_history_ref.get()
+        if word_doc.exists:
+            word_data = word_doc.to_dict()
+            cached_content = word_data.get('generated_content_cache', {})
+            if 'game_html' in cached_content:
+                app.logger.info(f"Serving cached game for topic '{topic}' to user {current_user_id}.")
+                return jsonify({"topic": topic, "game_html": cached_content['game_html'], "source": "cache"}), 200
+
+        # --- The Game Developer AI Prompt ---
+        # This prompt instructs the AI to act as a game developer and provides a high-quality example.
+        prompt = f"""
+You are an expert game developer who creates simple, educational, 2D web games.
+Your task is to create a complete, playable game about the topic: "{topic}".
+
+**MUST-FOLLOW RULES:**
+1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the HTML using `<style>` and `<script>` tags. DO NOT use any external file references.
+2.  **NO EXTERNAL LIBRARIES:** Do not use any external game libraries like Phaser, PixiJS, or Three.js. Use only vanilla JavaScript and standard Web APIs (Canvas API, Web Audio API, etc.).
+3.  **RESPONSIVE & CROSS-INPUT:** The game must work on both desktop (mouse clicks) and mobile (touch events). The canvas should dynamically resize to fit its container.
+4.  **COMPLETE & PLAYABLE:** The game must be fully functional, including a clear win condition, a lose condition (e.g., a timer), and a simple scoring or progress system.
+5.  **RELEVANT MECHANICS:** The game mechanics must be directly and cleverly related to the educational topic of "{topic}".
+
+**EXAMPLE BLUEPRINT (for a game about 'Photosynthesis'):**
+This is the quality and structure you must replicate for the topic "{topic}".
+
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>Photosynthesis Game</title>
+    <style>
+        body {{ margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }}
+        #game-container {{ width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }}
+        #ui-container {{ flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }}
+        .progress-bar-container {{ flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}}
+        .progress-bar {{ width: 100%; background-color: #555; border-radius: 5px; overflow: hidden; }}
+        .progress-fill {{ height: 15px; background-color: #4CAF50; width: 0%; transition: width 0.2s; }}
+        #timer, #starch-counter {{ font-size: 1.1em; font-weight: bold; flex-shrink: 0; }}
+        #canvas-container {{ flex-grow: 1; position: relative; width: 100%; height: 100%; }}
+        canvas {{ display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
+        #win-lose-screen {{ position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }}
+        #win-lose-screen h1 {{ font-size: 3em; }}
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui-container">
+            <div class="progress-bar-container">Sun <div class="progress-bar"><div id="sun-progress" class="progress-fill"></div></div></div>
+            <div class="progress-bar-container">CO2 <div class="progress-bar"><div id="co2-progress" class="progress-fill"></div></div></div>
+            <div class="progress-bar-container">H2O <div class="progress-bar"><div id="h2o-progress" class="progress-fill"></div></div></div>
+            <div id="starch-counter">Starch: 0/5</div>
+            <div id="timer">Time: 60</div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="gameCanvas"></canvas>
+            <div id="win-lose-screen">
+                <div>
+                    <h1 id="win-lose-message"></h1>
+                    <p>Refresh to play again</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const sunProgress = document.getElementById('sun-progress');
+        const co2Progress = document.getElementById('co2-progress');
+        const h2oProgress = document.getElementById('h2o-progress');
+        const starchCounter = document.getElementById('starch-counter');
+        const timerDisplay = document.getElementById('timer');
+        const winLoseScreen = document.getElementById('win-lose-screen');
+        const winLoseMessage = document.getElementById('win-lose-message');
+        const canvasContainer = document.getElementById('canvas-container');
+
+        let sun = 0, co2 = 0, water = 0, starch = 0;
+        const required = 2;
+        const starchGoal = 5;
+        let timeLeft = 60;
+        let gameOver = false;
+        const gameObjects = [];
+
+        function resizeCanvas() {{
+            canvas.width = canvasContainer.clientWidth;
+            canvas.height = canvasContainer.clientHeight;
+        }}
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function drawPlant() {{
+            ctx.fillStyle = '#654321'; // Trunk
+            ctx.fillRect(canvas.width / 2 - 10, canvas.height - 60, 20, 60);
+            ctx.fillStyle = '#228B22'; // Leaves
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height - 80, 40, 0, Math.PI * 2);
+            ctx.fill();
+        }}
+
+        function GameObject(x, y, type) {{
+            this.x = x; this.y = y; this.type = type;
+            this.radius = 15; this.speed = Math.random() * 1.5 + 0.5;
+            this.draw = function() {{
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                if (this.type === 'sun') ctx.fillStyle = 'yellow';
+                else if (this.type === 'co2') ctx.fillStyle = 'gray';
+                else if (this.type === 'water') ctx.fillStyle = 'blue';
+                ctx.fill();
+                ctx.fillStyle = 'black';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                let text = this.type === 'water' ? 'H₂O' : this.type === 'co2' ? 'CO₂' : 'Sun';
+                ctx.font = '12px sans-serif';
+                ctx.fillText(text, this.x, this.y);
+            }};
+            this.update = function() {{ this.y -= this.speed; }};
+        }}
+
+        function spawnObject() {{
+            if (gameOver) return;
+            const types = ['sun', 'co2', 'water'];
+            const type = types[Math.floor(Math.random() * types.length)];
+            const x = Math.random() * (canvas.width - 30) + 15;
+            gameObjects.push(new GameObject(x, canvas.height + 20, type));
+        }}
+
+        function updateProgressBars() {{
+            sunProgress.style.width = `${(sun / required) * 100}%`;
+            co2Progress.style.width = `${(co2 / required) * 100}%`;
+            h2oProgress.style.width = `${(water / required) * 100}%`;
+            starchCounter.textContent = `Starch: ${{starch}} / ${{starchGoal}}`;
+        }}
+
+        function checkPhotosynthesis() {{
+            if (sun >= required && co2 >= required && water >= required) {{
+                sun -= required; co2 -= required; water -= required;
+                starch++;
+                updateProgressBars();
+                if (starch >= starchGoal) {{
+                    endGame(true);
+                }}
+            }}
+        }}
+
+        function handleInteraction(event) {{
+            if (gameOver) return;
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX || event.touches[0].clientX) - rect.left;
+            const y = (event.clientY || event.touches[0].clientY) - rect.top;
+
+            for (let i = gameObjects.length - 1; i >= 0; i--) {{
+                const obj = gameObjects[i];
+                const distance = Math.sqrt((x - obj.x)**2 + (y - obj.y)**2);
+                if (distance < obj.radius) {{
+                    if (obj.type === 'sun') sun = Math.min(sun + 1, required);
+                    else if (obj.type === 'co2') co2 = Math.min(co2 + 1, required);
+                    else if (obj.type === 'water') water = Math.min(water + 1, required);
+                    gameObjects.splice(i, 1);
+                    updateProgressBars();
+                    checkPhotosynthesis();
+                    break;
+                }}
+            }}
+        }}
+        
+        canvas.addEventListener('click', handleInteraction);
+        canvas.addEventListener('touchstart', (e) => {{ e.preventDefault(); handleInteraction(e); }}, {{ passive: false }});
+        
+        function endGame(isWin) {{
+            gameOver = true;
+            winLoseScreen.style.display = 'flex';
+            winLoseMessage.textContent = isWin ? 'You Win!' : 'Time Up!';
+        }}
+
+        let lastFrameTime = 0;
+        function gameLoop(timestamp) {{
+            if (gameOver) return;
+            const deltaTime = timestamp - lastFrameTime;
+            lastFrameTime = timestamp;
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawPlant();
+            gameObjects.forEach((obj, index) => {{
+                obj.update();
+                obj.draw();
+                if (obj.y < -obj.radius) gameObjects.splice(index, 1);
+            }});
+            requestAnimationFrame(gameLoop);
+        }}
+
+        setInterval(spawnObject, 1000);
+        const timerInterval = setInterval(() => {{
+            if (gameOver) {{
+                clearInterval(timerInterval);
+                return;
+            }}
+            timeLeft--;
+            timerDisplay.textContent = `Time: ${{timeLeft}}`;
+            if (timeLeft <= 0) {{
+                endGame(false);
+            }}
+        }}, 1000);
+
+        updateProgressBars();
+        requestAnimationFrame(gameLoop);
+    </script>
+</body>
+</html>
+```
+
+Now, based on that blueprint, create the game for "{topic}".
+"""
+        # Configure and call the Gemini API
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        safety_settings = {HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
+        response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
+        
+        generated_html = response.text.strip()
+        
+        # Clean the AI's response by removing markdown fences if they exist
+        if generated_html.startswith("```html"):
+            generated_html = generated_html[7:]
+        if generated_html.endswith("```"):
+            generated_html = generated_html[:-3]
+
+        # Cache the generated game HTML in Firestore for future requests
+        update_payload = {
+            'word': topic,
+            'last_explored_at': firestore.SERVER_TIMESTAMP,
+            'generated_content_cache.game_html': generated_html
+        }
+        user_word_history_ref.set(update_payload, merge=True)
+        app.logger.info(f"Successfully generated and cached game for topic '{topic}' for user {current_user_id}.")
+        
+        return jsonify({"topic": topic, "game_html": generated_html, "source": "generated"}), 200
+
+    except Exception as e:
+        app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
+        return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
+
 
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
@@ -193,12 +465,12 @@ You MUST generate a response that strictly matches the turn type determined by t
         except Exception:
              pass
         return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
-    
+
 # --- All other existing endpoints remain the same ---
 @app.route('/')
 def home():
     return "Tiny Tutor Backend is running!"
-# (... The rest of your endpoints: /signup, /login, etc. remain unchanged ...)
+
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
