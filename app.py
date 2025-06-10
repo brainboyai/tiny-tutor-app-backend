@@ -94,6 +94,8 @@ def token_required(f):
 
 # In app.py, replace the existing generate_game_route with this one.
 
+# In app.py, replace the existing generate_game_route with this corrected version.
+
 @app.route('/generate_game', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("50/hour")
@@ -123,20 +125,21 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # DEFINITIVE FIX: Using an f-string with ALL JS template literals properly escaped using double curly braces.
-            prompt = f"""
+            # DEFINITIVE FIX: The prompt is now a regular string (no 'f' prefix)
+            # We use .replace() to safely insert the topic.
+            prompt_template = """
 You are an expert game developer who creates simple, educational, 2D web games.
-Your task is to create a complete, playable game about the topic: "{topic}".
+Your task is to create a complete, playable game about the topic: "TOPIC_PLACEHOLDER".
 
 **MUST-FOLLOW RULES:**
-1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded.
+1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file.
 2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs.
 3.  **RESPONSIVE & CROSS-INPUT:** The game must work on desktop (mouse) and mobile (touch).
 4.  **COMPLETE & PLAYABLE:** The game must be fully functional with clear win/lose conditions.
-5.  **RELEVANT MECHANICS:** The mechanics must be directly related to the topic of "{topic}".
+5.  **RELEVANT MECHANICS:** The mechanics must be directly related to "TOPIC_PLACEHOLDER".
 
 **EXAMPLE BLUEPRINT (for a game about 'Photosynthesis'):**
-This is the quality and structure you must replicate for the topic "{topic}".
+This is the quality and structure you must replicate for the topic "TOPIC_PLACEHOLDER".
 
 ```html
 <!DOCTYPE html>
@@ -146,23 +149,22 @@ This is the quality and structure you must replicate for the topic "{topic}".
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
     <title>Photosynthesis Game</title>
     <style>
-        body {{ margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }}
-        /* ... other styles ... */
-        #game-container {{ width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }}
-        #ui-container {{ flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }}
-        .progress-bar-container {{ flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}}
-        .progress-bar {{ width: 100%; background-color: #555; border-radius: 5px; overflow: hidden; }}
-        .progress-fill {{ height: 15px; background-color: #4CAF50; width: 0%; transition: width 0.2s; }}
-        #timer, #starch-counter {{ font-size: 1.1em; font-weight: bold; flex-shrink: 0; }}
-        #canvas-container {{ flex-grow: 1; position: relative; width: 100%; height: 100%; }}
-        canvas {{ display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }}
-        #win-lose-screen {{ position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }}
-        #win-lose-screen h1 {{ font-size: 3em; }}
+        body { margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }
+        #ui-container { flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 5px; margin-bottom: 5px; }
+        .progress-bar-container { flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}
+        .progress-bar { width: 100%; background-color: #555; border-radius: 5px; overflow: hidden; }
+        .progress-fill { height: 15px; background-color: #4CAF50; width: 0%; transition: width 0.2s; }
+        #timer, #starch-counter { font-size: 1.1em; font-weight: bold; flex-shrink: 0; }
+        #canvas-container { flex-grow: 1; position: relative; width: 100%; height: 100%; }
+        canvas { display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
+        #win-lose-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
+        #win-lose-screen h1 { font-size: 3em; }
     </style>
 </head>
 <body>
     <div id="game-container">
-         <div id="ui-container">
+        <div id="ui-container">
             <div class="progress-bar-container">Sun <div class="progress-bar"><div id="sun-progress" class="progress-fill"></div></div></div>
             <div class="progress-bar-container">CO2 <div class="progress-bar"><div id="co2-progress" class="progress-fill"></div></div></div>
             <div class="progress-bar-container">H2O <div class="progress-bar"><div id="h2o-progress" class="progress-fill"></div></div></div>
@@ -180,7 +182,6 @@ This is the quality and structure you must replicate for the topic "{topic}".
         </div>
     </div>
     <script>
-        // ... (variable declarations) ...
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const sunProgress = document.getElementById('sun-progress');
@@ -198,28 +199,27 @@ This is the quality and structure you must replicate for the topic "{topic}".
         let timeLeft = 60;
         let gameOver = false;
         const gameObjects = [];
-        
-        // ... (functions like resizeCanvas, drawPlant, GameObject, etc.) ...
-        function resizeCanvas() {{
+
+        function resizeCanvas() {
             canvas.width = canvasContainer.clientWidth;
             canvas.height = canvasContainer.clientHeight;
-        }}
+        }
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
 
-        function drawPlant() {{
-            ctx.fillStyle = '#654321';
+        function drawPlant() {
+            ctx.fillStyle = '#654321'; // Trunk
             ctx.fillRect(canvas.width / 2 - 10, canvas.height - 60, 20, 60);
-            ctx.fillStyle = '#228B22';
+            ctx.fillStyle = '#228B22'; // Leaves
             ctx.beginPath();
             ctx.arc(canvas.width / 2, canvas.height - 80, 40, 0, Math.PI * 2);
             ctx.fill();
-        }}
-        
-        function GameObject(x, y, type) {{
-            this.x = x; this.y = y; this.type = type; this.radius = 15;
-            this.speed = Math.random() * 1.5 + 0.5;
-            this.draw = function() {{
+        }
+
+        function GameObject(x, y, type) {
+            this.x = x; this.y = y; this.type = type;
+            this.radius = 15; this.speed = Math.random() * 1.5 + 0.5;
+            this.draw = function() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
                 if (this.type === 'sun') ctx.fillStyle = 'yellow';
@@ -232,48 +232,46 @@ This is the quality and structure you must replicate for the topic "{topic}".
                 let text = this.type === 'water' ? 'H₂O' : this.type === 'co2' ? 'CO₂' : 'Sun';
                 ctx.font = '12px sans-serif';
                 ctx.fillText(text, this.x, this.y);
-            }};
-            this.update = function() {{ this.y -= this.speed; }};
-        }}
+            };
+            this.update = function() { this.y -= this.speed; };
+        }
 
-        function spawnObject() {{
+        function spawnObject() {
             if (gameOver) return;
             const types = ['sun', 'co2', 'water'];
             const type = types[Math.floor(Math.random() * types.length)];
             const x = Math.random() * (canvas.width - 30) + 15;
             gameObjects.push(new GameObject(x, canvas.height + 20, type));
-        }}
-        
-        function updateProgressBars() {{
-            // DEFINITIVE FIX APPLIED HERE:
-            sunProgress.style.width = `${{(sun / required) * 100}}%`;
-            co2Progress.style.width = `${{(co2 / required) * 100}}%`;
-            h2oProgress.style.width = `${{(water / required) * 100}}%`;
-            starchCounter.textContent = `Starch: ${{starch}} / ${{starchGoal}}`;
-        }}
+        }
 
-        // ... (other functions like checkPhotosynthesis, handleInteraction, etc.) ...
-        function checkPhotosynthesis() {{
-            if (sun >= required && co2 >= required && water >= required) {{
+        function updateProgressBars() {
+            sunProgress.style.width = `${(sun / required) * 100}%`;
+            co2Progress.style.width = `${(co2 / required) * 100}%`;
+            h2oProgress.style.width = `${(water / required) * 100}%`;
+            starchCounter.textContent = `Starch: ${starch} / ${starchGoal}`;
+        }
+
+        function checkPhotosynthesis() {
+            if (sun >= required && co2 >= required && water >= required) {
                 sun -= required; co2 -= required; water -= required;
                 starch++;
                 updateProgressBars();
-                if (starch >= starchGoal) {{
+                if (starch >= starchGoal) {
                     endGame(true);
-                }}
-            }}
-        }}
+                }
+            }
+        }
 
-        function handleInteraction(event) {{
+        function handleInteraction(event) {
             if (gameOver) return;
             const rect = canvas.getBoundingClientRect();
             const x = (event.clientX || event.touches[0].clientX) - rect.left;
             const y = (event.clientY || event.touches[0].clientY) - rect.top;
 
-            for (let i = gameObjects.length - 1; i >= 0; i--) {{
+            for (let i = gameObjects.length - 1; i >= 0; i--) {
                 const obj = gameObjects[i];
                 const distance = Math.sqrt((x - obj.x)**2 + (y - obj.y)**2);
-                if (distance < obj.radius) {{
+                if (distance < obj.radius) {
                     if (obj.type === 'sun') sun = Math.min(sun + 1, required);
                     else if (obj.type === 'co2') co2 = Math.min(co2 + 1, required);
                     else if (obj.type === 'water') water = Math.min(water + 1, required);
@@ -281,57 +279,53 @@ This is the quality and structure you must replicate for the topic "{topic}".
                     updateProgressBars();
                     checkPhotosynthesis();
                     break;
-                }}
-            }}
-        }}
+                }
+            }
+        }
         
         canvas.addEventListener('click', handleInteraction);
-        canvas.addEventListener('touchstart', (e) => {{ e.preventDefault(); handleInteraction(e); }}, {{ passive: false }});
+        canvas.addEventListener('touchstart', (e) => { e.preventDefault(); handleInteraction(e); }, { passive: false });
         
-        function endGame(isWin) {{
+        function endGame(isWin) {
             gameOver = true;
             winLoseScreen.style.display = 'flex';
             winLoseMessage.textContent = isWin ? 'You Win!' : 'Time Up!';
-        }}
-        
-        function gameLoop() {{
+        }
+
+        function gameLoop() {
             if (gameOver) return;
             requestAnimationFrame(gameLoop);
             
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawPlant();
-            gameObjects.forEach((obj, index) => {{
+            gameObjects.forEach((obj, index) => {
                 obj.update();
                 obj.draw();
                 if (obj.y < -obj.radius) gameObjects.splice(index, 1);
-            }});
-        }}
+            });
+        }
 
         setInterval(spawnObject, 1000);
-        const timerInterval = setInterval(() => {{
-            if (gameOver) {{
+        const timerInterval = setInterval(() => {
+            if (gameOver) {
                 clearInterval(timerInterval);
                 return;
-            }}
+            }
             timeLeft--;
-            // DEFINITIVE FIX APPLIED HERE:
-            timerDisplay.textContent = `Time: ${{timeLeft}}`;
-            if (timeLeft <= 0) {{
+            timerDisplay.textContent = `Time: ${timeLeft}`;
+            if (timeLeft <= 0) {
                 endGame(false);
-            }}
-        }}, 1000);
+            }
+        }, 1000);
 
         updateProgressBars();
         requestAnimationFrame(gameLoop);
     </script>
 </body>
 </html>
-```
-
-Now, based on that blueprint, create the game for "{topic}".
 """
             
-            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
         safety_settings = {{HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}}
         response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
         
