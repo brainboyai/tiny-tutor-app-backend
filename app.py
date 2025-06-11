@@ -122,32 +122,45 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # This new prompt encourages creativity and variety in game mechanics.
+            # **PROMPT ITERATION 2**
+            # This prompt is heavily revised based on user feedback to enforce higher quality standards.
             prompt_template = """
-You are a creative and expert game developer specializing in simple, educational, 2D web-based "hyper-casual" games.
-Your mission is to invent and build a complete, playable game about the provided topic: "TOPIC_PLACEHOLDER".
+You are a highly skilled game developer creating simple, educational, and polished 2D web games.
+Your task is to invent and build a complete, playable game about the topic: "TOPIC_PLACEHOLDER".
 
-**GAME DESIGN PHILOSOPHY:**
-1.  **Metaphorical Mechanics:** The core game mechanic MUST be a simple, intuitive metaphor for the educational topic. Do not just put text on a screen; make the *action* of playing the game teach the concept.
-2.  **Hyper-Casual:** The game should be instantly understandable. Think one-button or single-tap/click controls. It should be fast-paced and rewarding.
-3.  **Educational Goal:** The player should have a clear goal that reflects a key learning objective of the topic.
+---
+### **GAME DESIGN - MUST-FOLLOW PRINCIPLES**
+---
+1.  **Metaphorical Mechanics:** The core game mechanic MUST be a simple, intuitive metaphor for the educational topic. The *action* of playing must teach the concept.
+2.  **Clear Visuals & Labeling:** This is critical. Game objects MUST be clearly identifiable.
+    * **Use Text Labels:** If objects represent concepts like 'CO₂', 'H₂O', or 'Amino Acid', draw the text label directly onto the object in the canvas.
+    * **Use Recognizable Shapes:** If not using text, use simple, distinct shapes and colors (e.g., a yellow circle for a sun, a blue droplet for water). The player must always know what they are interacting with.
+3.  **Polished Aesthetics & Feedback:**
+    * **Visuals:** Use a clean, modern aesthetic with a pleasing color palette. Animate objects smoothly.
+    * **Sound:** Add **brief, event-driven** sound effects for key actions (e.g., a 'blip' on collect, a 'buzz' on error). Use the Web Audio API to create simple, pleasant tones. **AVOID continuous or looping sounds**, especially on win/lose screens, as they are disruptive.
 
-**MUST-FOLLOW TECHNICAL RULES:**
-1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded.
-2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs (Canvas API, Web Audio API for simple sounds, etc.).
-3.  **RESPONSIVE & CROSS-INPUT:** The game must be designed for a mobile-first experience (touch) but also be fully playable on a desktop (mouse clicks). The layout must be fluid.
-4.  **COMPLETE & PLAYABLE:** The game must be fully functional from start to finish with clear win/lose conditions (e.g., reaching a score, running out of time, making too many mistakes).
-5.  **START SCREEN:** Before the game begins, display a simple overlay that clearly explains the objective and how to play (the core mechanic). This overlay must have a "Start Game" button. The game's timer and animations must only begin *after* this button is clicked.
-6.  **AESTHETICS:** Use clean, modern aesthetics. Good use of color, simple shapes, and smooth animations is crucial. Add satisfying visual feedback (e.g., a particle effect on click) and sound feedback (generate simple tones with the Web Audio API) for player actions.
+---
+### **TECHNICAL - MUST-FOLLOW RULES**
+---
+1.  **SINGLE HTML FILE:** The entire output MUST be a single, self-contained HTML file. Embed all CSS and JavaScript. Ensure the HTML head includes `<meta charset="UTF-8">`.
+2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs (Canvas, Web Audio).
+3.  **UNIFIED INPUT HANDLING:** This is a strict requirement for usability.
+    * Listen for both `click` and `touchstart` events on the canvas.
+    * Create a **single function** to handle both. This function must normalize the input coordinates (e.g., `const x = (event.clientX || event.touches[0].clientX) - rect.left;`).
+    * Call `event.preventDefault()` within the touch event listener to prevent unwanted scrolling or zooming on mobile.
+4.  **COMPLETE & PLAYABLE:**
+    * The game must be fully functional with clear win/lose conditions (e.g., reach a score, run out of time).
+    * **Scoring must be logical and clearly visible.** The score should update in real-time on the screen. For example, +10 for a correct action, -5 for an incorrect one.
+5.  **START SCREEN:** Always include a simple overlay that clearly explains the objective and how to play. This overlay must have a "Start Game" button. The game's timer and animations must only begin *after* this button is clicked.
 
-**INSPIRATIONAL IDEAS (DO NOT COPY, USE FOR INSPIRATION):**
-* **Topic: 'Chemical Reactions'**: A "catcher" game where you move a molecule at the bottom to catch falling reactant atoms to form a specific product. Avoid catching the wrong atoms.
-* **Topic: 'Solubility'**: A game where different substances (e.g., salt, sand) drop into a beaker of water. The player has to tap rapidly on the soluble ones to "dissolve" them before they hit the bottom, but let the insoluble ones sink.
-* **Topic: 'Herbivores vs Carnivores'**: A simple maze game. You control a herbivore and must "eat" all the plants. A carnivore AI roams the maze, and you lose if it catches you.
-* **Topic: 'Algebra'**: An equation appears at the top (e.g., "x + 5 = 10"). Number bubbles float up, and the player must tap the correct bubble (e.g., "5") that solves for x.
-* **Topic: 'Blockchain'**: A game where you click to add a new "block" to a growing chain. Each time you add a block, a mini-puzzle (like a 2-second memory match) appears that you must solve to "validate" the block and secure the chain.
+---
+### **INSPIRATIONAL IDEAS (Use for inspiration on game mechanics, DO NOT copy the code)**
+---
+* **Topic: 'Solubility'**: Substances (labeled 'Salt', 'Sand') fall into a beaker. The player must tap rapidly on the 'Salt' to dissolve it for points before it hits the bottom. Tapping 'Sand' loses points.
+* **Topic: 'Algebra'**: An equation like "x + 5 = 10" appears. Number bubbles float up. The player must tap the bubble labeled "5" to score. A new equation appears.
+* **Topic: 'Blockchain'**: A player taps to add a new "block" to a growing chain. Each time, a mini-puzzle appears (e.g., a 2-second memory match) to "validate" the block.
 
-Now, apply this philosophy and these rules. Invent a unique and fitting hyper-casual game for the topic: "TOPIC_PLACEHOLDER".
+Now, apply these strict principles and rules. Invent a unique and polished hyper-casual game for the topic: "TOPIC_PLACEHOLDER".
 """
             prompt = prompt_template.replace("TOPIC_PLACEHOLDER", topic)
             
