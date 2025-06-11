@@ -122,45 +122,49 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # **PROMPT ITERATION 2**
-            # This prompt is heavily revised based on user feedback to enforce higher quality standards.
+            # **PROMPT ITERATION 3**
+            # This version adds a final checklist and stricter rules for UI bugs and readability.
             prompt_template = """
-You are a highly skilled game developer creating simple, educational, and polished 2D web games.
-Your task is to invent and build a complete, playable game about the topic: "TOPIC_PLACEHOLDER".
+You are an expert-level game developer creating polished, simple, and educational 2D web games.
+Your task is to invent and build a flawless, playable game on the topic: "TOPIC_PLACEHOLDER".
 
 ---
 ### **GAME DESIGN - MUST-FOLLOW PRINCIPLES**
 ---
-1.  **Metaphorical Mechanics:** The core game mechanic MUST be a simple, intuitive metaphor for the educational topic. The *action* of playing must teach the concept.
-2.  **Clear Visuals & Labeling:** This is critical. Game objects MUST be clearly identifiable.
-    * **Use Text Labels:** If objects represent concepts like 'CO₂', 'H₂O', or 'Amino Acid', draw the text label directly onto the object in the canvas.
-    * **Use Recognizable Shapes:** If not using text, use simple, distinct shapes and colors (e.g., a yellow circle for a sun, a blue droplet for water). The player must always know what they are interacting with.
+1.  **Metaphorical Mechanics:** The core game mechanic MUST be an intuitive metaphor for the educational topic. The *action* of playing must teach the concept. Think beyond simple collection. Could the goal be to build something, reach a destination, or survive against escalating challenges?
+2.  **Clear Visuals & Labeling:** This is a non-negotiable rule for usability.
+    * **Label Everything:** Draw clear text labels directly onto all key game objects in the canvas (e.g., 'H₂O', 'Pollen', 'Sand').
+    * **High Contrast Text:** Labels MUST be easy to read. Use black text on light objects and white text on dark objects.
 3.  **Polished Aesthetics & Feedback:**
     * **Visuals:** Use a clean, modern aesthetic with a pleasing color palette. Animate objects smoothly.
-    * **Sound:** Add **brief, event-driven** sound effects for key actions (e.g., a 'blip' on collect, a 'buzz' on error). Use the Web Audio API to create simple, pleasant tones. **AVOID continuous or looping sounds**, especially on win/lose screens, as they are disruptive.
+    * **Sound:** Use the Web Audio API to add **brief, event-driven, and pleasant** sound effects for key actions (e.g., a 'blip' on collect, 'buzz' on error). **STRICTLY FORBIDDEN: Continuous or looping sounds.**
 
 ---
 ### **TECHNICAL - MUST-FOLLOW RULES**
 ---
-1.  **SINGLE HTML FILE:** The entire output MUST be a single, self-contained HTML file. Embed all CSS and JavaScript. Ensure the HTML head includes `<meta charset="UTF-8">`.
-2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs (Canvas, Web Audio).
-3.  **UNIFIED INPUT HANDLING:** This is a strict requirement for usability.
+1.  **SINGLE HTML FILE:** The entire output must be a single, self-contained HTML file. Embed all CSS and JavaScript. Include `<meta charset="UTF-8">` in the head.
+2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs.
+3.  **UNIFIED INPUT HANDLING:**
     * Listen for both `click` and `touchstart` events on the canvas.
-    * Create a **single function** to handle both. This function must normalize the input coordinates (e.g., `const x = (event.clientX || event.touches[0].clientX) - rect.left;`).
-    * Call `event.preventDefault()` within the touch event listener to prevent unwanted scrolling or zooming on mobile.
-4.  **COMPLETE & PLAYABLE:**
-    * The game must be fully functional with clear win/lose conditions (e.g., reach a score, run out of time).
-    * **Scoring must be logical and clearly visible.** The score should update in real-time on the screen. For example, +10 for a correct action, -5 for an incorrect one.
-5.  **START SCREEN:** Always include a simple overlay that clearly explains the objective and how to play. This overlay must have a "Start Game" button. The game's timer and animations must only begin *after* this button is clicked.
+    * Create a **single function** to handle both, normalizing input coordinates (e.g., `const x = (event.clientX || event.touches[0].clientX) - rect.left;`).
+    * Call `event.preventDefault()` inside the `touchstart` listener to prevent unwanted mobile browser behaviors.
+4.  **START SCREEN & UI FLOW:**
+    * Always provide a start screen overlay that explains the objective and controls.
+    * **CRITICAL UI FIX:** When the "Start Game" button is clicked, your script **MUST** set the start screen element's style to `display = 'none'` to guarantee it is completely hidden and does not interfere with the game.
+5.  **COMPLETE & PLAYABLE:**
+    * The game must be fully functional with clear win/lose conditions.
+    * The score must be logical, updated in real-time, and always visible on the screen.
 
 ---
-### **INSPIRATIONAL IDEAS (Use for inspiration on game mechanics, DO NOT copy the code)**
+### **FINAL QUALITY CHECKLIST (Review your code against this before finishing)**
 ---
-* **Topic: 'Solubility'**: Substances (labeled 'Salt', 'Sand') fall into a beaker. The player must tap rapidly on the 'Salt' to dissolve it for points before it hits the bottom. Tapping 'Sand' loses points.
-* **Topic: 'Algebra'**: An equation like "x + 5 = 10" appears. Number bubbles float up. The player must tap the bubble labeled "5" to score. A new equation appears.
-* **Topic: 'Blockchain'**: A player taps to add a new "block" to a growing chain. Each time, a mini-puzzle appears (e.g., a 2-second memory match) to "validate" the block.
+1.  **Input:** Is there one function handling both `click` and `touchstart`?
+2.  **Start Screen:** Does the start screen `div` get `display = 'none'` when the game begins? (This prevents the overlap bug).
+3.  **Labels:** Are game objects labeled with high-contrast, readable text?
+4.  **Sound:** Are all sounds short, pleasant, and non-looping?
+5.  **Goal:** Is the game's objective clear and achievable?
 
-Now, apply these strict principles and rules. Invent a unique and polished hyper-casual game for the topic: "TOPIC_PLACEHOLDER".
+Now, apply these strict principles and rules. Invent a unique and polished game for the topic: "TOPIC_PLACEHOLDER".
 """
             prompt = prompt_template.replace("TOPIC_PLACEHOLDER", topic)
             
@@ -188,7 +192,6 @@ Now, apply these strict principles and rules. Invent a unique and polished hyper
     except Exception as e:
         app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
         return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
-
 
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
