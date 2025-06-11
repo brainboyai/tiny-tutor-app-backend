@@ -637,172 +637,23 @@ You are an expert educational game designer. Your task is to generate a complete
 </html>
 ```
 
----
-### **TEMPLATE D: THE STACKING GAME (NEW!)**
----
-* **Best for:** Structure, order, building (e.g., Food Pyramid, Layers of the Earth, Computer Parts).
-* **Gameplay:** Player moves a platform left/right to catch falling blocks in the correct order to build a stable tower.
-
-```html
-<!-- TEMPLATE D: STACKING GAME -->
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title><!-- 1. TOPIC --> Stacker</title>
-    <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
-        #game-container { width: 100%; height: 100%; position: relative; background-color: #d0e7f9; }
-        canvas { display: block; }
-        #ui-bar { position: absolute; top: 10px; width: 100%; text-align: center; color: #333; font-size: 1.5em; font-weight: bold; }
-        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
-        .overlay h1 { font-size: 3em; } .overlay p { font-size: 1.2em; max-width: 80%; } .overlay button { font-size: 1.5em; padding: 0.5em 1.5em; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; margin-top: 20px; }
-    </style>
-</head>
-<body>
-    <div id="game-container">
-        <canvas id="gameCanvas"></canvas>
-        <div id="ui-bar">Next: <span id="next-block"></span></div>
-        <div id="start-screen" class="overlay">
-            <h1><!-- 2. GAME_TITLE --></h1>
-            <p><!-- 3. GAME_INSTRUCTIONS --></p>
-            <button id="start-button">Start</button>
-        </div>
-        <div id="end-screen" class="overlay" style="display: none;">
-            <h1 id="end-message"></h1>
-            <button id="restart-button">Play Again</button>
-        </div>
-    </div>
-    <script>
-        const canvas = document.getElementById('gameCanvas');
-        const ctx = canvas.getContext('2d');
-        const nextBlockEl = document.getElementById('next-block');
-        let platform, fallingBlock, stackedBlocks = [], currentBlockIndex, gameLoopId, hasDropped;
-        
-        // <!-- 4. DEFINE THE ORDERED BLOCKS TO STACK -->
-        const blockOrder = [
-            { name: 'Producers', color: '#2ecc71'},
-            { name: 'Primary Consumers', color: '#f1c40f'},
-            { name: 'Secondary Consumers', color: '#e67e22'},
-            { name: 'Tertiary Consumers', color: '#e74c3c'}
-        ];
-
-        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
-
-        function init() {
-            platform = { x: canvas.width / 2 - 50, y: canvas.height - 30, width: 100, height: 20 };
-            stackedBlocks = [];
-            currentBlockIndex = 0;
-            hasDropped = false;
-            nextBlockEl.textContent = blockOrder[currentBlockIndex].name;
-            spawnBlock();
-        }
-
-        function spawnBlock() {
-            if (currentBlockIndex >= blockOrder.length) {
-                endGame(true);
-                return;
-            }
-            const blockProps = blockOrder[currentBlockIndex];
-            fallingBlock = { x: canvas.width / 2 - 40, y: 0, width: 80, height: 30, color: blockProps.color, name: blockProps.name, vy: 2 };
-            hasDropped = false;
-            nextBlockEl.textContent = (currentBlockIndex + 1 < blockOrder.length) ? blockOrder[currentBlockIndex + 1].name : 'You win!';
-        }
-
-        function dropBlock() { hasDropped = true; }
-
-        function gameLoop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            // Draw Platform
-            ctx.fillStyle = '#34495e';
-            ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
-
-            // Draw Stacked Blocks
-            stackedBlocks.forEach(block => {
-                ctx.fillStyle = block.color;
-                ctx.fillRect(block.x, block.y, block.width, block.height);
-                ctx.fillStyle = 'white'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(block.name, block.x + block.width/2, block.y + block.height/2);
-            });
-
-            // Handle Falling Block
-            if (fallingBlock) {
-                if(hasDropped) {
-                    fallingBlock.y += fallingBlock.vy;
-                } else {
-                    fallingBlock.x = platform.x + 10; // Follow platform
-                }
-                
-                // Draw falling block
-                ctx.fillStyle = fallingBlock.color;
-                ctx.fillRect(fallingBlock.x, fallingBlock.y, fallingBlock.width, fallingBlock.height);
-                ctx.fillStyle = 'white'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(fallingBlock.name, fallingBlock.x + fallingBlock.width/2, fallingBlock.y + fallingBlock.height/2);
-
-                // Collision Detection
-                const stackTopY = stackedBlocks.length > 0 ? stackedBlocks[stackedBlocks.length - 1].y : platform.y;
-                if (fallingBlock.y + fallingBlock.height >= stackTopY) {
-                    // Check for horizontal alignment
-                    const lastBlock = stackedBlocks.length > 0 ? stackedBlocks[stackedBlocks.length - 1] : platform;
-                    const overlap = Math.max(0, Math.min(fallingBlock.x + fallingBlock.width, lastBlock.x + lastBlock.width) - Math.max(fallingBlock.x, lastBlock.x));
-                    if (overlap / fallingBlock.width > 0.5) { // Needs > 50% overlap to land
-                        fallingBlock.y = stackTopY - fallingBlock.height;
-                        stackedBlocks.push(fallingBlock);
-                        fallingBlock = null;
-                        currentBlockIndex++;
-                        setTimeout(spawnBlock, 500);
-                    } else {
-                        endGame(false); // Misaligned
-                    }
-                }
-            }
-            gameLoopId = requestAnimationFrame(gameLoop);
-        }
-
-        function movePlatform(event) {
-            const rect = canvas.getBoundingClientRect();
-            platform.x = (event.clientX || event.touches[0].clientX) - rect.left - platform.width / 2;
-        }
-
-        function startGame() {
-            document.getElementById('start-screen').style.display = 'none';
-            document.getElementById('end-screen').style.display = 'none';
-            init();
-            gameLoopId = requestAnimationFrame(gameLoop);
-        }
-
-        function endGame(isWin) {
-            cancelAnimationFrame(gameLoopId);
-            document.getElementById('end-message').textContent = isWin ? 'You Win! Tower Complete!' : 'Game Over! Tower fell!';
-            document.getElementById('end-screen').style.display = 'flex';
-        }
-        
-        document.getElementById('start-button').addEventListener('click', startGame);
-        document.getElementById('restart-button').addEventListener('click', startGame);
-        canvas.addEventListener('mousemove', movePlatform);
-        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); movePlatform(e); }, { passive: false });
-        canvas.addEventListener('click', dropBlock);
-        canvas.addEventListener('touchstart', dropBlock);
-        window.addEventListener('resize', resizeCanvas);
-        resizeCanvas();
-    </script>
-</body>
-</html>
-```
-
-Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user's desired topic.
+Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user's desired topic. For example, "Photosynthesis".
 """
             prompt = prompt_template.replace("TOPIC_PLACEHOLDER", topic)
             
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
             safety_settings = {HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
             
+            # The AI's first line of its response should be its reasoning.
+            # We can capture this to log it, but the final output should be only the HTML.
             response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
             
             generated_text = response.text.strip()
             
+            # Find the start of the HTML code
             html_start_index = generated_text.find('<!DOCTYPE html>')
             if html_start_index == -1:
+                # Fallback if the AI doesn't produce the expected format
                 html_start_index = generated_text.find('<')
 
             if html_start_index != -1:
@@ -810,13 +661,16 @@ Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user
                 generated_html = generated_text[html_start_index:]
                 app.logger.info(f"AI reasoning for topic '{topic}': {reasoning}")
 
+                # Strip markdown code block fences if they exist
                 if generated_html.startswith("```html"):
-                    generated_html = generated_html[7:].strip()
+                    generated_html = generated_html[7:]
                 if generated_html.endswith("```"):
-                    generated_html = generated_html[:-3].strip()
+                    generated_html = generated_html[:-3]
             else:
+                # If no HTML is found, treat the whole response as an error/debug message
                 generated_html = f"<p>Error: AI did not generate valid HTML. Full response: {generated_text}</p>"
                 app.logger.error(f"AI failed to generate valid HTML for topic '{topic}'")
+
 
             update_payload = {
                 'word': topic,
