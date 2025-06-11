@@ -104,7 +104,9 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str):
     )
 
     try:
+        # **FIX:** Instantiate the GenerativeModel *before* calling generate_content.
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=STORY_NODE_SCHEMA)
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH,
@@ -113,28 +115,23 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str):
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH
         }
         
-        response = genai.generate_content(
+        # Now, call the method on the 'gemini_model' object.
+        response = gemini_model.generate_content(
             prompt_to_send,
             generation_config=generation_config,
             safety_settings=safety_settings
         )
 
-        # **FIX 1:** Check for a block reason immediately after the API call.
-        # This can happen even if the call itself doesn't raise an exception.
-        if response.prompt_feedback.block_reason:
+        if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
              raise ValueError(f"Prompt blocked for safety reasons: {response.prompt_feedback.block_reason}")
 
-        # **FIX 2:** Parse the JSON response text within this function.
-        # If this fails, it will raise a JSONDecodeError.
         parsed_node = json.loads(response.text)
         return parsed_node
 
     except json.JSONDecodeError as e:
         logging.error(f"JSONDecodeError in story_generator: Could not parse AI response. Error: {e}")
-        # Raise a new, more specific error to be caught by the route.
         raise ValueError("AI returned unreadable JSON format.")
     except Exception as e:
         logging.error(f"A general error occurred in story_generator: {e}")
-        # Re-raise any other exceptions (like network errors) to be handled by the route.
         raise
 
