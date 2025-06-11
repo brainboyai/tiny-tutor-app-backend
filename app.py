@@ -410,13 +410,13 @@ You are an expert educational game designer. Your task is to generate a complete
 ```
 
 ---
-### **TEMPLATE D: THE STACKING GAME (NEW!)**
+### **TEMPLATE D: THE DYNAMIC STACKING GAME (IMPROVED)**
 ---
 * **Best for:** Structure, order, building (e.g., Food Pyramid, Layers of the Earth, Computer Parts).
-* **Gameplay:** Player moves a platform left/right to catch falling blocks in the correct order to build a stable tower.
+* **Gameplay:** Player moves a platform to catch randomly falling blocks in the correct sequence. Catching the wrong block ends the game.
 
 ```html
-<!-- TEMPLATE D: STACKING GAME -->
+<!-- TEMPLATE D: DYNAMIC STACKING GAME -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -434,10 +434,10 @@ You are an expert educational game designer. Your task is to generate a complete
 <body>
     <div id="game-container">
         <canvas id="gameCanvas"></canvas>
-        <div id="ui-bar">Next: <span id="next-block"></span></div>
+        <div id="ui-bar">Next to catch: <span id="next-block"></span></div>
         <div id="start-screen" class="overlay">
-            <h1><!-- 2. GAME_TITLE --></h1>
-            <p><!-- 3. GAME_INSTRUCTIONS --></p>
+            <h1><!-- 2. GAME_TITLE (e.g., Food Pyramid Stacker) --></h1>
+            <p><!-- 3. GAME_INSTRUCTIONS (e.g., Move the platform to catch the food groups in the correct order, from bottom to top. Catching the wrong one will collapse the pyramid!) --></p>
             <button id="start-button">Start</button>
         </div>
         <div id="end-screen" class="overlay" style="display: none;">
@@ -449,39 +449,69 @@ You are an expert educational game designer. Your task is to generate a complete
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
         const nextBlockEl = document.getElementById('next-block');
-        let platform, fallingBlock, stackedBlocks = [], currentBlockIndex, gameLoopId, hasDropped;
+        let platform, fallingObjects = [], stackedBlocks = [], currentBlockIndex, gameLoopId, spawnInterval;
         
         // <!-- 4. DEFINE THE ORDERED BLOCKS TO STACK -->
-        const blockOrder = [
-            { name: 'Producers', color: '#2ecc71'},
-            { name: 'Primary Consumers', color: '#f1c40f'},
-            { name: 'Secondary Consumers', color: '#e67e22'},
-            { name: 'Tertiary Consumers', color: '#e74c3c'}
+        const buildOrder = [
+            { name: 'Grains', color: '#f39c12'},
+            { name: 'Vegetables', color: '#2ecc71'},
+            { name: 'Fruits', color: '#e74c3c'},
+            { name: 'Dairy', color: '#3498db'},
+            { name: 'Protein', color: '#9b59b6'}
         ];
 
         function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 
         function init() {
-            platform = { x: canvas.width / 2 - 50, y: canvas.height - 30, width: 100, height: 20 };
+            platform = { x: canvas.width / 2 - 75, y: canvas.height - 50, width: 150, height: 20 };
             stackedBlocks = [];
+            fallingObjects = [];
             currentBlockIndex = 0;
-            hasDropped = false;
-            nextBlockEl.textContent = blockOrder[currentBlockIndex].name;
-            spawnBlock();
+            updateNextBlockUI();
         }
-
-        function spawnBlock() {
-            if (currentBlockIndex >= blockOrder.length) {
-                endGame(true);
-                return;
+        
+        function updateNextBlockUI(){
+             if (currentBlockIndex < buildOrder.length) {
+                nextBlockEl.textContent = buildOrder[currentBlockIndex].name;
+            } else {
+                nextBlockEl.textContent = 'Done!';
             }
-            const blockProps = blockOrder[currentBlockIndex];
-            fallingBlock = { x: canvas.width / 2 - 40, y: 0, width: 80, height: 30, color: blockProps.color, name: blockProps.name, vy: 2 };
-            hasDropped = false;
-            nextBlockEl.textContent = (currentBlockIndex + 1 < blockOrder.length) ? blockOrder[currentBlockIndex + 1].name : 'You win!';
         }
 
-        function dropBlock() { hasDropped = true; }
+        function spawnObject() {
+            const shouldSpawnCorrect = Math.random() > 0.4; // 60% chance to spawn the needed block
+            let blockToSpawn;
+            if (shouldSpawnCorrect && currentBlockIndex < buildOrder.length) {
+                blockToSpawn = buildOrder[currentBlockIndex];
+            } else {
+                // Spawn a random, incorrect block
+                const incorrectOptions = buildOrder.filter((_, index) => index !== currentBlockIndex);
+                if (incorrectOptions.length > 0) {
+                   blockToSpawn = incorrectOptions[Math.floor(Math.random() * incorrectOptions.length)];
+                } else {
+                   return; // Nothing left to spawn
+                }
+            }
+            
+            fallingObjects.push({
+                x: Math.random() * (canvas.width - 80),
+                y: -30,
+                width: 100,
+                height: 30,
+                color: blockToSpawn.color,
+                name: blockToSpawn.name,
+                vy: 2
+            });
+        }
+        
+        function drawBlocks() {
+            [...stackedBlocks, ...fallingObjects].forEach(block => {
+                ctx.fillStyle = block.color;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+                ctx.fillStyle = 'white'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(block.name, block.x + block.width / 2, block.y + block.height / 2);
+            });
+        }
 
         function gameLoop() {
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -489,45 +519,31 @@ You are an expert educational game designer. Your task is to generate a complete
             ctx.fillStyle = '#34495e';
             ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
 
-            // Draw Stacked Blocks
-            stackedBlocks.forEach(block => {
-                ctx.fillStyle = block.color;
-                ctx.fillRect(block.x, block.y, block.width, block.height);
-                ctx.fillStyle = 'white'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(block.name, block.x + block.width/2, block.y + block.height/2);
-            });
+            // Update and draw falling objects
+            for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                const block = fallingObjects[i];
+                block.y += block.vy;
 
-            // Handle Falling Block
-            if (fallingBlock) {
-                if(hasDropped) {
-                    fallingBlock.y += fallingBlock.vy;
-                } else {
-                    fallingBlock.x = platform.x + 10; // Follow platform
-                }
-                
-                // Draw falling block
-                ctx.fillStyle = fallingBlock.color;
-                ctx.fillRect(fallingBlock.x, fallingBlock.y, fallingBlock.width, fallingBlock.height);
-                ctx.fillStyle = 'white'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-                ctx.fillText(fallingBlock.name, fallingBlock.x + fallingBlock.width/2, fallingBlock.y + fallingBlock.height/2);
-
-                // Collision Detection
-                const stackTopY = stackedBlocks.length > 0 ? stackedBlocks[stackedBlocks.length - 1].y : platform.y;
-                if (fallingBlock.y + fallingBlock.height >= stackTopY) {
-                    // Check for horizontal alignment
-                    const lastBlock = stackedBlocks.length > 0 ? stackedBlocks[stackedBlocks.length - 1] : platform;
-                    const overlap = Math.max(0, Math.min(fallingBlock.x + fallingBlock.width, lastBlock.x + lastBlock.width) - Math.max(fallingBlock.x, lastBlock.x));
-                    if (overlap / fallingBlock.width > 0.5) { // Needs > 50% overlap to land
-                        fallingBlock.y = stackTopY - fallingBlock.height;
-                        stackedBlocks.push(fallingBlock);
-                        fallingBlock = null;
+                // Collision with platform
+                if (block.y + block.height >= platform.y && block.x < platform.x + platform.width && block.x + block.width > platform.x) {
+                    if (block.name === buildOrder[currentBlockIndex].name) {
+                        // Correct block caught
+                        block.y = platform.y - (stackedBlocks.length + 1) * block.height;
+                        block.x = platform.x + (platform.width - block.width)/2; // Center it
+                        stackedBlocks.push(block);
                         currentBlockIndex++;
-                        setTimeout(spawnBlock, 500);
+                        updateNextBlockUI();
+                        if (currentBlockIndex >= buildOrder.length) endGame(true);
                     } else {
-                        endGame(false); // Misaligned
+                        // Wrong block caught
+                        endGame(false);
                     }
+                    fallingObjects.splice(i, 1);
+                } else if (block.y > canvas.height) {
+                    fallingObjects.splice(i, 1);
                 }
             }
+            drawBlocks();
             gameLoopId = requestAnimationFrame(gameLoop);
         }
 
@@ -540,12 +556,14 @@ You are an expert educational game designer. Your task is to generate a complete
             document.getElementById('start-screen').style.display = 'none';
             document.getElementById('end-screen').style.display = 'none';
             init();
+            spawnInterval = setInterval(spawnObject, 1500); // Spawn a new block every 1.5 seconds
             gameLoopId = requestAnimationFrame(gameLoop);
         }
 
         function endGame(isWin) {
             cancelAnimationFrame(gameLoopId);
-            document.getElementById('end-message').textContent = isWin ? 'You Win! Tower Complete!' : 'Game Over! Tower fell!';
+            clearInterval(spawnInterval);
+            document.getElementById('end-message').textContent = isWin ? 'Pyramid Complete!' : 'Wrong Order! Tower Collapsed!';
             document.getElementById('end-screen').style.display = 'flex';
         }
         
@@ -553,8 +571,6 @@ You are an expert educational game designer. Your task is to generate a complete
         document.getElementById('restart-button').addEventListener('click', startGame);
         canvas.addEventListener('mousemove', movePlatform);
         canvas.addEventListener('touchmove', (e) => { e.preventDefault(); movePlatform(e); }, { passive: false });
-        canvas.addEventListener('click', dropBlock);
-        canvas.addEventListener('touchstart', dropBlock);
         window.addEventListener('resize', resizeCanvas);
         resizeCanvas();
     </script>
