@@ -1,3 +1,5 @@
+# app.py
+
 import base64
 import json
 import os
@@ -18,24 +20,20 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
-# --- NEW: Import the game generator function ---
+# --- Correctly importing our new modules ---
 from game_generator import generate_game_for_topic
-
-# In app.py, add this import at the top with the other imports
 from story_generator import generate_story_node
 
 # Load environment variables from .env file
 load_dotenv()
 app = Flask(__name__)
 
-# --- (The rest of your initial setup remains the same) ---
-# CORS, JWT, Firebase, Gemini config, Limiter, etc.
-# ... (keep all that code as is)
+# --- (All your initial setup code remains exactly the same) ---
 CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
-
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
+# Firebase initialization...
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 db = None
 if service_account_key_base64:
@@ -56,6 +54,7 @@ if service_account_key_base64:
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found. Firebase Admin SDK not initialized.")
 
+# Gemini API configuration...
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
     try:
@@ -66,6 +65,7 @@ if gemini_api_key:
 else:
     app.logger.warning("GEMINI_API_KEY not found. Google Gemini API not configured.")
 
+# Rate limiter setup...
 limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
 
 def sanitize_word_for_id(word: str) -> str:
@@ -95,15 +95,50 @@ def token_required(f):
 # --- (End of initial setup) ---
 
 
-# --- REFACTORED: The generate_game_route is now much cleaner ---
+# --- REPLACED: The /generate_story_node route is now cleaner and has robust error handling ---
+@app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
+@token_required
+@limiter.limit("200/hour")
+def generate_story_node_route(current_user_id):
+    if not gemini_api_key:
+        return jsonify({"error": "AI service not configured"}), 500
+    
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No input data provided"}), 400
+
+    topic = data.get('topic', '').strip()
+    history = data.get('history', [])
+    last_choice_leads_to = data.get('leads_to')
+
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
+
+    try:
+        # **FIX 3:** The call to the generator is now inside the try block.
+        # The function will return a parsed dictionary or raise an error.
+        parsed_node = generate_story_node(topic, history, last_choice_leads_to)
+        return jsonify(parsed_node), 200
+
+    except ValueError as e:
+        # **FIX 4:** Catch the specific ValueError we created for clear feedback.
+        error_message = str(e)
+        app.logger.warning(f"ValueError in story generation for user {current_user_id} on topic '{topic}': {error_message}")
+        if "blocked" in error_message.lower():
+            return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
+        else: # This handles our "unreadable JSON" error.
+             return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+    except Exception as e:
+        # **FIX 5:** Catch all other unexpected errors (e.g., network issues).
+        app.logger.error(f"FATAL Exception in /generate_story_node for user {current_user_id} on topic '{topic}': {e}")
+        return jsonify({"error": "An unexpected server error occurred while creating the story."}), 500
+
+
+# --- (All other routes like /generate_game, /signup, /login, etc., remain the same) ---
 @app.route('/generate_game', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("50/hour")
 def generate_game_route(current_user_id):
-    """
-    Generates or retrieves a cached HTML game for a given topic.
-    The core generation logic is delegated to the game_generator module.
-    """
     if not gemini_api_key:
         return jsonify({"error": "AI service not configured"}), 500
     
@@ -124,16 +159,12 @@ def generate_game_route(current_user_id):
         
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
-            
-            # --- MODIFIED: Call the new function instead of having the prompt here ---
             reasoning, generated_html = generate_game_for_topic(topic)
             
             if not generated_html:
                 raise Exception("Game generation failed in the external module.")
 
             app.logger.info(f"AI reasoning for topic '{topic}': {reasoning}")
-
-            # Cache the newly generated game
             update_payload = {
                 'word': topic,
                 'last_explored_at': firestore.SERVER_TIMESTAMP,
@@ -148,44 +179,7 @@ def generate_game_route(current_user_id):
         app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
         return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
 
-# Replace the ENTIRE existing generate_story_node_route with this refactored version
-@app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
-@token_required
-@limiter.limit("200/hour")
-def generate_story_node_route(current_user_id):
-    if not gemini_api_key:
-        return jsonify({"error": "AI service not configured"}), 500
-    
-    data = request.get_json()
-    if not data:
-        return jsonify({"error": "No input data provided"}), 400
-
-    topic = data.get('topic', '').strip()
-    history = data.get('history', [])
-    last_choice_leads_to = data.get('leads_to')
-
-    if not topic:
-        return jsonify({"error": "Topic is required"}), 400
-
-    try:
-        # Delegate the entire generation process to the new module
-        response = generate_story_node(topic, history, last_choice_leads_to)
-        
-        # Process the response here in the route
-        parsed_node = json.loads(response.text)
-        return jsonify(parsed_node), 200
-
-    except Exception as e:
-        # This centralized error handling is now cleaner
-        app.logger.error(f"FATAL Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
-        # Attempt to check for a block reason if the 'response' object exists from a failed API call
-        try:
-            if 'response' in locals() and response.prompt_feedback.block_reason:
-                app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
-                return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
-        except Exception:
-             pass
-        return jsonify({"error": "The AI returned an unreadable story format. Please try again."}), 500
+# ... keep all other routes (/signup, /login, /profile, etc.) as they are.
 
 @app.route('/')
 def home():

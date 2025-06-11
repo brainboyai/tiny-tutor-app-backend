@@ -1,9 +1,11 @@
+# story_generator.py
+
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
 import json
 
-# The prompt for generating a single turn of the story is now isolated here.
+# The prompt for generating a single turn of the story remains here.
 BASE_PROMPT = """
 You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
 
@@ -84,13 +86,16 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str):
         last_choice_leads_to: The 'leads_to' value from the user's last choice.
 
     Returns:
-        A dictionary representing the parsed JSON of the story node, or raises an exception on failure.
+        A dictionary representing the parsed JSON of the story node.
+    
+    Raises:
+        ValueError: If the API response is blocked or returns unreadable JSON.
+        Exception: For other, more general API or network errors.
     """
     history_str = json.dumps(history, indent=2)
     
-    # The final prompt is constructed here before sending to the API
     prompt_to_send = (
-        f"{BASE_PROMPT}\n\n"
+        f"{BASE_PROMPT.format(topic=topic)}\n\n"
         f"--- YOUR CURRENT TASK ---\n"
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
@@ -114,10 +119,22 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str):
             safety_settings=safety_settings
         )
 
-        # The function now returns the raw response for the route to handle
-        return response
+        # **FIX 1:** Check for a block reason immediately after the API call.
+        # This can happen even if the call itself doesn't raise an exception.
+        if response.prompt_feedback.block_reason:
+             raise ValueError(f"Prompt blocked for safety reasons: {response.prompt_feedback.block_reason}")
 
+        # **FIX 2:** Parse the JSON response text within this function.
+        # If this fails, it will raise a JSONDecodeError.
+        parsed_node = json.loads(response.text)
+        return parsed_node
+
+    except json.JSONDecodeError as e:
+        logging.error(f"JSONDecodeError in story_generator: Could not parse AI response. Error: {e}")
+        # Raise a new, more specific error to be caught by the route.
+        raise ValueError("AI returned unreadable JSON format.")
     except Exception as e:
-        logging.error(f"Error during Gemini API call in story_generator: {e}")
-        # Re-raise the exception to be handled by the calling route
+        logging.error(f"A general error occurred in story_generator: {e}")
+        # Re-raise any other exceptions (like network errors) to be handled by the route.
         raise
+
