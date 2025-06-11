@@ -20,9 +20,10 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 
-# --- Correctly importing our new modules ---
+# --- Importing all our new logic modules ---
 from game_generator import generate_game_for_topic
 from story_generator import generate_story_node
+from explore_generator import generate_explanation, generate_quiz_from_text
 
 # Load environment variables from .env file
 load_dotenv()
@@ -248,146 +249,97 @@ def login_user():
         app.logger.error(f"Login failed: {e}")
         return jsonify({"error": "An internal error occurred during login."}), 500
 
+# --- REFACTORED: /generate_explanation route ---
 @app.route('/generate_explanation', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("150/hour")
 def generate_explanation_route(current_user_id):
     if not db: return jsonify({"error": "Database not configured"}), 500
     if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
+
     data = request.get_json()
     if not data: return jsonify({"error": "No input data provided"}), 400
 
     word = data.get('word', '').strip()
     mode = data.get('mode', 'explain').strip().lower()
     force_refresh = data.get('refresh_cache', False)
-    streak_context_list = data.get('streakContext', []) 
-    explanation_text_for_quiz = data.get('explanation_text', None)
+    streak_context = data.get('streakContext', [])
+    explanation_text_for_quiz = data.get('explanation_text')
 
     if not word: return jsonify({"error": "Word/concept is required"}), 400
-    
     if mode == 'quiz' and not explanation_text_for_quiz:
-        return jsonify({"error": "Explanation text is now mandatory to generate a quiz."}), 400
+        return jsonify({"error": "Explanation text is required to generate a quiz."}), 400
 
     sanitized_word_id = sanitize_word_for_id(word)
     user_word_history_ref = db.collection('users').document(current_user_id).collection('word_history').document(sanitized_word_id)
 
     try:
         word_doc = user_word_history_ref.get()
-        cached_content_from_db = {} 
-        is_favorite_status = False
-        modes_already_generated = []
+        is_contextual_call = mode == 'explain' and bool(streak_context)
 
-        if word_doc.exists:
+        # --- Caching Logic ---
+        if not force_refresh and not is_contextual_call and word_doc.exists:
             word_data = word_doc.to_dict()
-            cached_content_from_db = word_data.get('generated_content_cache', {})
-            is_favorite_status = word_data.get('is_favorite', False)
+            cached_content = word_data.get('generated_content_cache', {})
+            if mode in cached_content:
+                user_word_history_ref.update({'last_explored_at': firestore.SERVER_TIMESTAMP})
+                return jsonify({
+                    "word": word,
+                    mode: cached_content[mode],
+                    "source": "cache",
+                    "is_favorite": word_data.get('is_favorite', False),
+                    "full_cache": cached_content,
+                    "modes_generated": word_data.get('modes_generated', [])
+                }), 200
 
-        is_contextual_explain_call = mode == 'explain' and bool(streak_context_list)
-
-        if mode != 'quiz' and not is_contextual_explain_call and not force_refresh and mode in cached_content_from_db:
-            user_word_history_ref.set({'last_explored_at': firestore.SERVER_TIMESTAMP, 'word': word}, merge=True)
-            if word_doc.exists: modes_already_generated = word_doc.to_dict().get('modes_generated', [])
-            return jsonify({
-                "word": word, mode: cached_content_from_db[mode], "source": "cache",
-                "is_favorite": is_favorite_status, "full_cache": cached_content_from_db,
-                "modes_generated": modes_already_generated 
-            }), 200
-
-        prompt = ""
-        current_request_content_holder = {}
-
+        # --- Generation Logic ---
+        generated_content = {}
         if mode == 'explain':
-            primary_word_for_prompt = word 
-            if not streak_context_list: 
-                prompt = f"""Your task is to define '{primary_word_for_prompt}', acting as a knowledgeable guide introducing a foundational concept to a curious beginner.
-Instructions: Define '{primary_word_for_prompt}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner with no prior knowledge; focus on its core, fundamental aspects. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas) that are crucial not only for grasping '{primary_word_for_prompt}' but also for sparking further inquiry and naturally leading towards a deeper exploration—think of these as initial pathways into a fascinating subject. These sub-topics must not be mere synonyms or rephrasing of '{primary_word_for_prompt}'. If '{primary_word_for_prompt}' involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>energy conversion</click>, <click>$A=\pi r^2$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO_2+6H_2O+textLightrightarrowC_6H_12O_6+6O_2</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
-"""
-            else: 
-                current_word_for_prompt = word 
-                context_string = ", ".join(streak_context_list)
-                all_relevant_words_for_reiteration_check = [current_word_for_prompt] + streak_context_list
-                reiteration_check_string = ", ".join(all_relevant_words_for_reiteration_check)
-                prompt = f"""Your task is to define '{current_word_for_prompt}', acting as a teacher guiding a student step-by-step down a 'rabbit hole' of knowledge. The student has already learned about the following concepts in this order: '{context_string}'.
-Instructions: Define '{current_word_for_prompt}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner. Your explanation must clearly show how '{current_word_for_prompt}' relates to, builds upon, or offers a new dimension to the established learning path of '{context_string}'. Focus on its core aspects as they specifically connect to this narrative of exploration. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas). These sub-topics should be crucial for understanding '{current_word_for_prompt}' within this specific learning sequence and should themselves be chosen to intelligently suggest further avenues of exploration, continuing the streak of discovery. Crucially, these embedded sub-topics must not be a simple reiteration of any words found in '{reiteration_check_string}'. If '{current_word_for_prompt}' (when considered in the context of '{context_string}') involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>relevant concept</click>, <click>$y=mx+c$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO2​+6H2​O+Light→C6​H12​O6​+6O2​</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
-"""
-        elif mode == 'quiz': 
-            context_hint_for_quiz = ""
-            if streak_context_list:
-                context_hint_for_quiz = f" The learning path so far included: {', '.join(streak_context_list)}."
+            generated_content['explain'] = generate_explanation(word, streak_context)
+        elif mode == 'quiz':
+            generated_content['quiz'] = generate_quiz_from_text(word, explanation_text_for_quiz, streak_context)
 
-            prompt = (
-                f"Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. "
-                f"The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}\n\n"
-                f"Explanation Text:\n\"\"\"{explanation_text_for_quiz}\"\"\"\n\n"
-                "For each question, strictly follow this exact format, including newlines:\n"
-                "**Question [Number]:** [Your Question Text Here]\n"
-                "A) [Option A Text]\n"
-                "B) [Option B Text]\n"
-                "C) [Option C Text]\n"
-                "D) [Option D Text]\n"
-                "Correct Answer: [Single Letter A, B, C, or D]\n"
-                "Explanation: [Optional: A brief explanation for the correct answer or why other options are incorrect]\n"
-                "Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'."
-            )
-
-        if mode in ['explain', 'quiz'] and prompt:
-            gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-            response = gemini_model.generate_content(prompt)
-            llm_output_text = response.text.strip()
-            if mode == 'quiz':
-                quiz_questions_array = [q.strip() for q in llm_output_text.split('---QUIZ_SEPARATOR---') if q.strip()]
-                if not quiz_questions_array and llm_output_text:
-                    quiz_questions_array = [llm_output_text]
-                current_request_content_holder[mode] = quiz_questions_array
-            else:
-                current_request_content_holder[mode] = llm_output_text
-                if not is_contextual_explain_call:
-                    cached_content_from_db[mode] = llm_output_text
+        # --- Database Update Logic ---
+        word_data = word_doc.to_dict() if word_doc.exists else {}
+        is_favorite_status = word_data.get('is_favorite', False)
         
-        db_modes_generated = []
-        if word_doc.exists:
-            db_modes_generated = word_doc.to_dict().get('modes_generated', [])
-        
-        current_modes_set = set(db_modes_generated)
-        current_modes_set.add(mode)
-        modes_already_generated = sorted(list(set(current_modes_set)))
-
+        # Prepare payload for database update
         payload_for_db = {
-            'word': word, 
+            'word': word,
             'last_explored_at': firestore.SERVER_TIMESTAMP,
-            'modes_generated': modes_already_generated,
         }
-        if cached_content_from_db:
-             payload_for_db['generated_content_cache'] = cached_content_from_db
         
-        if 'quiz' in payload_for_db.get('generated_content_cache', {}):
-            del payload_for_db['generated_content_cache']['quiz']
+        # Merge new content with existing cached content, but don't cache contextual explanations
+        if not is_contextual_call:
+            new_cache = word_data.get('generated_content_cache', {})
+            new_cache.update(generated_content)
+            # Ensure quiz data isn't permanently cached
+            if 'quiz' in new_cache: del new_cache['quiz']
+            payload_for_db['generated_content_cache'] = new_cache
 
-        if not word_doc.exists: 
-            payload_for_db.update({
-                'first_explored_at': firestore.SERVER_TIMESTAMP, 
-                'is_favorite': False, 
-            })
-            is_favorite_status = False
-        else:
-            payload_for_db['is_favorite'] = is_favorite_status 
+        # Update generated modes
+        current_modes = set(word_data.get('modes_generated', []))
+        current_modes.add(mode)
+        payload_for_db['modes_generated'] = sorted(list(current_modes))
 
+        # Set initial data if word is new
+        if not word_doc.exists:
+            payload_for_db['first_explored_at'] = firestore.SERVER_TIMESTAMP
+            payload_for_db['is_favorite'] = False
+        
         user_word_history_ref.set(payload_for_db, merge=True)
 
-        response_payload = {
-            "word": word, 
-            mode: current_request_content_holder.get(mode),
+        return jsonify({
+            "word": word,
+            mode: generated_content.get(mode),
             "source": "generated",
-            "is_favorite": payload_for_db.get('is_favorite', is_favorite_status),
-            "full_cache": cached_content_from_db,
-            "modes_generated": modes_already_generated
-        }
-        return jsonify(response_payload), 200
+            "is_favorite": is_favorite_status,
+            "modes_generated": payload_for_db['modes_generated']
+        }), 200
+
     except Exception as e:
         app.logger.error(f"Error in /generate_explanation for user {current_user_id}, word '{word}', mode '{mode}': {e}")
-        return jsonify({"error": f"An internal error occurred: {e}"}), 500
+        return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
 
 @app.route('/profile', methods=['GET', 'OPTIONS'])
 @token_required
