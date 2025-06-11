@@ -21,6 +21,9 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 # --- NEW: Import the game generator function ---
 from game_generator import generate_game_for_topic
 
+# In app.py, add this import at the top with the other imports
+from story_generator import generate_story_node
+
 # Load environment variables from .env file
 load_dotenv()
 app = Flask(__name__)
@@ -145,113 +148,39 @@ def generate_game_route(current_user_id):
         app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
         return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
 
-# --- (The rest of your routes: /generate_story_node, /, /signup, etc., remain unchanged) ---
-# ... (all other routes as they were)
+# Replace the ENTIRE existing generate_story_node_route with this refactored version
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
 def generate_story_node_route(current_user_id):
-    if not gemini_api_key: return jsonify({"error": "AI service not configured"}), 500
+    if not gemini_api_key:
+        return jsonify({"error": "AI service not configured"}), 500
+    
     data = request.get_json()
-    if not data: return jsonify({"error": "No input data provided"}), 400
+    if not data:
+        return jsonify({"error": "No input data provided"}), 400
 
     topic = data.get('topic', '').strip()
     history = data.get('history', [])
     last_choice_leads_to = data.get('leads_to')
 
-    if not topic: return jsonify({"error": "Topic is required"}), 400
-
-    base_prompt = """
-You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
-
-**--- Core State Machine ---**
-You MUST generate a response that strictly matches the turn type determined by the `last_choice_leads_to` input. DO NOT merge, skip, or combine turn types.
-
-* If `last_choice_leads_to` is **null** -> Generate a **WELCOME** turn.
-    * **Dialogue:** Welcome the user, introduce the `{topic}`, and explain its real-world importance.
-    * **Interaction:** ONE option with `leads_to: 'begin_explanation'`.
-
-* If `last_choice_leads_to` is **'begin_explanation'** -> Generate an **EXPLANATION** turn.
-    * **Dialogue:** Explain ONE new sub-concept. Crucially, your explanation MUST include a clear, relatable example or a fascinating fact to make the concept tangible and memorable.
-    * **Interaction:** ONE option with `leads_to: 'ask_question'`.
-
-* If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** turn or a **GAME** turn.
-    * **QUESTION Turn:** Ask ONE multiple-choice question about the concept you JUST explained. ONE option must have `leads_to: 'Correct'`, all others must have `leads_to: 'Incorrect'`.
-    * **GAME Turn (`Multi-Select Image Game`):** After a few standard questions, you can use this. Provide a mix of options where some have `is_correct: true` and others `is_correct: false`.
-
-* If `last_choice_leads_to` is **'Correct'** or **'Incorrect'** -> Generate a **FEEDBACK** turn.
-    * **This is a dedicated feedback turn. It is the only thing you will do.**
-    * **`dialogue` field:** This field must ONLY contain the feedback words (e.g., "Correct!", "That's right!", "Not quite, but good try."). Do NOT add any explanation here.
-    * **`feedback_on_previous_answer` field:** This field is now deprecated, leave it as an empty string. The feedback is now in the main dialogue.
-    * **Interaction:** ONE option with the text "Explain why" or "Continue". The `leads_to` for this option MUST be `'explain_answer'`.
-
-* If `last_choice_leads_to` is **'explain_answer'** -> Generate an **EXPLAIN_ANSWER** turn.
-    * **This is a dedicated explanation turn for the previous question. DO NOT introduce a new topic here.**
-    * **`dialogue` field:** MUST ONLY contain the detailed explanation for why the answer to the last question was correct.
-    * **Interaction:** ONE option. If the lesson should continue, the `leads_to` must be `'begin_explanation'`. If the lesson is logically complete, the `leads_to` must be `'request_summary'`.
-
-* If `last_choice_leads_to` is **'request_summary'** -> Generate a **SUMMARY** turn.
-    * **Dialogue:** Briefly summarize the key concepts learned.
-    * **Interaction:** ONE option with `leads_to: 'end_story'`.
-
-**--- Universal Principles ---**
-1.  **Image Prompt Mandate:** Every single turn MUST have EXACTLY ONE `image_prompt`. It must be descriptive (15+ words) and request a 'photorealistic' style where possible.
-2.  **Randomize Correct Answer Position:** This is a mandatory, non-negotiable rule. After creating the options for a question, you MUST reorder them so that the 'Correct' answer is not in the first position. Its placement must be varied and unpredictable.
-3.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
-"""
-
-    history_str = json.dumps(history, indent=2)
-    
-    prompt_to_send = (
-        f"{base_prompt}\n\n"
-        f"--- YOUR CURRENT TASK ---\n"
-        f"**Topic:** {topic}\n"
-        f"**Conversation History:**\n{history_str}\n"
-        f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
-        f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
-    )
+    if not topic:
+        return jsonify({"error": "Topic is required"}), 400
 
     try:
-        story_node_schema = {
-            "type": "object",
-            "properties": {
-                "feedback_on_previous_answer": {"type": "string", "description": "DEPRECATED. Leave as an empty string. Feedback is now in the main dialogue for FEEDBACK turns."},
-                "dialogue": {"type": "string", "description": "The AI teacher's main dialogue for this turn."},
-                "image_prompts": {"type": "array", "items": {"type": "string"}, "description": "A list containing exactly one prompt for an image to display. For game turns, each option has its own prompt."},
-                "interaction": {
-                    "type": "object",
-                    "properties": {
-                        "type": {"type": "string", "enum": ["Text-based Button Selection", "Image Selection", "Multi-Select Image Game"], "description": "The type of interaction required."},
-                        "options": {
-                            "type": "array",
-                            "items": {
-                                "type": "object",
-                                "properties": {
-                                    "text": {"type": "string"},
-                                    "leads_to": {"type": "string"},
-                                    "is_correct": {"type": "boolean", "description": "Used only for Multi-Select Image Game to mark correct answers."}
-                                },
-                                "required": ["text", "leads_to"]
-                            }
-                        }
-                    },
-                    "required": ["type", "options"]
-                }
-            },
-            "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]}
-
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=story_node_schema)
-        safety_settings = {HarmCategory.HARM_CATEGORY_HATE_SPEECH: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT: HarmBlockThreshold.BLOCK_ONLY_HIGH, HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_ONLY_HIGH}
+        # Delegate the entire generation process to the new module
+        response = generate_story_node(topic, history, last_choice_leads_to)
         
-        response = gemini_model.generate_content(prompt_to_send, generation_config=generation_config, safety_settings=safety_settings)
+        # Process the response here in the route
         parsed_node = json.loads(response.text)
         return jsonify(parsed_node), 200
 
     except Exception as e:
+        # This centralized error handling is now cleaner
         app.logger.error(f"FATAL Error in /generate_story_node for user {current_user_id}, topic '{topic}': {e}")
+        # Attempt to check for a block reason if the 'response' object exists from a failed API call
         try:
-            if response and response.prompt_feedback.block_reason:
+            if 'response' in locals() and response.prompt_feedback.block_reason:
                 app.logger.error(f"AI response was blocked. Reason: {response.prompt_feedback.block_reason}")
                 return jsonify({"error": "The learning topic was blocked for safety reasons. Please try a different topic."}), 400
         except Exception:
