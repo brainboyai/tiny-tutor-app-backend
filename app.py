@@ -92,11 +92,18 @@ def token_required(f):
         return f(current_user_id, *args, **kwargs)
     return decorated_function
 
-# CORRECTED AND FINAL VERSION OF THE GAME GENERATION ROUTE
+# In app.py, replace the existing generate_game_route function with this one.
+
+# In app.py, replace the existing generate_game_route function with this one.
+
 @app.route('/generate_game', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("50/hour")
 def generate_game_route(current_user_id):
+    """
+    Generates a self-contained HTML/CSS/JS game based on a topic using an AI model.
+    Caches the result in Firestore to avoid repeated generation.
+    """
     if not gemini_api_key:
         return jsonify({"error": "AI service not configured"}), 500
     
@@ -118,16 +125,19 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
+            # The prompt is a regular string (no 'f' prefix) to avoid Python formatting errors.
+            # .replace() is used to safely insert the topic.
             prompt_template = """
 You are an expert game developer who creates simple, educational, 2D web games.
 Your task is to create a complete, playable game about the topic: "TOPIC_PLACEHOLDER".
 
 **MUST-FOLLOW RULES:**
-1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded directly within the HTML using `<style>` and `<script>` tags. DO NOT use any external file references.
-2.  **NO EXTERNAL LIBRARIES:** Do not use any external game libraries like Phaser, PixiJS, or Three.js. Use only vanilla JavaScript and standard Web APIs (Canvas API, Web Audio API, etc.).
-3.  **RESPONSIVE & CROSS-INPUT:** The game must work on both desktop (mouse clicks) and mobile (touch events). The canvas should dynamically resize to fit its container.
-4.  **COMPLETE & PLAYABLE:** The game must be fully functional, including a clear win condition, a lose condition (e.g., a timer), and a simple scoring or progress system.
-5.  **RELEVANT MECHANICS:** The game mechanics must be directly and cleverly related to the educational topic of "TOPIC_PLACEHOLDER".
+1.  **SINGLE HTML FILE:** Your entire output MUST be a single, self-contained HTML file. All CSS and JavaScript must be embedded.
+2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and standard Web APIs.
+3.  **RESPONSIVE & CROSS-INPUT:** The game must work on desktop (mouse) and mobile (touch).
+4.  **COMPLETE & PLAYABLE:** The game must be fully functional with clear win/lose conditions.
+5.  **RELEVANT MECHANICS:** The mechanics must be directly related to "TOPIC_PLACEHOLDER".
+6.  **INCLUDE A START SCREEN:** Before the game begins, display an overlay that clearly explains the rules and objective. This overlay must have a "Start Game" button. The game's timer and animations must only begin after this button is clicked.
 
 **EXAMPLE BLUEPRINT (for a game about 'Photosynthesis'):**
 This is the quality and structure you must replicate for the topic "TOPIC_PLACEHOLDER".
@@ -151,6 +161,32 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
         canvas { display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.2); }
         #win-lose-screen { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: none; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
         #win-lose-screen h1 { font-size: 3em; }
+        #start-screen {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0, 0, 0, 0.85);
+            color: white;
+            z-index: 20;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            padding: 2em;
+        }
+        #start-screen h1 { font-size: 2.5em; margin-bottom: 0.5em; }
+        #start-screen p { max-width: 600px; line-height: 1.6; }
+        #start-screen ul { text-align: left; max-width: 500px; margin: 1em auto; }
+        #start-screen button {
+            font-size: 1.5em;
+            padding: 0.5em 1.5em;
+            border: none;
+            border-radius: 8px;
+            background-color: #4CAF50;
+            color: white;
+            cursor: pointer;
+            margin-top: 1em;
+        }
     </style>
 </head>
 <body>
@@ -172,6 +208,17 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
             </div>
         </div>
     </div>
+    <div id="start-screen">
+        <h1>Photosynthesis Game</h1>
+        <p><b>Objective:</b> Create 5 Starch molecules before time runs out!</p>
+        <p><b>Rules:</b></p>
+        <ul>
+            <li>Click or tap on the floating Sun, H₂O (water), and CO₂ (carbon dioxide) bubbles to collect them.</li>
+            <li>When you collect 2 of each, the plant will perform photosynthesis and create 1 Starch molecule.</li>
+            <li>You have 60 seconds to reach the goal. Good luck!</li>
+        </ul>
+        <button id="start-button">Start Game</button>
+    </div>
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
@@ -183,6 +230,8 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
         const winLoseScreen = document.getElementById('win-lose-screen');
         const winLoseMessage = document.getElementById('win-lose-message');
         const canvasContainer = document.getElementById('canvas-container');
+        const startScreen = document.getElementById('start-screen');
+        const startButton = document.getElementById('start-button');
 
         let sun = 0, co2 = 0, water = 0, starch = 0;
         const required = 2;
@@ -282,7 +331,7 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
             winLoseScreen.style.display = 'flex';
             winLoseMessage.textContent = isWin ? 'You Win!' : 'Time Up!';
         }
-
+        
         function gameLoop() {
             if (gameOver) return;
             requestAnimationFrame(gameLoop);
@@ -296,21 +345,26 @@ This is the quality and structure you must replicate for the topic "TOPIC_PLACEH
             });
         }
 
-        setInterval(spawnObject, 1000);
-        const timerInterval = setInterval(() => {
-            if (gameOver) {
-                clearInterval(timerInterval);
-                return;
-            }
-            timeLeft--;
-            timerDisplay.textContent = `Time: ${timeLeft}`;
-            if (timeLeft <= 0) {
-                endGame(false);
-            }
-        }, 1000);
+        function startGame() {
+            startScreen.style.display = 'none';
+            setInterval(spawnObject, 1000);
+            const timerInterval = setInterval(() => {
+                if (gameOver) {
+                    clearInterval(timerInterval);
+                    return;
+                }
+                timeLeft--;
+                timerDisplay.textContent = `Time: ${timeLeft}`;
+                if (timeLeft <= 0) {
+                    endGame(false);
+                }
+            }, 1000);
 
-        updateProgressBars();
-        requestAnimationFrame(gameLoop);
+            updateProgressBars();
+            requestAnimationFrame(gameLoop);
+        }
+        
+        startButton.addEventListener('click', startGame);
     </script>
 </body>
 </html>
