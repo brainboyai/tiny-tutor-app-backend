@@ -122,25 +122,30 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # **PROMPT ITERATION 6: The Multi-Template Method**
-            # This version contains three distinct, complete game templates. The AI's primary job
-            # is to select the best template for the topic and fill in its placeholders.
+           # **PROMPT ITERATION 9: The Full Game Engine**
+            # This definitive version expands the template library to six distinct and robust game types.
+            # The AI's primary role is to act as an intelligent director, choosing the best template and populating it.
             prompt_template = """
-You are an expert educational game designer. Your task is to generate a complete, single-file HTML game based on the topic: "TOPIC_PLACEHOLDER".
+You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER".
 
 ---
-### **MANDATORY INSTRUCTIONS**
+### **MANDATORY WORKFLOW**
 ---
-1.  **Analyze the Topic:** First, understand the core concept of "TOPIC_PLACEHOLDER".
-2.  **Choose ONE Template:** You **MUST** choose the single most appropriate game template from the three provided below (Template A, B, or C).
-3.  **Copy and Fill:** Copy the entire chosen template's code. Your main task is to replace the `` comments with content that is relevant to the topic.
-4.  **Final Output:** Your final output must be ONLY the completed HTML code. Ensure no `` comments are left in the final code.
+1.  **Analyze Topic:** Deeply analyze the core learning objective of "TOPIC_PLACEHOLDER". Is it about definitions, a process, a sequence, a journey, or identification?
+2.  **Choose ONE Template:** Review the SIX game templates below. You **MUST** choose the single most appropriate template for the topic.
+3.  **State Your Choice:** At the very beginning of your response, you MUST state which template you are choosing and why. For example: "The topic is 'Algebra', which involves solving problems with correct answers. Therefore, I will use Template A: The Quiz Game."
+4.  **Copy & Fill:** Copy the entire code for your chosen template. Your only coding task is to replace the `<!-- PLACEHOLDER -->` comments with relevant content for the topic. Do not change the core logic.
+5.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code, with no extra notes or comments outside the code.
 
+---
+### **TEMPLATE LIBRARY**
+---
 ---
 ### **TEMPLATE A: THE QUIZ GAME**
 ---
-* **Best for topics like:** Algebra, Math, Vocabulary, Definitions, Simple Facts.
-* **Gameplay:** A question appears at the top. The player must click the floating bubble with the correct answer.
+#### **TEMPLATE A: THE QUIZ GAME**
+* **Best for:** Math, vocabulary, definitions, factual recall (e.g., Algebra, Geometry, Magnetism).
+* **Gameplay:** A question appears. The player clicks floating bubbles to select the correct answer.
 
 ```html
 <!DOCTYPE html>
@@ -294,8 +299,8 @@ You are an expert educational game designer. Your task is to generate a complete
 ---
 ### **TEMPLATE B: THE PLAYER MOVER GAME**
 ---
-* **Best for topics like:** Herbivores, Pollination, Circulatory System, Magnetism.
-* **Gameplay:** Player moves a character with the mouse/touch to collect 'good' items and avoid 'bad' ones.
+* **Best for:** Navigation, collection, simple simulation (e.g., Herbivores, Circulatory System, Pollination).
+* **Gameplay:** Player moves a character to collect "good" items and avoid "bad" ones.
 
 ```html
 <!DOCTYPE html>
@@ -448,8 +453,8 @@ You are an expert educational game designer. Your task is to generate a complete
 ---
 ### **TEMPLATE C: THE PROCESS & RECIPE GAME**
 ---
-* **Best for topics like:** Photosynthesis, Chemical Reactions, Water Cycle, Digestion.
-* **Gameplay:** Player clicks to collect different 'ingredient' objects to fill progress bars. When all bars are full, a 'product' is made, and the score increases.
+* **Best for:** Multi-step processes, cycles (e.g., Photosynthesis, Water Cycle, Digestion).
+* **Gameplay:** Player clicks to collect different "ingredients" to fill progress bars and create a "product".
 
 ```html
 <!DOCTYPE html>
@@ -637,23 +642,370 @@ You are an expert educational game designer. Your task is to generate a complete
 </html>
 ```
 
-Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user's desired topic. For example, "Photosynthesis".
+#### **TEMPLATE D: THE DYNAMIC STACKING GAME**
+* **Best for:** Hierarchy, structure, sequence (e.g., Food Pyramid, Layers of the Earth, Taxonomy).
+* **Gameplay:** Player moves a platform to catch randomly falling blocks in the correct order.
+
+```html
+<!-- TEMPLATE D: DYNAMIC STACKING GAME -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title><!-- 1. TOPIC --> Stacker</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+        #game-container { width: 100%; height: 100%; position: relative; background-color: #d0e7f9; }
+        canvas { display: block; }
+        #ui-bar { position: absolute; top: 10px; width: 100%; text-align: center; color: #333; font-size: 1.5em; font-weight: bold; }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
+        .overlay h1 { font-size: 3em; } .overlay p { font-size: 1.2em; max-width: 80%; } .overlay button { font-size: 1.5em; padding: 0.5em 1.5em; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="ui-bar">Catch This: <span id="next-block"></span></div>
+        <div id="start-screen" class="overlay">
+            <h1><!-- 2. GAME_TITLE --></h1>
+            <p><!-- 3. GAME_INSTRUCTIONS --></p>
+            <button id="start-button">Start</button>
+        </div>
+        <div id="end-screen" class="overlay" style="display: none;">
+            <h1 id="end-message"></h1>
+            <button id="restart-button">Play Again</button>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const nextBlockEl = document.getElementById('next-block');
+        let platform, fallingObjects, stackedBlocks, currentBlockIndex, gameLoopId, spawnInterval;
+        
+        // <!-- 4. DEFINE THE ORDERED BLOCKS TO STACK -->
+        const buildOrder = [
+            { name: 'Grains', color: '#f39c12'},
+            { name: 'Vegetables', color: '#2ecc71'},
+            { name: 'Fruits', color: '#e74c3c'},
+            { name: 'Protein', color: '#9b59b6'}
+        ];
+
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+
+        function init() {
+            platform = { x: canvas.width / 2 - 75, y: canvas.height - 50, width: 150, height: 20 };
+            stackedBlocks = [];
+            fallingObjects = [];
+            currentBlockIndex = 0;
+            updateNextBlockUI();
+        }
+        
+        function updateNextBlockUI(){
+            if (currentBlockIndex < buildOrder.length) {
+                nextBlockEl.textContent = buildOrder[currentBlockIndex].name;
+            } else {
+                nextBlockEl.textContent = 'Done!';
+            }
+        }
+
+        function spawnObject() {
+            const shouldSpawnCorrect = Math.random() > 0.4; // 60% chance to spawn the needed block
+            let blockToSpawn;
+            if (shouldSpawnCorrect && currentBlockIndex < buildOrder.length) {
+                blockToSpawn = buildOrder[currentBlockIndex];
+            } else {
+                const incorrectOptions = buildOrder.filter((_, index) => index !== currentBlockIndex);
+                if (incorrectOptions.length > 0) {
+                   blockToSpawn = incorrectOptions[Math.floor(Math.random() * incorrectOptions.length)];
+                } else {
+                   return;
+                }
+            }
+            fallingObjects.push({ x: Math.random() * (canvas.width - 100), y: -30, width: 100, height: 30, color: blockToSpawn.color, name: blockToSpawn.name, vy: 2 + (currentBlockIndex * 0.5) });
+        }
+        
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = '#34495e';
+            ctx.fillRect(platform.x, platform.y, platform.width, platform.height);
+
+            for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                const block = fallingObjects[i];
+                block.y += block.vy;
+
+                if (block.y + block.height >= platform.y && block.x < platform.x + platform.width && block.x + block.width > platform.x) {
+                    if (block.name === buildOrder[currentBlockIndex].name) {
+                        block.y = platform.y - (stackedBlocks.length + 1) * block.height;
+                        block.x = platform.x + (platform.width - block.width)/2;
+                        stackedBlocks.push(block);
+                        currentBlockIndex++;
+                        updateNextBlockUI();
+                        if (currentBlockIndex >= buildOrder.length) endGame(true);
+                    } else {
+                        endGame(false);
+                    }
+                    fallingObjects.splice(i, 1);
+                } else if (block.y > canvas.height) {
+                    fallingObjects.splice(i, 1);
+                }
+            }
+            
+            [...stackedBlocks, ...fallingObjects].forEach(block => {
+                ctx.fillStyle = block.color;
+                ctx.fillRect(block.x, block.y, block.width, block.height);
+                ctx.fillStyle = 'white'; ctx.font = 'bold 14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(block.name, block.x + block.width / 2, block.y + block.height / 2);
+            });
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function movePlatform(event) {
+            const rect = canvas.getBoundingClientRect();
+            platform.x = (event.clientX || event.touches[0].clientX) - rect.left - platform.width / 2;
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('end-screen').style.display = 'none';
+            init();
+            spawnInterval = setInterval(spawnObject, 1800);
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function endGame(isWin) {
+            cancelAnimationFrame(gameLoopId);
+            clearInterval(spawnInterval);
+            document.getElementById('end-message').textContent = isWin ? 'Pyramid Complete!' : 'Wrong Block! Tower Collapsed!';
+            document.getElementById('end-screen').style.display = 'flex';
+        }
+        
+        document.getElementById('start-button').addEventListener('click', startGame);
+        document.getElementById('restart-button').addEventListener('click', startGame);
+        canvas.addEventListener('mousemove', movePlatform);
+        canvas.addEventListener('touchmove', (e) => { e.preventDefault(); movePlatform(e); }, { passive: false });
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+    </script>
+</body>
+</html>
+```
+
+---
+#### **TEMPLATE E: THE MATCHING GAME (NEW!)**
+* **Best for:** Vocabulary, definitions, matching pairs (e.g., Country & Capital, Animal & Habitat).
+* **Gameplay:** A grid of cards is shown. The player clicks two cards to flip them over. If they match, they stay open. Match all pairs to win.
+
+```html
+<!-- TEMPLATE E: MATCHING GAME -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title><!-- 1. TOPIC --> Match</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #f0f3f4; }
+        #game-board { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; max-width: 600px; margin: 20px auto; }
+        .card { width: 100%; aspect-ratio: 1 / 1; background: #3498db; border-radius: 8px; cursor: pointer; display: flex; justify-content: center; align-items: center; font-size: 1.2em; color: white; transition: transform 0.5s; transform-style: preserve-3d; }
+        .card.flipped, .card.matched { transform: rotateY(180deg); background: #9b59b6; }
+        .card-content { backface-visibility: hidden; position: absolute; }
+        .card-back { transform: rotateY(180deg); }
+        #ui-bar { font-size: 1.5em; margin: 10px; }
+    </style>
+</head>
+<body>
+    <h1><!-- 2. GAME_TITLE --></h1>
+    <div id="ui-bar">Moves: <span id="moves">0</span></div>
+    <div id="game-board"></div>
+    <script>
+        const gameBoard = document.getElementById('game-board');
+        const movesSpan = document.getElementById('moves');
+        let moves = 0, firstCard = null, secondCard = null, lockBoard = false, matchedPairs = 0;
+
+        // <!-- 3. DEFINE YOUR MATCHING PAIRS. Must be an even number of items. -->
+        const items = ['Dog', 'Cat', 'Bird', 'Fish', 'Lion', 'Tiger', 'Bear', 'Wolf'];
+        const cardValues = [...items, ...items].sort(() => 0.5 - Math.random());
+        
+        function createBoard() {
+            gameBoard.innerHTML = '';
+            cardValues.forEach(value => {
+                const card = document.createElement('div');
+                card.classList.add('card');
+                card.dataset.value = value;
+                card.innerHTML = `
+                    <div class="card-content card-front"></div>
+                    <div class="card-content card-back">${value}</div>
+                `;
+                gameBoard.appendChild(card);
+                card.addEventListener('click', flipCard);
+            });
+        }
+
+        function flipCard() {
+            if (lockBoard || this === firstCard) return;
+            this.classList.add('flipped');
+
+            if (!firstCard) {
+                firstCard = this;
+                return;
+            }
+            secondCard = this;
+            lockBoard = true;
+            moves++;
+            movesSpan.textContent = moves;
+            checkForMatch();
+        }
+
+        function checkForMatch() {
+            const isMatch = firstCard.dataset.value === secondCard.dataset.value;
+            isMatch ? disableCards() : unflipCards();
+        }
+
+        function disableCards() {
+            firstCard.classList.add('matched');
+            secondCard.classList.add('matched');
+            matchedPairs++;
+            if (matchedPairs === items.length) {
+                setTimeout(() => alert(`You win! Total moves: ${moves}`), 500);
+            }
+            resetBoard();
+        }
+
+        function unflipCards() {
+            setTimeout(() => {
+                firstCard.classList.remove('flipped');
+                secondCard.classList.remove('flipped');
+                resetBoard();
+            }, 1000);
+        }
+
+        function resetBoard() {
+            [firstCard, secondCard, lockBoard] = [null, null, false];
+        }
+
+        createBoard();
+    </script>
+</body>
+</html>
+```
+
+---
+#### **TEMPLATE F: THE MAZE RUNNER GAME (NEW!)**
+* **Best for:** Journeys, paths, avoiding obstacles (e.g., Blood Circulation, Digestive Tract, A-maze-ing Facts).
+* **Gameplay:** Player uses arrow keys or clicks/drags to navigate a character from a start point to an end point through a maze.
+
+```html
+<!-- TEMPLATE F: MAZE RUNNER GAME -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title><!-- 1. TOPIC --> Maze</title>
+    <style>
+        body { font-family: sans-serif; text-align: center; background: #2c3e50; color: white; }
+        canvas { background: #ecf0f1; border-radius: 8px; }
+        h1 { margin-top: 10px; }
+        p { font-size: 1.2em; }
+    </style>
+</head>
+<body>
+    <h1><!-- 2. GAME_TITLE --></h1>
+    <p><!-- 3. GAME_INSTRUCTIONS --></p>
+    <canvas id="mazeCanvas" width="500" height="500"></canvas>
+    <script>
+        const canvas = document.getElementById('mazeCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // <!-- 4. DEFINE THE MAZE. 0 = path, 1 = wall, 2 = start, 3 = end. -->
+        const maze = [
+            [2, 0, 1, 1, 1, 1, 1, 1, 1, 1],
+            [1, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+            [1, 1, 1, 0, 1, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 1, 0, 0, 0, 0, 1],
+            [1, 0, 1, 1, 1, 0, 1, 1, 1, 1],
+            [1, 0, 0, 1, 0, 0, 0, 0, 0, 1],
+            [1, 1, 0, 1, 0, 1, 1, 1, 0, 1],
+            [1, 0, 0, 0, 0, 1, 0, 0, 0, 1],
+            [1, 1, 1, 1, 1, 1, 0, 1, 0, 3],
+            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+        ];
+
+        const cellSize = canvas.width / maze[0].length;
+        let playerPos = { x: 0, y: 0 };
+
+        function findStart() {
+            for (let y = 0; y < maze.length; y++) {
+                for (let x = 0; x < maze[y].length; x++) {
+                    if (maze[y][x] === 2) {
+                        playerPos = { x, y };
+                        return;
+                    }
+                }
+            }
+        }
+
+        function drawMaze() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let y = 0; y < maze.length; y++) {
+                for (let x = 0; x < maze[y].length; x++) {
+                    if (maze[y][x] === 1) ctx.fillStyle = '#34495e'; // Wall
+                    else if (maze[y][x] === 3) ctx.fillStyle = '#2ecc71'; // End
+                    else ctx.fillStyle = '#ecf0f1'; // Path
+                    ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+                }
+            }
+            // Draw Player
+            ctx.fillStyle = '#e74c3c';
+            ctx.beginPath();
+            ctx.arc(playerPos.x * cellSize + cellSize / 2, playerPos.y * cellSize + cellSize / 2, cellSize / 3, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function movePlayer(dx, dy) {
+            const newX = playerPos.x + dx;
+            const newY = playerPos.y + dy;
+            if (newX >= 0 && newX < maze[0].length && newY >= 0 && newY < maze.length && maze[newY][newX] !== 1) {
+                playerPos.x = newX;
+                playerPos.y = newY;
+                drawMaze();
+                if (maze[newY][newX] === 3) {
+                    setTimeout(() => {
+                        alert('You reached the end!');
+                        findStart();
+                        drawMaze();
+                    }, 100);
+                }
+            }
+        }
+
+        window.addEventListener('keydown', (e) => {
+            switch(e.key) {
+                case 'ArrowUp': movePlayer(0, -1); break;
+                case 'ArrowDown': movePlayer(0, 1); break;
+                case 'ArrowLeft': movePlayer(-1, 0); break;
+                case 'ArrowRight': movePlayer(1, 0); break;
+            }
+        });
+
+        findStart();
+        drawMaze();
+    </script>
+</body>
+</html>
+```
+
+Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user's desired topic.
 """
             prompt = prompt_template.replace("TOPIC_PLACEHOLDER", topic)
             
             gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
             safety_settings = {HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
             
-            # The AI's first line of its response should be its reasoning.
-            # We can capture this to log it, but the final output should be only the HTML.
             response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
             
             generated_text = response.text.strip()
             
-            # Find the start of the HTML code
             html_start_index = generated_text.find('<!DOCTYPE html>')
             if html_start_index == -1:
-                # Fallback if the AI doesn't produce the expected format
                 html_start_index = generated_text.find('<')
 
             if html_start_index != -1:
@@ -661,16 +1013,13 @@ Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user
                 generated_html = generated_text[html_start_index:]
                 app.logger.info(f"AI reasoning for topic '{topic}': {reasoning}")
 
-                # Strip markdown code block fences if they exist
                 if generated_html.startswith("```html"):
-                    generated_html = generated_html[7:]
+                    generated_html = generated_html[7:].strip()
                 if generated_html.endswith("```"):
-                    generated_html = generated_html[:-3]
+                    generated_html = generated_html[:-3].strip()
             else:
-                # If no HTML is found, treat the whole response as an error/debug message
                 generated_html = f"<p>Error: AI did not generate valid HTML. Full response: {generated_text}</p>"
                 app.logger.error(f"AI failed to generate valid HTML for topic '{topic}'")
-
 
             update_payload = {
                 'word': topic,
