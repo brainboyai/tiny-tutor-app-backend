@@ -140,38 +140,34 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 ### **TEMPLATE LIBRARY**
 ---
----
-### **TEMPLATE A: THE QUIZ GAME**
----
-#### **TEMPLATE A: THE QUIZ GAME**
-* **Best for:** Math, vocabulary, definitions, factual recall (e.g., Algebra, Geometry, Magnetism).
-* **Gameplay:** A question appears. The player clicks floating bubbles to select the correct answer.
+#### **TEMPLATE A: THE QUIZ GAME (REPAIRED)**
+* **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
+* **Gameplay:** A question appears. Player clicks a floating bubble. The bubble briefly flashes green/red AFTER being clicked.
 
 ```html
+<!-- TEMPLATE A: QUIZ GAME -->
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>Quiz</title>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title><!-- 1. TOPIC --> Quiz</title>
     <style>
-        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; background-color: #333; }
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; background-color: #f0f0f0; }
         #game-container { width: 100%; height: 100%; position: relative; }
-        canvas { display: block; background-color: #f0f0f0; }
-        #question-bar { position: absolute; top: 0; left: 0; width: 100%; background: rgba(0,0,0,0.7); color: white; text-align: center; padding: 10px; font-size: 1.5em; }
-        #score-bar { position: absolute; top: 50px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 5px 10px; border-radius: 5px; }
+        #question-bar { position: absolute; top: 0; left: 0; width: 100%; box-sizing: border-box; background: rgba(0,0,0,0.7); color: white; text-align: center; padding: 15px; font-size: 1.2em; }
+        #score-bar { position: absolute; top: 65px; right: 10px; background: rgba(0,0,0,0.7); color: white; padding: 8px 12px; border-radius: 5px; font-size: 1.1em;}
         .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
-        .overlay h1 { font-size: 3em; } .overlay p { font-size: 1.2em; max-width: 80%; } .overlay button { font-size: 1.5em; padding: 0.5em 1.5em; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; margin-top: 20px; }
+        .overlay h1 { font-size: 2.5em; } .overlay p { font-size: 1.2em; max-width: 80%; } .overlay button { font-size: 1.5em; padding: 0.5em 1.5em; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; margin-top: 20px; }
     </style>
 </head>
 <body>
     <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
         <div id="question-bar"></div>
         <div id="score-bar">Score: 0</div>
-        <canvas id="gameCanvas"></canvas>
         <div id="start-screen" class="overlay">
-            <h1></h1>
-            <p></p>
+            <h1><!-- 2. GAME_TITLE --></h1>
+            <p><!-- 3. GAME_INSTRUCTIONS --></p>
             <button id="start-button">Start</button>
         </div>
         <div id="end-screen" class="overlay" style="display: none;">
@@ -184,51 +180,47 @@ You are an expert educational game designer and developer. Your task is to gener
         const ctx = canvas.getContext('2d');
         const questionBar = document.getElementById('question-bar');
         const scoreBar = document.getElementById('score-bar');
-        
-        let score = 0, questions, currentQuestionIndex, answerBubbles = [], gameLoopId;
+        let score, questions, currentQuestionIndex, answerBubbles = [], gameLoopId, lockBoard = false;
 
-        // const topicQuestions = [
-            { question: "Solve for x: x + 3 = 7", options: [4, 3, 5, 6], answer: 4 },
-            { question: "What is 5 * 8?", options: [35, 40, 45, 50], answer: 40 },
-            { question: "Solve for y: 2y = 12", options: [8, 4, 6, 5], answer: 6 },
-            { question: "What is 10 - 4?", options: [7, 5, 6, 8], answer: 6 },
-            { question: "Solve for z: z / 2 = 5", options: [10, 8, 12, 15], answer: 10 }
+        // <!-- 4. DEFINE QUESTIONS & OPTIONS -->
+        const topicQuestions = [
+            { question: "Which is a primary color?", options: ["Green", "Blue", "Orange", "Purple"], answer: "Blue" },
+            { question: "What is 12 / 3?", options: [3, 5, 4, 6], answer: 4 },
         ];
 
         function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
 
         function AnswerBubble(value) {
             this.value = value;
-            this.radius = 40;
+            this.radius = Math.max(45, String(this.value).length * 8);
             this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
             this.y = canvas.height + this.radius;
             this.speed = Math.random() * 1 + 0.5;
+            this.color = '#3498db';
             this.draw = function() {
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
-                ctx.fillStyle = this.value === questions[currentQuestionIndex].answer ? 'green' : 'red';
+                ctx.fillStyle = this.color;
                 ctx.fill();
-                ctx.fillStyle = 'white';
-                ctx.font = '20px sans-serif';
-                ctx.textAlign = 'center';
-                ctx.textBaseline = 'middle';
+                ctx.fillStyle = 'white'; ctx.font = 'bold 16px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
                 ctx.fillText(this.value, this.x, this.y);
             };
             this.update = function() { this.y -= this.speed; };
         }
 
         function setupQuestion() {
+            lockBoard = false;
             if (currentQuestionIndex >= questions.length) {
                 endGame(true);
                 return;
             }
             const q = questions[currentQuestionIndex];
             questionBar.textContent = q.question;
-            answerBubbles = [];
-            q.options.forEach(opt => answerBubbles.push(new AnswerBubble(opt)));
+            answerBubbles = q.options.map(opt => new AnswerBubble(opt));
         }
 
         function handleInteraction(event) {
+            if (lockBoard) return;
             event.preventDefault();
             const rect = canvas.getBoundingClientRect();
             const x = (event.clientX || event.touches[0].clientX) - rect.left;
@@ -236,32 +228,39 @@ You are an expert educational game designer and developer. Your task is to gener
             for (let i = answerBubbles.length - 1; i >= 0; i--) {
                 const bubble = answerBubbles[i];
                 if (Math.sqrt((x - bubble.x)**2 + (y - bubble.y)**2) < bubble.radius) {
+                    lockBoard = true;
                     if (bubble.value === questions[currentQuestionIndex].answer) {
                         score += 10;
-                        currentQuestionIndex++;
-                        setupQuestion();
+                        bubble.color = '#2ecc71';
+                        setTimeout(() => { currentQuestionIndex++; setupQuestion(); }, 1000);
                     } else {
                         score -= 5;
+                        bubble.color = '#e74c3c';
+                        setTimeout(() => { answerBubbles.splice(i, 1); lockBoard = false; }, 1000);
                     }
                     scoreBar.textContent = `Score: ${score}`;
-                    answerBubbles.splice(i, 1);
                     return;
                 }
             }
         }
+        
+        function draw(){
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            answerBubbles.forEach(bubble => bubble.draw());
+        }
 
         function gameLoop() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            answerBubbles.forEach((bubble, index) => {
-                bubble.update();
-                bubble.draw();
-                if (bubble.y < -bubble.radius) answerBubbles.splice(index, 1);
-            });
-            if (answerBubbles.length === 0 && currentQuestionIndex < questions.length) {
-                setupQuestion();
+            if (!lockBoard) {
+                answerBubbles.forEach((bubble, i) => {
+                    bubble.update();
+                    if (bubble.y < -bubble.radius * 2) answerBubbles.splice(i, 1);
+                });
+                if (answerBubbles.length === 0 && currentQuestionIndex < questions.length) setupQuestion();
             }
+            draw();
             gameLoopId = requestAnimationFrame(gameLoop);
         }
+
 
         function startGame() {
             document.getElementById('start-screen').style.display = 'none';
@@ -988,6 +987,168 @@ You are an expert educational game designer and developer. Your task is to gener
 
         findStart();
         drawMaze();
+    </script>
+</body>
+</html>
+```
+---
+#### **TEMPLATE G: THE SORTING GAME (NEW!)**
+---
+* **Best for:** Classification, grouping (e.g., States of Matter, Animal Classes, Food Groups).
+* **Gameplay:** Items fall from the top. The player clicks an item to "pick it up," then clicks the correct category box at the bottom to score.
+
+```html
+<!-- TEMPLATE G: SORTING GAME -->
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title><!-- 1. TOPIC --> Sorter</title>
+    <style>
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; font-family: sans-serif; }
+        #game-container { width: 100%; height: 100%; position: relative; background-color: #ecf0f1; }
+        canvas { display: block; }
+        #score-bar { position: absolute; top: 10px; right: 10px; font-size: 1.5em; font-weight: bold; }
+        .overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); display: flex; flex-direction: column; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
+        .overlay h1 { font-size: 3em; } .overlay p { font-size: 1.2em; max-width: 80%; } .overlay button { font-size: 1.5em; padding: 0.5em 1.5em; border: none; border-radius: 8px; background: #28a745; color: white; cursor: pointer; margin-top: 20px; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <canvas id="gameCanvas"></canvas>
+        <div id="score-bar">Score: 0</div>
+        <div id="start-screen" class="overlay">
+            <h1><!-- 2. GAME_TITLE --></h1>
+            <p><!-- 3. GAME_INSTRUCTIONS --></p>
+            <button id="start-button">Start</button>
+        </div>
+        <div id="end-screen" class="overlay" style="display: none;">
+            <h1 id="end-message"></h1>
+            <button id="restart-button">Play Again</button>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const scoreEl = document.getElementById('score-bar');
+        let score, fallingObjects, categories, selectedObject, gameLoopId, spawnInterval;
+
+        // <!-- 4. DEFINE CATEGORIES AND ITEMS -->
+        const gameConfig = {
+            categories: [
+                { name: 'Solid', color: '#3498db' },
+                { name: 'Liquid', color: '#2ecc71' },
+                { name: 'Gas', color: '#9b59b6' }
+            ],
+            items: [
+                { name: 'Ice', category: 'Solid' },
+                { name: 'Water', category: 'Liquid' },
+                { name: 'Steam', category: 'Gas' },
+                { name: 'Rock', category: 'Solid' },
+                { name: 'Milk', category: 'Liquid' },
+                { name: 'Air', category: 'Gas' }
+            ]
+        };
+
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; setupCategories(); }
+
+        function setupCategories() {
+            const catWidth = canvas.width / gameConfig.categories.length;
+            categories = gameConfig.categories.map((cat, i) => ({
+                ...cat,
+                x: i * catWidth, y: canvas.height - 100, width: catWidth, height: 100
+            }));
+        }
+
+        function FallingObject() {
+            const item = gameConfig.items[Math.floor(Math.random() * gameConfig.items.length)];
+            this.name = item.name;
+            this.category = item.category;
+            this.radius = 30;
+            this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+            this.y = -this.radius;
+            this.vy = Math.random() * 1 + 1;
+            this.draw = function(isSelected) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = isSelected ? '#f1c40f' : '#7f8c8d';
+                ctx.fill();
+                if(isSelected) {
+                    ctx.strokeStyle = '#f39c12';
+                    ctx.lineWidth = 5;
+                    ctx.stroke();
+                }
+                ctx.fillStyle = 'white'; ctx.font = '14px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(this.name, this.x, this.y);
+            };
+        }
+
+        function handleInteraction(event) {
+            event.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX || event.touches[0].clientX) - rect.left;
+            const y = (event.clientY || event.touches[0].clientY) - rect.top;
+
+            if (selectedObject) {
+                // Try to drop the object in a category
+                for (const cat of categories) {
+                    if (x > cat.x && x < cat.x + cat.width && y > cat.y && y < cat.y + cat.height) {
+                        if (selectedObject.category === cat.name) {
+                            score += 10;
+                        } else {
+                            score -= 5;
+                        }
+                        scoreEl.textContent = `Score: ${score}`;
+                        fallingObjects.splice(fallingObjects.indexOf(selectedObject), 1);
+                        selectedObject = null;
+                        return;
+                    }
+                }
+            } else {
+                // Try to select an object
+                for (let i = fallingObjects.length - 1; i >= 0; i--) {
+                    const obj = fallingObjects[i];
+                    if (Math.sqrt((x - obj.x)**2 + (y - obj.y)**2) < obj.radius) {
+                        selectedObject = obj;
+                        return;
+                    }
+                }
+            }
+        }
+        
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            // Draw categories
+            categories.forEach(cat => {
+                ctx.fillStyle = cat.color;
+                ctx.fillRect(cat.x, cat.y, cat.width, cat.height);
+                ctx.fillStyle = 'white'; ctx.font = 'bold 20px sans-serif'; ctx.textAlign = 'center';
+                ctx.fillText(cat.name, cat.x + cat.width / 2, cat.y + 50);
+            });
+            // Draw falling objects
+            fallingObjects.forEach((obj, i) => {
+                if (obj !== selectedObject) obj.y += obj.vy;
+                obj.draw(obj === selectedObject);
+                if (obj.y > canvas.height + obj.radius) fallingObjects.splice(i, 1);
+            });
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function spawnObject() {
+            if(fallingObjects.length < 10) fallingObjects.push(new FallingObject());
+        }
+
+        function startGame() {
+            // ... standard start game logic
+        }
+
+        function endGame(isWin) {
+            // ... standard end game logic
+        }
+        
+        // ... standard event listeners
+        
+        resizeCanvas();
     </script>
 </body>
 </html>
