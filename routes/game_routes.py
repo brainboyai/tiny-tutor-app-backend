@@ -1051,6 +1051,16 @@ Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user
 # You will need to import it into this file, e.g., from my_app.decorators import token_required
 @game_bp.route('/generate_game', methods=['POST', 'OPTIONS'])
 def generate_game_route():
+    
+    # --- START OF THE FIX ---
+    # This is the crucial part. We immediately handle the preflight OPTIONS request
+    # by returning a successful response before any other code runs.
+    if request.method == 'OPTIONS':
+        # You can create a more sophisticated response, but a simple 200 is often enough
+        # The CORS headers are handled by your Flask-CORS extension.
+        return jsonify({'status': 'ok'}), 200
+    # --- END OF THE FIX ---
+    
     # In a real app, you'd get the current_user_id from the decorator
     # For now, we'll simulate it for structure.
     # current_user_id = g.user_id 
