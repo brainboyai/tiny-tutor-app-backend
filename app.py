@@ -122,61 +122,213 @@ def generate_game_route(current_user_id):
         else:
             app.logger.info(f"Generating new game for topic '{topic}' for user {current_user_id}.")
             
-            # **PROMPT ITERATION 4**
-            # This is an "ultra-prescriptive" prompt focusing on reliability and fixing logic bugs.
+            # **PROMPT ITERATION 5: The Template-Injection Method**
+            # This version provides a complete, bug-free template for complex topics like Photosynthesis
+            # to ensure the core mechanics are always present and working correctly.
             prompt_template = """
-You are a meticulous, expert-level JavaScript game developer. Your task is to build a flawless, simple, and educational 2D web game based on the topic: "TOPIC_PLACEHOLDER". You must follow the instructions below to the letter.
+You are a meticulous, expert-level JavaScript game developer. Your task is to build a flawless, simple, and educational 2D web game based on the topic: "TOPIC_PLACEHOLDER".
 
 ---
-### **I. CHOOSE A GAME PATTERN (Mandatory First Step)**
+### **I. ANALYZE THE TOPIC & CHOOSE YOUR ACTION (MANDATORY)**
 ---
-You must build your game using **ONE** of the following reliable patterns. You are not allowed to use complex mechanics like drag-and-drop.
-
-1.  **PATTERN A: 'TARGET PRACTICE' (Click/Tap on Objects)**
-    * **Description:** Different types of objects float across the screen. The player's only action is to click or tap on them.
-    * **Mechanics:** Clicking a 'good' object increases the score. Clicking a 'bad' object decreases it. There is no player character to move.
-    * **Example Topic:** 'Solubility' -> Click to dissolve 'Salt' bubbles, avoid clicking 'Sand' bubbles.
-
-2.  **PATTERN B: 'PLAYER MOVER' (Control a Character)**
-    * **Description:** The player controls a character (a simple shape) on the screen.
-    * **Mechanics:** Player movement must be simple: either the character follows the mouse/touch position, OR moves left/right with keyboard arrows. Objects appear on the screen to be collected or avoided by moving the player character into them.
-    * **Example Topic:** 'Herbivore' -> Player moves a green square to touch 'Plant' objects for points and avoid 'Rock' objects.
+1.  Read the "TOPIC_PLACEHOLDER".
+2.  **Is the topic 'Photosynthesis' or a very similar biological/chemical process?**
+    * If YES, you **MUST** use the provided **"TEMPLATE FOR PHOTOSYNTHESIS"** below. Your only job is to fill in the `<!-- PLACEHOLDER -->` comments in the template with the correct text. Do not write your own game from scratch.
+    * If NO, you must generate a game using **Pattern A or B** based on the rules provided.
 
 ---
-### **II. IMPLEMENT CORE GAME LOGIC (Mandatory Structure)**
+### **II. GAME PATTERNS (Only for non-Photosynthesis topics)**
 ---
-Your JavaScript code **MUST** be organized with the following functions and logic to prevent bugs:
+* **PATTERN A: 'TARGET PRACTICE'**: For identification topics. Player clicks/taps floating objects to score points.
+* **PATTERN B: 'PLAYER MOVER'**: For navigation topics. Player moves a character to collect items and avoid obstacles.
 
-* **`init()` or `resetGame()`:** A function that sets up all initial game variables (score, player position, timers) and clears all object arrays. This function is called once at the start and by the "Play Again" button.
-* **A Unified Input Handler:** A single function `handleInteraction(event)` that correctly processes both `click` and `touchstart` to get coordinates. It must loop through **all** interactive objects on every click, not stop after finding one match.
-* **The Game Loop (`update()`):**
-    * This function, called with `requestAnimationFrame`, is responsible for drawing everything.
-    * It **MUST** contain the win/loss logic (e.g., `if (score >= 100) { endGame(true); }`).
-* **An End State Function (`endGame(isWin)`):**
-    * This function stops the game loop (`cancelAnimationFrame`).
-    * It displays a "You Win!" or "Game Over!" message.
-    * It **MUST** display a "Play Again" button. This button's event listener **MUST** call your `resetGame()` function to restart the game without a page refresh.
-* **Start Screen Logic:** The "Start Game" button **MUST** hide the start screen overlay (using `style.display = 'none'`) and then call the main game loop to begin the action.
+*Rules for Patterns A & B:*
+1.  You **MUST** provide a start screen overlay with a title, instructions, and a "Start" button.
+2.  You **MUST** provide an end screen with a "You Win!"/"Game Over!" message and a "Play Again" button that resets the game.
+3.  All drawn objects must have clear, high-contrast text labels.
+4.  Input handling for click and touch must be unified in one function.
+5.  All sounds must be brief and non-looping.
 
 ---
-### **III. ADHERE TO TECHNICAL & VISUAL REQUIREMENTS (Mandatory Rules)**
+### **III. TEMPLATE FOR 'PHOTOSYNTHESIS' (Use this for relevant topics)**
 ---
-1.  **SINGLE HTML FILE:** All CSS and JavaScript must be embedded.
-2.  **NO EXTERNAL LIBRARIES:** Use only vanilla JavaScript and Web APIs.
-3.  **LABEL EVERYTHING:** Every important object drawn on the canvas **MUST** have a high-contrast text label (e.g., black text on a light object). This is non-negotiable.
-4.  **SOUND:** All sounds must be **brief and non-looping** (e.g., short 'blip' on collect).
-5.  **SCORE:** The score must be clearly visible and update in real-time.
+*Instructions: If the topic is 'Photosynthesis', copy this entire code block and replace the placeholders. For example, replace `<!-- GAME_TITLE -->` with `Photosynthesis Game`.*
 
----
-### **IV. MENTAL WALKTHROUGH (Final Check Before Writing Code)**
----
-1.  Which pattern am I using (A or B)?
-2.  How does the player score points?
-3.  What is the exact win condition? What is the lose condition?
-4.  How does my `resetGame()` function work?
-5.  How does the "Play Again" button restart the game?
+```html
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title><!-- GAME_TITLE --></title>
+    <style>
+        body { margin: 0; background-color: #f0f0f0; font-family: sans-serif; display: flex; flex-direction: column; justify-content: center; align-items: center; height: 100vh; overflow: hidden; }
+        #game-container { width: 100%; max-width: 800px; height: 90%; display: flex; flex-direction: column; }
+        #ui-container { flex-shrink: 0; background: rgba(0,0,0,0.6); padding: 8px; border-radius: 8px; color: white; display: flex; justify-content: space-around; flex-wrap: wrap; gap: 10px; margin-bottom: 5px; }
+        .progress-bar-container { flex: 1; min-width: 80px; text-align: center; font-size: 0.8em;}
+        .progress-bar { width: 100%; background-color: #555; border-radius: 5px; overflow: hidden; height: 15px; }
+        .progress-fill { height: 100%; background-color: #4CAF50; width: 0%; transition: width 0.2s; }
+        #starch-counter { font-size: 1.1em; font-weight: bold; }
+        #canvas-container { flex-grow: 1; position: relative; width: 100%; height: 100%; }
+        canvas { display: block; width: 100%; height: 100%; background-color: #87CEEB; border-radius: 8px; }
+        .overlay { position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.7); display: flex; justify-content: center; align-items: center; text-align: center; color: white; z-index: 10; }
+        .overlay-content { background: white; color: black; padding: 2em; border-radius: 10px; max-width: 90%; }
+        .overlay-content h1 { font-size: 2em; } .overlay-content button { font-size: 1.2em; padding: 0.5em 1em; margin-top: 1em; border-radius: 5px; border: none; background: #28a745; color: white; cursor: pointer; }
+    </style>
+</head>
+<body>
+    <div id="game-container">
+        <div id="ui-container">
+            <div class="progress-bar-container">Sun <div class="progress-bar"><div id="sun-progress" class="progress-fill" style="background-color: #f1c40f;"></div></div></div>
+            <div class="progress-bar-container">CO₂ <div class="progress-bar"><div id="co2-progress" class="progress-fill" style="background-color: #95a5a6;"></div></div></div>
+            <div class="progress-bar-container">H₂O <div class="progress-bar"><div id="h2o-progress" class="progress-fill" style="background-color: #3498db;"></div></div></div>
+            <div id="starch-counter">Starch: 0 / 5</div>
+        </div>
+        <div id="canvas-container">
+            <canvas id="gameCanvas"></canvas>
+            <div id="start-screen" class="overlay">
+                <div class="overlay-content">
+                    <h1><!-- GAME_TITLE --></h1>
+                    <p><!-- GAME_INSTRUCTIONS --></p>
+                    <button id="start-button">Start Game</button>
+                </div>
+            </div>
+            <div id="end-screen" class="overlay" style="display: none;">
+                <div class="overlay-content">
+                    <h1 id="end-message"></h1>
+                    <button id="restart-button">Play Again</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        let gameObjects = [], sun = 0, co2 = 0, water = 0, starch = 0;
+        let gameLoopId;
+        const required = 3, starchGoal = 5;
 
-Now, following these strict directives, build the game for the topic: "TOPIC_PLACEHOLDER".
+        function resizeCanvas() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        }
+
+        function drawPlant() {
+            ctx.fillStyle = '#654321';
+            ctx.fillRect(canvas.width / 2 - 10, canvas.height - 60, 20, 60);
+            const plantHeight = 40 + (starch * 10);
+            ctx.fillStyle = '#27ae60';
+            ctx.beginPath();
+            ctx.arc(canvas.width / 2, canvas.height - 60 - (plantHeight/2), plantHeight/2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        function GameObject(type) {
+            this.radius = 20;
+            this.x = Math.random() * (canvas.width - this.radius * 2) + this.radius;
+            this.y = canvas.height + this.radius;
+            this.speed = Math.random() * 1.5 + 1;
+            this.type = type;
+            this.draw = function() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                const typeMap = { sun: {color: '#f1c40f', text: 'Sun'}, co2: {color: '#95a5a6', text: 'CO₂'}, water: {color: '#3498db', text: 'H₂O'} };
+                ctx.fillStyle = typeMap[this.type].color;
+                ctx.fill();
+                ctx.fillStyle = 'black'; ctx.font = '12px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText(typeMap[this.type].text, this.x, this.y);
+            };
+            this.update = function() { this.y -= this.speed; };
+        }
+
+        function updateUI() {
+            document.getElementById('sun-progress').style.width = `${(sun / required) * 100}%`;
+            document.getElementById('co2-progress').style.width = `${(co2 / required) * 100}%`;
+            document.getElementById('h2o-progress').style.width = `${(water / required) * 100}%`;
+            document.getElementById('starch-counter').textContent = `Starch: ${starch} / ${starchGoal}`;
+        }
+        
+        function checkPhotosynthesis() {
+            if (sun >= required && co2 >= required && water >= required) {
+                sun -= required; co2 -= required; water -= required;
+                starch++;
+                updateUI();
+                if (starch >= starchGoal) endGame(true);
+            }
+        }
+        
+        function handleInteraction(event) {
+            event.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX || event.touches[0].clientX) - rect.left;
+            const y = (event.clientY || event.touches[0].clientY) - rect.top;
+
+            for (let i = gameObjects.length - 1; i >= 0; i--) {
+                const obj = gameObjects[i];
+                const distance = Math.sqrt((x - obj.x)**2 + (y - obj.y)**2);
+                if (distance < obj.radius) {
+                    if (obj.type === 'sun' && sun < required) sun++;
+                    else if (obj.type === 'co2' && co2 < required) co2++;
+                    else if (obj.type === 'water' && water < required) water++;
+                    gameObjects.splice(i, 1);
+                    updateUI();
+                    checkPhotosynthesis();
+                    return;
+                }
+            }
+        }
+
+        function gameLoop() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawPlant();
+            gameObjects.forEach((obj, index) => {
+                obj.update();
+                obj.draw();
+                if (obj.y < -obj.radius) gameObjects.splice(index, 1);
+            });
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+
+        function spawnObject() {
+            const types = ['sun', 'co2', 'water'];
+            gameObjects.push(new GameObject(types[Math.floor(Math.random() * types.length)]));
+        }
+
+        function startGame() {
+            document.getElementById('start-screen').style.display = 'none';
+            document.getElementById('end-screen').style.display = 'none';
+            resetGame();
+            resizeCanvas();
+            setInterval(spawnObject, 1200);
+            gameLoopId = requestAnimationFrame(gameLoop);
+        }
+        
+        function resetGame() {
+            sun = 0; co2 = 0; water = 0; starch = 0;
+            gameObjects = [];
+            updateUI();
+        }
+
+        function endGame(isWin) {
+            cancelAnimationFrame(gameLoopId);
+            document.getElementById('end-message').textContent = isWin ? 'You Win! Plant is fully grown!' : 'Game Over!';
+            document.getElementById('end-screen').style.display = 'flex';
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        canvas.addEventListener('click', handleInteraction);
+        canvas.addEventListener('touchstart', handleInteraction);
+        document.getElementById('start-button').addEventListener('click', startGame);
+        document.getElementById('restart-button').addEventListener('click', startGame);
+
+        resizeCanvas();
+    </script>
+</body>
+</html>
+```
+
+Now, your task is to call this API with "TOPIC_PLACEHOLDER" replaced by the user's desired topic. For example, "Photosynthesis".
 """
             prompt = prompt_template.replace("TOPIC_PLACEHOLDER", topic)
             
@@ -186,10 +338,18 @@ Now, following these strict directives, build the game for the topic: "TOPIC_PLA
             
             # Clean up the response to ensure it's valid HTML
             generated_html = response.text.strip()
+            
+            # The AI might wrap the code in ```html ... ```, so we strip that
             if generated_html.startswith("```html"):
                 generated_html = generated_html[7:]
             if generated_html.endswith("```"):
                 generated_html = generated_html[:-3]
+
+            # Replace placeholders in the template if the AI followed instructions
+            if "<!-- GAME_TITLE -->" in generated_html:
+                 generated_html = generated_html.replace("<!-- GAME_TITLE -->", f"{topic.title()} Game")
+                 generated_html = generated_html.replace("<!-- GAME_INSTRUCTIONS -->", "Click or tap the floating Sunlight, CO₂, and H₂O to collect them. Fill the progress bars to produce Starch and help the plant grow!")
+
 
             update_payload = {
                 'word': topic,
@@ -204,6 +364,8 @@ Now, following these strict directives, build the game for the topic: "TOPIC_PLA
     except Exception as e:
         app.logger.error(f"Error in /generate_game for user {current_user_id}, topic '{topic}': {e}")
         return jsonify({"error": f"An internal AI error occurred while trying to build the game: {e}"}), 500
+
+    
 @app.route('/generate_story_node', methods=['POST', 'OPTIONS'])
 @token_required
 @limiter.limit("200/hour")
