@@ -15,8 +15,8 @@ You are an expert educational game designer and developer. Your task is to gener
     * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
     * This game is an endless "Swerve Runner". You must define three categories of objects:
         1.  **Player:** The character the user controls. Select the most thematic sprite.
-        2.  **Good Items:** Things the player should collect. Select a variety of logical items from the library.
-        3.  **Bad Items:** Things the player must avoid. Select a variety of logical items from the library.
+        2.  **Good Items:** Things the player should collect. These increase the score. Select a variety of logical items from the library.
+        3.  **Bad Items:** Things the player must avoid. These decrease lives. Select a variety of logical items from the library.
     * Create a detailed "Asset Plan" by selecting the most appropriate sprite keys from the MASTER ASSET LIBRARY.
     * **Example Asset Plan for "Herbivores":**
         * **Player Sprite Key:** `player_char`
@@ -40,19 +40,26 @@ You are an expert educational game designer and developer. Your task is to gener
 -   `env_sun`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Sun.png"
 -   `env_water`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/WaterDroplet.png"
 -   `veg_apple`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/apple.png"
+-   `veg_apple_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/apple-half.png"
+-   `veg_artichoke`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/artichoke.png"
 -   `veg_asparagus`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/asparagus.png"
 -   `veg_avocado`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/avocado.png"
+-   `veg_avocado_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/advocado-half.png"
 -   `meat_bacon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/bacon.png"
 -   `veg_banana`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/banana.png"
 -   `veg_beans`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beans.png"
 -   `veg_beet`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beet.png"
+-   `veg_beetroot`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beetroot.png"
 -   `food_bread`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/bread.png"
 -   `veg_broccoli`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/broccoli.png"
+-   `veg_brinjal`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/brinjal.png"
 -   `veg_cabbage`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cabbage.png"
 -   `veg_capsicum`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/capsicum.png"
 -   `veg_carrot`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/carrot.png"
 -   `veg_cauliflower`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cauliflower.png"
 -   `food_cheese`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cheese.png"
+-   `food_chocolate`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/chocolate.png"
+-   `food_cookie`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cookie.png"
 -   `veg_corn`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/corn.png"
 -   `veg_cucumber`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cucumber.png"
 -   `food_egg`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/egg.png"
@@ -72,6 +79,9 @@ You are an expert educational game designer and developer. Your task is to gener
 -   `veg_radish`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/radish.png"
 -   `veg_strawberry`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/strawberry.png"
 -   `veg_sweetpotato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/sweetpotato.png"
+-   `meat_turkey`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/turkey.png"
+-   `veg_turnip`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/turnip.png"
+-   `meat_ham`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/whole-ham.png"
 
 ---
 ### **THE "SWERVE RUNNER" GAME TEMPLATE**
@@ -95,7 +105,7 @@ You are an expert educational game designer and developer. Your task is to gener
         const GOOD_ITEM_KEYS = ["veg_carrot", "veg_apple", "veg_lettuce"];
         const BAD_ITEM_KEYS = ["meat_steak", "meat_chicken"];
         
-        // Load all needed assets
+        // Load all needed assets from the master library
         loadSprite(PLAYER_SPRITE_KEY, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${PLAYER_SPRITE_KEY}.png`);
         GOOD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
         BAD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
