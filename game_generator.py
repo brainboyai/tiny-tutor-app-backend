@@ -19,14 +19,13 @@ You are an expert educational game designer and developer. Your task is to gener
 5.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code, with no extra notes or comments outside the code.
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS EDITION)**
+### **TEMPLATE LIBRARY (KABOOM.JS EDITION v2 - CORRECTED)**
 ---
 #### **TEMPLATE A: THE KABOOM QUIZ GAME**
 * **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
 * **Gameplay:** A question appears. The player clicks one of the answer choices.
 
 ```html
-<!-- TEMPLATE A: KABOOM QUIZ GAME -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -133,7 +132,6 @@ You are an expert educational game designer and developer. Your task is to gener
 * **Gameplay:** Player moves a character to collect "good" items and avoid "bad" ones.
 
 ```html
-<!-- TEMPLATE B: KABOOM COLLECTOR GAME -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -185,7 +183,7 @@ You are an expert educational game designer and developer. Your task is to gener
                     color(...itemConfig.color),
                     move(DOWN, 240),
                     area(),
-                    cleanup(),
+                    offscreen({ destroy: true }), // <-- FIX: Changed cleanup() to offscreen()
                     itemConfig.tag,
                 ]);
             });
@@ -261,7 +259,6 @@ You are an expert educational game designer and developer. Your task is to gener
 * **Gameplay:** Player clicks falling "ingredients" to fill meters and create a "product".
 
 ```html
-<!-- TEMPLATE C: KABOOM PROCESS & RECIPE GAME -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -312,7 +309,7 @@ You are an expert educational game designer and developer. Your task is to gener
                     color(ing.color),
                     move(DOWN, 150),
                     area(),
-                    cleanup(),
+                    offscreen({ destroy: true }), // <-- FIX: Changed cleanup() to offscreen()
                     "ingredient",
                     { type: key }
                 ]);
@@ -398,7 +395,6 @@ You are an expert educational game designer and developer. Your task is to gener
 * **Gameplay:** Player moves a platform to catch falling blocks in the correct order.
 
 ```html
-<!-- TEMPLATE D: THE KABOOM STACKING GAME -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -451,7 +447,7 @@ You are an expert educational game designer and developer. Your task is to gener
                     color(blockData.color),
                     move(DOWN, 200),
                     area(),
-                    cleanup(),
+                    offscreen({ destroy: true }), // <-- FIX: Changed cleanup() to offscreen()
                     "block",
                     { data: blockData }
                 ]).add([
@@ -533,7 +529,6 @@ You are an expert educational game designer and developer. Your task is to gener
 * **Best for:** Vocabulary, definitions, matching pairs (e.g., Country & Capital, Animal & Habitat).
 * **Gameplay:** A grid of cards is shown. The player clicks two cards to flip them over. If they match, they stay open. Match all pairs to win.
 ```html
-<!-- TEMPLATE E: THE KABOOM MATCHING GAME -->
 <!DOCTYPE html>
 <html>
 <head>
