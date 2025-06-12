@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE**
+### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v2 - with movement)**
 ---
 
 ```html
@@ -49,8 +49,8 @@ You are an expert educational game designer and developer. Your task is to gener
 
         // --- 1. DEFINE ITEMS ---
         /* PLACEHOLDER: The AI will define these lists based on its analysis. */
-        const correctItems = ["Cow", "Goat", "Rabbit", "Deer"];
-        const incorrectItems = ["Lion", "Tiger", "Shark", "Wolf"];
+        const correctItems = ["Cow", "Goat", "Rabbit", "Deer", "Zebra", "Horse", "Elephant"];
+        const incorrectItems = ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear", "Crocodile", "Snake"];
         // --- END OF PLACEHOLDER ---
 
         scene("start", () => {
@@ -61,42 +61,42 @@ You are an expert educational game designer and developer. Your task is to gener
         });
 
         scene("game", ({ level, score }) => {
-            let timer = 10;
+            let timer = 15; // Increased time slightly for moving targets
             let correctTaps = 0;
             const numCorrectToSpawn = Math.min(2 + level, correctItems.length);
             const numIncorrectToSpawn = 2 + level;
 
-            const scoreLabel = add([ text(`Score: ${score}`, { size: 32 }), pos(24, 24) ]);
-            const timerLabel = add([ text(`Time: ${timer.toFixed(1)}`, { size: 32 }), pos(width() - 24, 24), anchor("topright") ]);
-            const levelLabel = add([ text(`Level: ${level}`, { size: 32 }), pos(width() / 2, 24), anchor("top") ]);
+            const scoreLabel = add([ text(`Score: ${score}`), pos(24, 24), { layer: "ui" } ]);
+            const timerLabel = add([ text(`Time: ${timer.toFixed(1)}`), pos(width() - 24, 24), anchor("topright"), { layer: "ui" } ]);
+            const levelLabel = add([ text(`Level: ${level}`), pos(width() / 2, 24), anchor("top"), { layer: "ui" } ]);
+
+            const speed = 50 + (level * 10);
+
+            // Function to spawn a single item
+            function spawnItem(itemName, itemTag) {
+                const item = add([
+                    rect(120, 50, { radius: 8 }),
+                    pos(rand(80, width() - 80), rand(80, height() - 80)),
+                    // --- NEW: All items have the same neutral color ---
+                    color(220, 220, 220),
+                    area(),
+                    anchor("center"),
+                    // --- NEW: Movement and Collision Physics ---
+                    move(rand(360), speed),
+                    stay(), // Keep the items within the screen boundaries
+                    "item",
+                    itemTag
+                ]);
+                item.add([ text(itemName, { size: 16, width: 110 }), anchor("center"), color(0,0,0) ]);
+            }
 
             // Spawn Correct Items
-            for (let i = 0; i < numCorrectToSpawn; i++) {
-                const item = add([
-                    rect(120, 50, { radius: 8 }),
-                    pos(rand(80, width() - 80), rand(80, height() - 80)),
-                    color(60, 180, 255),
-                    area(),
-                    anchor("center"),
-                    "item",
-                    "correct"
-                ]);
-                item.add([ text(choose(correctItems), { size: 16, width: 110 }), anchor("center"), color(0,0,0) ]);
-            }
+            const itemsToFind = chooseMultiple(correctItems, numCorrectToSpawn);
+            itemsToFind.forEach(name => spawnItem(name, "correct"));
             
             // Spawn Incorrect Items
-            for (let i = 0; i < numIncorrectToSpawn; i++) {
-                const item = add([
-                    rect(120, 50, { radius: 8 }),
-                    pos(rand(80, width() - 80), rand(80, height() - 80)),
-                    color(200, 200, 200),
-                    area(),
-                    anchor("center"),
-                    "item",
-                    "incorrect"
-                ]);
-                item.add([ text(choose(incorrectItems), { size: 16, width: 110 }), anchor("center"), color(0,0,0) ]);
-            }
+            const incorrectToSpawn = chooseMultiple(incorrectItems, numIncorrectToSpawn);
+            incorrectToSpawn.forEach(name => spawnItem(name, "incorrect"));
             
             onClick("correct", (item) => {
                 destroy(item);
@@ -114,7 +114,7 @@ You are an expert educational game designer and developer. Your task is to gener
                 score -= 5;
                 scoreLabel.text = `Score: ${score}`;
                 add([
-                    text("-5", { size: 24, font: "sans-serif" }),
+                    text("-5", { size: 24 }),
                     pos(item.pos),
                     lifespan(1, { fade: 0.5 }),
                     anchor("center"),
@@ -122,6 +122,16 @@ You are an expert educational game designer and developer. Your task is to gener
                 ]);
             });
 
+            onUpdate("item", (item) => {
+                // Invert velocity if hitting screen edges
+                if (item.pos.x < 0 || item.pos.x > width()) {
+                    item.move(-item.vel.x * 2, 0);
+                }
+                if (item.pos.y < 0 || item.pos.y > height()) {
+                    item.move(0, -item.vel.y * 2);
+                }
+            });
+            
             onUpdate(() => {
                 timer -= dt();
                 timerLabel.text = `Time: ${timer.toFixed(1)}`;
