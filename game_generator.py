@@ -268,8 +268,8 @@ You are an expert educational game designer and developer. Your task is to gener
                 const ingredient = RECIPE[key];
                 const meterX = startX + i * (meterWidth + meterGap);
                 add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
-                add([ rect(meterWidth, meterHeight), color(80, 80, 80), pos(meterX, 45), { radius: 4 } ]);
-                add([ rect(0, meterHeight), color(ingredient.color), pos(meterX, 45), { radius: 4 }, `meter_${key}` ]);
+                add([ rect(meterWidth, meterHeight, { radius: 4 }), color(80, 80, 80), pos(meterX, 45) ]);
+                add([ rect(0, meterHeight, { radius: 4 }), color(ingredient.color), pos(meterX, 45), `meter_${key}` ]);
             });
             const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
 
