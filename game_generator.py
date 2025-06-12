@@ -7,16 +7,29 @@ import logging
 # The large prompt template, containing all game variations, is stored here.
 # This keeps the main app.py file clean and focused on routing.
 PROMPT_TEMPLATE = """
-You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine.
+You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine and a pre-defined library of sprite assets.
 
 ---
 ### **MANDATORY WORKFLOW**
 ---
-1.  **Analyze Topic:** Deeply analyze the core learning objective of "TOPIC_PLACEHOLDER". Is it about definitions, a process, a sequence, a journey, or identification?
-2.  **Choose ONE Template:** Review the FIVE Kaboom.js game templates below. You **MUST** choose the single most appropriate template for the topic.
-3.  **State Your Choice:** At the very beginning of your response, you MUST state which template you are choosing and why. For example: "The topic is 'Photosynthesis', which involves a multi-step process. Therefore, I will use Template C: The Process & Recipe Game."
-4.  **Copy & Fill:** Copy the entire code for your chosen template. Your only coding task is to replace the `/* PLACEHOLDER */` comments with relevant JavaScript content for the topic. Do not change the core logic, HTML, or Kaboom.js setup.
-5.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code, with no extra notes or comments outside the code.
+1.  **Asset-First Analysis:** Deeply analyze the topic: "TOPIC_PLACEHOLDER". First, identify the key objects and concepts. Then, map these concepts to the most appropriate sprites from the **Asset Library** below. For example, for a game about "Herbivores," the player could be "player_char", good items (plants) could be "item_heart", and bad items (predators) could be "enemy_fly".
+2.  **Choose ONE Template:** Review the FIVE Kaboom.js game templates. Choose the single most appropriate template for the topic.
+3.  **State Your Choice & Asset Plan:** At the very beginning of your response, you MUST state your template choice and your asset plan. For example: "The topic is 'Herbivores', which involves collecting good items and avoiding bad ones. I will use Template B: The Collector Game. I will map the assets as follows: Player -> 'player_char', Good Items (Plants) -> 'item_heart', Bad Items (Predators) -> 'enemy_spike'."
+4.  **Copy & Fill:** Copy the entire code for your chosen template. Your only coding task is to replace the `/* PLACEHOLDER */` comments with relevant JavaScript content. This includes defining the game rules and using the asset keys (e.g., "player_char", "item_coin") in your `loadSprite` and `add` calls.
+5.  **Add "Juice":** Make the game feel alive. Use effects like `scale()`, `rotate()`, and `opacity()` on interaction. For example, when a player collects an item, make it shrink and fade out.
+6.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code.
+
+---
+### **ASSET LIBRARY (Replace with your URLs)**
+---
+*You MUST use these asset keys and URLs. Do not invent new ones.*
+-   `player_char`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png"
+-   `enemy_fly`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png"
+-   `enemy_spike`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey2.png"
+-   `item_coin`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/coin.png"
+-   `item_diamond`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/diamond.png"
+-   `item_key`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/key.png"
+-   `item_heart`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/heart.png"
 
 ---
 ### **TEMPLATE LIBRARY (KABOOM.JS EDITION v6 - STABLE & ROBUST)**
@@ -140,12 +153,12 @@ You are an expert educational game designer and developer. Your task is to gener
 ```
 
 ---
-#### **TEMPLATE B: THE KABOOM COLLECTOR GAME**
+#### **TEMPLATE B: THE KABOOM COLLECTOR GAME (WITH SPRITES)**
 * **Best for:** Navigation, collection, simple simulation (e.g., Herbivores, Circulatory System, Pollination).
-* **Gameplay:** Player moves a character to collect "good" items and avoid "bad" ones.
+* **Gameplay:** Player moves a character sprite to collect "good" item sprites and avoid "bad" enemy sprites.
 
 ```html
-<!-- TEMPLATE B: KABOOM COLLECTOR GAME -->
+<!-- TEMPLATE B: KABOOM COLLECTOR GAME (WITH SPRITES)-->
 <!DOCTYPE html>
 <html>
 <head>
@@ -157,45 +170,56 @@ You are an expert educational game designer and developer. Your task is to gener
     <script>
         kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 235] });
 
-        // --- 1. DEFINE GAME ENTITIES & RULES ---
-        const PLAYER_COLOR = [255, 182, 193];
-        const GOOD_ITEM = { tag: "good", color: [0, 255, 0], score: 10 };
-        const BAD_ITEM = { tag: "bad", color: [255, 0, 0], score: -5 };
-        const GAME_DURATION = 30;
-        /* PLACEHOLDER: You can adjust the colors and scores above if needed. */
+        // --- 1. LOAD ASSETS ---
+        /* PLACEHOLDER: Load the sprites you need for your game from the Asset Library. */
+        loadSprite("player_char", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png)");
+        loadSprite("good_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png)");
+        loadSprite("bad_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemy_fly.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemy_fly.png)");
         // --- END OF PLACEHOLDER ---
 
+        scene("start", () => {
+             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2 - 100), anchor("center"), ]);
+             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2), anchor("center"), ]);
+             add([ text("Click to Start", { size: 32, font: "sans-serif" }), pos(width() / 2, height() / 2 + 100), anchor("center"), ]);
+            onClick(() => go("game"));
+        });
+
         scene("game", () => {
+            const GAME_DURATION = 30;
             let score = 0;
+            
             const scoreLabel = add([ text("Score: 0", { size: 32, font: "sans-serif" }), pos(24, 24) ]);
             const timerLabel = add([ text("Time: " + GAME_DURATION, { size: 32, font: "sans-serif" }), pos(width() - 24, 24), anchor("topright") ]);
             
-            const player = add([ rect(40, 40), pos(width() / 2, height() - 60), color(...PLAYER_COLOR), area(), anchor("center") ]);
+            const player = add([ sprite("player_char"), pos(width() / 2, height() - 80), area(), anchor("center"), scale(2.5) ]);
 
             onUpdate(() => { player.pos.x = mousePos().x; });
 
-            loop(0.8, () => {
-                const itemConfig = rand() > 0.4 ? GOOD_ITEM : BAD_ITEM;
-                add([ rect(30, 30), pos(rand(0, width()), 0), color(...itemConfig.color), move(DOWN, 240), area(), offscreen({ destroy: true }), itemConfig.tag, ]);
+            loop(0.6, () => {
+                const isGood = rand() > 0.3;
+                const itemSprite = isGood ? "good_item" : "bad_item";
+                const itemTag = isGood ? "good" : "bad";
+                add([ sprite(itemSprite), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(2), "item" ]);
             });
 
             onCollide(player, "good", (p, good) => {
                 destroy(good);
-                score += GOOD_ITEM.score;
+                score += 10;
                 scoreLabel.text = `Score: ${score}`;
+                addKaboom(good.pos);
             });
             
             onCollide(player, "bad", (p, bad) => {
                 destroy(bad);
-                score += BAD_ITEM.score;
+                score -= 5;
                 scoreLabel.text = `Score: ${score}`;
-                shake(10);
+                shake(12);
             });
             
             let time = GAME_DURATION;
-            loop(1, () => {
-                time--;
-                timerLabel.text = `Time: ${time}`;
+            onUpdate(() => {
+                time -= dt();
+                timerLabel.text = `Time: ${time.toFixed(0)}`;
                 if (time <= 0) { go("end", { finalScore: score }); }
             });
         });
@@ -206,13 +230,6 @@ You are an expert educational game designer and developer. Your task is to gener
             onClick(() => go("start"));
         });
         
-        scene("start", () => {
-             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2 - 100), anchor("center"), ]);
-             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2), anchor("center"), ]);
-             add([ text("Click to Start", { size: 32, font: "sans-serif" }), pos(width() / 2, height() / 2 + 100), anchor("center"), ]);
-            onClick(() => go("game"));
-        });
-
         go("start");
     </script>
 </body>
