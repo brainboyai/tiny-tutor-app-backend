@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v2 - with movement)**
+### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v3 - FINAL)**
 ---
 
 ```html
@@ -53,6 +53,12 @@ You are an expert educational game designer and developer. Your task is to gener
         const incorrectItems = ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear", "Crocodile", "Snake"];
         // --- END OF PLACEHOLDER ---
 
+        // --- NEW: Helper function to select multiple unique items from an array ---
+        function chooseMultiple(arr, num) {
+            const shuffled = [...arr].sort(() => 0.5 - Math.random());
+            return shuffled.slice(0, num);
+        }
+
         scene("start", () => {
              add([ text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2 - 100), anchor("center"), ]);
              add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2), anchor("center"), ]);
@@ -61,7 +67,7 @@ You are an expert educational game designer and developer. Your task is to gener
         });
 
         scene("game", ({ level, score }) => {
-            let timer = 15; // Increased time slightly for moving targets
+            let timer = 15;
             let correctTaps = 0;
             const numCorrectToSpawn = Math.min(2 + level, correctItems.length);
             const numIncorrectToSpawn = 2 + level;
@@ -71,19 +77,18 @@ You are an expert educational game designer and developer. Your task is to gener
             const levelLabel = add([ text(`Level: ${level}`), pos(width() / 2, 24), anchor("top"), { layer: "ui" } ]);
 
             const speed = 50 + (level * 10);
+            const itemColor = color(220, 220, 220); // Uniform color for all items
 
             // Function to spawn a single item
             function spawnItem(itemName, itemTag) {
                 const item = add([
                     rect(120, 50, { radius: 8 }),
                     pos(rand(80, width() - 80), rand(80, height() - 80)),
-                    // --- NEW: All items have the same neutral color ---
-                    color(220, 220, 220),
+                    itemColor, // Use the same color for all
                     area(),
                     anchor("center"),
-                    // --- NEW: Movement and Collision Physics ---
                     move(rand(360), speed),
-                    stay(), // Keep the items within the screen boundaries
+                    stay(),
                     "item",
                     itemTag
                 ]);
