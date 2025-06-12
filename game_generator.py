@@ -129,10 +129,14 @@ You are an expert educational game designer and developer. Your task is to gener
             // --- NEW: Rebounding Logic ---
             onUpdate("item", (item) => {
                 if (item.pos.x < 0 || item.pos.x > width()) {
-                    item.vel = item.vel.scale(-1);
+                    if (item.vel) {
+                        item.vel.x = -item.vel.x;
+                    }
                 }
                 if (item.pos.y < 80 || item.pos.y > height()) {
-                   item.vel = item.vel.scale(-1);
+                   if (item.vel) {
+                        item.vel.y = -item.vel.y;
+                    }
                 }
             });
             
