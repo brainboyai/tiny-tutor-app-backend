@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v4 - FINAL)**
+### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v2 - with movement)**
 ---
 
 ```html
@@ -53,12 +53,6 @@ You are an expert educational game designer and developer. Your task is to gener
         const incorrectItems = ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear", "Crocodile", "Snake"];
         // --- END OF PLACEHOLDER ---
 
-        // --- Helper function to select multiple unique items from an array ---
-        function chooseMultiple(arr, num) {
-            const shuffled = [...arr].sort(() => 0.5 - Math.random());
-            return shuffled.slice(0, num);
-        }
-
         scene("start", () => {
              add([ text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2 - 100), anchor("center"), ]);
              add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2), anchor("center"), ]);
@@ -67,7 +61,7 @@ You are an expert educational game designer and developer. Your task is to gener
         });
 
         scene("game", ({ level, score }) => {
-            let timer = 15;
+            let timer = 15; // Increased time slightly for moving targets
             let correctTaps = 0;
             const numCorrectToSpawn = Math.min(2 + level, correctItems.length);
             const numIncorrectToSpawn = 2 + level;
@@ -77,17 +71,19 @@ You are an expert educational game designer and developer. Your task is to gener
             const levelLabel = add([ text(`Level: ${level}`), pos(width() / 2, 24), anchor("top"), { layer: "ui" } ]);
 
             const speed = 50 + (level * 10);
-            const itemColor = color(220, 220, 220); // Uniform color for all items
 
             // Function to spawn a single item
             function spawnItem(itemName, itemTag) {
                 const item = add([
                     rect(120, 50, { radius: 8 }),
                     pos(rand(80, width() - 80), rand(80, height() - 80)),
-                    itemColor,
+                    // --- NEW: All items have the same neutral color ---
+                    color(220, 220, 220),
                     area(),
                     anchor("center"),
-                    move(choose([LEFT, RIGHT, UP, DOWN]), speed), // Start moving in a random direction
+                    // --- NEW: Movement and Collision Physics ---
+                    move(rand(360), speed),
+                    stay(), // Keep the items within the screen boundaries
                     "item",
                     itemTag
                 ]);
@@ -126,17 +122,13 @@ You are an expert educational game designer and developer. Your task is to gener
                 ]);
             });
 
-            // --- NEW: Rebounding Logic ---
             onUpdate("item", (item) => {
+                // Invert velocity if hitting screen edges
                 if (item.pos.x < 0 || item.pos.x > width()) {
-                    if (item.vel) {
-                        item.vel.x = -item.vel.x;
-                    }
+                    item.move(-item.vel.x * 2, 0);
                 }
-                if (item.pos.y < 80 || item.pos.y > height()) {
-                   if (item.vel) {
-                        item.vel.y = -item.vel.y;
-                    }
+                if (item.pos.y < 0 || item.pos.y > height()) {
+                    item.move(0, -item.vel.y * 2);
                 }
             });
             
