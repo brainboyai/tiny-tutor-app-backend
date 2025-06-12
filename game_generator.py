@@ -19,7 +19,7 @@ You are an expert educational game designer and developer. Your task is to gener
 5.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code, with no extra notes or comments outside the code.
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS EDITION v4 - ROBUST)**
+### **TEMPLATE LIBRARY (KABOOM.JS EDITION v5 - ROBUST)**
 ---
 #### **TEMPLATE A: THE KABOOM QUIZ GAME**
 * **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
@@ -276,7 +276,7 @@ You are an expert educational game designer and developer. Your task is to gener
                 const ingredient = RECIPE[key];
                 const meterX = startX + i * (meterWidth + meterGap);
                 add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
-                add([ rect(meterWidth, meterHeight), color(100, 100, 100), pos(meterX, 45) ]);
+                add([ rect(meterWidth, meterHeight), color(80, 80, 80), pos(meterX, 45) ]);
                 add([ rect(0, meterHeight), color(ingredient.color), pos(meterX, 45), `meter_${key}` ]);
             });
             const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
@@ -376,7 +376,8 @@ You are an expert educational game designer and developer. Your task is to gener
             const nextBlockLabel = add([ text(`Next: ${BUILD_ORDER[0].name}`), pos(20, 20), { value: 0 } ]);
 
             loop(1.5, () => {
-                const blockIndex = rand() > 0.4 ? currentBlockIndex : rint(0, BUILD_ORDER.length);
+                // FIX: Changed rint to randi
+                const blockIndex = rand() > 0.4 ? currentBlockIndex : randi(0, BUILD_ORDER.length);
                 const blockData = BUILD_ORDER[blockIndex];
                 add([
                     rect(120, 30, { radius: 4 }), pos(rand(60, width() - 60), 0), color(blockData.color), move(DOWN, 200), area(), offscreen({ destroy: true }), "block", { data: blockData }
@@ -446,13 +447,13 @@ You are an expert educational game designer and developer. Your task is to gener
         ];
         // --- END OF PLACEHOLDER ---
         
-        // --- FIX: Added a shuffle function ---
         function shuffle(array) {
             let currentIndex = array.length, randomIndex;
-            while (currentIndex != 0) {
+            while (currentIndex > 0) {
                 randomIndex = Math.floor(Math.random() * currentIndex);
                 currentIndex--;
-                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+                [array[currentIndex], array[randomIndex]] = [
+                array[randomIndex], array[currentIndex]];
             }
             return array;
         }
@@ -503,10 +504,13 @@ You are an expert educational game designer and developer. Your task is to gener
                             wait(1, () => {
                                 card.isFlipped = false;
                                 card.color = rgb(60, 60, 180);
-                                card.destroyChildren("card-text");
+                                // FIX: Correctly destroy child text objects
+                                card.get("card-text").forEach(child => destroy(child));
+                                
                                 firstCard.isFlipped = false;
                                 firstCard.color = rgb(60, 60, 180);
-                                firstCard.destroyChildren("card-text");
+                                firstCard.get("card-text").forEach(child => destroy(child));
+
                                 firstCard = null;
                                 lockBoard = false;
                             });
