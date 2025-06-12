@@ -33,7 +33,7 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 ### **MASTER ASSET LIBRARY**
 ---
-*You MUST use these asset keys and their corresponding URLs. Select the most appropriate ones for the game topic.*
+*This is the definitive library of assets. The keys map to the direct URLs of the images in the GitHub repository. You must use these exact keys.*
 -   `player_char`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png"
 -   `plant_tree`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Tree1.png"
 -   `plant_palm`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Palm_tree.png"
@@ -100,15 +100,31 @@ You are an expert educational game designer and developer. Your task is to gener
         kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 235] });
 
         // --- 1. DEFINE & LOAD ASSETS ---
+        /* This is the master library of all available assets. Do not change this. */
+        const MASTER_ASSETS = {
+            "player_char": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png)",
+            "plant_tree": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Tree1.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Tree1.png)",
+            "env_sun": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Sun.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Sun.png)",
+            "env_water": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/WaterDroplet.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/WaterDroplet.png)",
+            "veg_apple": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/apple.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/apple.png)",
+            "veg_carrot": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/carrot.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/carrot.png)",
+            "veg_broccoli": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/broccoli.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/broccoli.png)",
+            "veg_lettuce": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/lettuce.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/lettuce.png)",
+            "meat_steak": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/steak.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/steak.png)",
+            "meat_chicken": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/roastedchicken.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/roastedchicken.png)",
+            "food_fish": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/fish.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/fish.png)",
+            "food_egg": "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/egg.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/egg.png)",
+        };
+
         /* PLACEHOLDER: The AI will define these lists of sprite keys based on its Asset Plan. */
         const PLAYER_SPRITE_KEY = "player_char";
         const GOOD_ITEM_KEYS = ["veg_carrot", "veg_apple", "veg_lettuce"];
         const BAD_ITEM_KEYS = ["meat_steak", "meat_chicken"];
         
-        // Load all needed assets
-        loadSprite(PLAYER_SPRITE_KEY, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${PLAYER_SPRITE_KEY}.png`);
-        GOOD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
-        BAD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
+        // Load all needed assets from the master library
+        loadSprite(PLAYER_SPRITE_KEY, MASTER_ASSETS[PLAYER_SPRITE_KEY]);
+        GOOD_ITEM_KEYS.forEach(key => loadSprite(key, MASTER_ASSETS[key]));
+        BAD_ITEM_KEYS.forEach(key => loadSprite(key, MASTER_ASSETS[key]));
         // --- END OF PLACEHOLDER ---
 
         scene("start", () => {
