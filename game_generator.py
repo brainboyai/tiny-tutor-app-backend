@@ -19,7 +19,7 @@ You are an expert educational game designer and developer. Your task is to gener
 5.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code, with no extra notes or comments outside the code.
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS EDITION v5 - ROBUST)**
+### **TEMPLATE LIBRARY (KABOOM.JS EDITION v6 - STABLE & ROBUST)**
 ---
 #### **TEMPLATE A: THE KABOOM QUIZ GAME**
 * **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
@@ -36,7 +36,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [0, 0, 0], letterbox: true, });
+        kaboom({ width: 800, height: 600, letterbox: true, background: [0, 0, 0] });
 
         // --- 1. DEFINE QUESTIONS & OPTIONS ---
         const questions = [
@@ -73,7 +73,7 @@ You are an expert educational game designer and developer. Your task is to gener
             const currentQuestion = questions[qIndex];
             
             add([
-                text(currentQuestion.question, { size: 32, width: width() - 40, font: "sans-serif" }),
+                text(currentQuestion.question, { size: 32, width: width() - 80, font: "sans-serif" }),
                 pos(width() / 2, 120),
                 anchor("center"),
             ]);
@@ -86,7 +86,7 @@ You are an expert educational game designer and developer. Your task is to gener
             const optionsYStart = 250;
             currentQuestion.options.forEach((option, i) => {
                 const btn = add([
-                    rect(width() - 100, 50, { radius: 8 }),
+                    rect(width() - 200, 50, { radius: 8 }),
                     pos(width() / 2, optionsYStart + i * 70),
                     anchor("center"),
                     area(),
@@ -155,7 +155,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [135, 206, 235], letterbox: true, });
+        kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 235] });
 
         // --- 1. DEFINE GAME ENTITIES & RULES ---
         const PLAYER_COLOR = [255, 182, 193];
@@ -235,7 +235,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [135, 206, 250], letterbox: true, });
+        kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 250] });
 
         // --- 1. DEFINE RECIPE & GOAL ---
         const RECIPE = {
@@ -264,13 +264,12 @@ You are an expert educational game designer and developer. Your task is to gener
             const totalMetersWidth = ingredientKeys.length * (meterWidth + meterGap) - meterGap;
             const startX = (width() - totalMetersWidth) / 2;
 
-            // UI for meters at the top
             ingredientKeys.forEach((key, i) => {
                 const ingredient = RECIPE[key];
                 const meterX = startX + i * (meterWidth + meterGap);
                 add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
-                add([ rect(meterWidth, meterHeight), color(80, 80, 80), pos(meterX, 45) ]);
-                add([ rect(0, meterHeight), color(ingredient.color), pos(meterX, 45), `meter_${key}` ]);
+                add([ rect(meterWidth, meterHeight), color(80, 80, 80), pos(meterX, 45), { radius: 4 } ]);
+                add([ rect(0, meterHeight), color(ingredient.color), pos(meterX, 45), { radius: 4 }, `meter_${key}` ]);
             });
             const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
 
@@ -279,7 +278,7 @@ You are an expert educational game designer and developer. Your task is to gener
                 const ing = RECIPE[key];
                 add([
                     rect(40, 40), pos(rand(0, width()), 80), color(ing.color), move(DOWN, 150), area(), offscreen({ destroy: true }), "ingredient", { type: key }
-                ]).add([ text(ing.name, { size: 12 }), color(0,0,0), anchor("center") ]);
+                ]).add([ text(ing.name.substring(0,3), { size: 12 }), color(0,0,0), anchor("center") ]);
             });
 
             onClick("ingredient", (ing) => {
@@ -347,7 +346,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [208, 240, 255], letterbox: true, });
+        kaboom({ width: 800, height: 600, letterbox: true, background: [208, 240, 255] });
 
         // --- 1. DEFINE THE ORDERED BLOCKS TO STACK ---
         const BUILD_ORDER = [
@@ -431,7 +430,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [45, 45, 70], letterbox: true, });
+        kaboom({ width: 800, height: 600, letterbox: true, background: [45, 45, 70] });
 
         // --- 1. DEFINE YOUR MATCHING PAIRS ---
         const items = [
@@ -497,11 +496,11 @@ You are an expert educational game designer and developer. Your task is to gener
                             wait(1, () => {
                                 card.isFlipped = false;
                                 card.color = rgb(60, 60, 180);
-                                card.get("card-text").forEach(child => destroy(child));
+                                card.get("card-text").forEach(destroy);
                                 
                                 firstCard.isFlipped = false;
                                 firstCard.color = rgb(60, 60, 180);
-                                firstCard.get("card-text").forEach(child => destroy(child));
+                                firstCard.get("card-text").forEach(destroy);
 
                                 firstCard = null;
                                 lockBoard = false;
