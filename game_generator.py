@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v3 - FINAL)**
+### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v4 - FINAL)**
 ---
 
 ```html
@@ -53,7 +53,7 @@ You are an expert educational game designer and developer. Your task is to gener
         const incorrectItems = ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear", "Crocodile", "Snake"];
         // --- END OF PLACEHOLDER ---
 
-        // --- NEW: Helper function to select multiple unique items from an array ---
+        // --- Helper function to select multiple unique items from an array ---
         function chooseMultiple(arr, num) {
             const shuffled = [...arr].sort(() => 0.5 - Math.random());
             return shuffled.slice(0, num);
@@ -84,11 +84,10 @@ You are an expert educational game designer and developer. Your task is to gener
                 const item = add([
                     rect(120, 50, { radius: 8 }),
                     pos(rand(80, width() - 80), rand(80, height() - 80)),
-                    itemColor, // Use the same color for all
+                    itemColor,
                     area(),
                     anchor("center"),
-                    move(rand(360), speed),
-                    stay(),
+                    move(choose([LEFT, RIGHT, UP, DOWN]), speed), // Start moving in a random direction
                     "item",
                     itemTag
                 ]);
@@ -127,13 +126,13 @@ You are an expert educational game designer and developer. Your task is to gener
                 ]);
             });
 
+            // --- NEW: Rebounding Logic ---
             onUpdate("item", (item) => {
-                // Invert velocity if hitting screen edges
                 if (item.pos.x < 0 || item.pos.x > width()) {
-                    item.move(-item.vel.x * 2, 0);
+                    item.vel = item.vel.scale(-1);
                 }
-                if (item.pos.y < 0 || item.pos.y > height()) {
-                    item.move(0, -item.vel.y * 2);
+                if (item.pos.y < 80 || item.pos.y > height()) {
+                   item.vel = item.vel.scale(-1);
                 }
             });
             
