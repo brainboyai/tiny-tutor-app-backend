@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 -   `item_heart`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/heart.png"
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS ASSET EDITION v7 - ROBUST)**
+### **TEMPLATE LIBRARY (KABOOM.JS ASSET EDITION v8 - STABLE)**
 ---
 
 #### **TEMPLATE A: THE KABOOM QUIZ GAME**
@@ -100,8 +100,7 @@ You are an expert educational game designer and developer. Your task is to gener
             const optionsYStart = 250;
             currentQuestion.options.forEach((option, i) => {
                 const btn = add([
-                    rect(width() - 200, 50),
-                    radius(8),
+                    rect(width() - 200, 50, { radius: 8 }),
                     pos(width() / 2, optionsYStart + i * 70),
                     anchor("center"),
                     area(),
@@ -290,8 +289,8 @@ You are an expert educational game designer and developer. Your task is to gener
                 const ingredient = RECIPE[key];
                 const meterX = startX + i * (meterWidth + meterGap);
                 add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
-                add([ rect(meterWidth, meterHeight), radius(4), color(80, 80, 80), pos(meterX, 45) ]);
-                add([ rect(0, meterHeight), radius(4), color(255, 255, 255), pos(meterX, 45), `meter_${key}` ]);
+                add([ rect(meterWidth, meterHeight, { radius: 4 }), color(80, 80, 80), pos(meterX, 45) ]);
+                add([ rect(0, meterHeight, { radius: 4 }), color(255, 255, 255), pos(meterX, 45), `meter_${key}` ]);
             });
             const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
 
@@ -407,8 +406,7 @@ You are an expert educational game designer and developer. Your task is to gener
 
                 const card = add([
                     pos(startX + col * (cardWidth + gap), 50 + row * (cardHeight + gap)),
-                    rect(cardWidth, cardHeight),
-                    radius(8),
+                    rect(cardWidth, cardHeight, { radius: 8 }),
                     color(60, 60, 180), area(), "card",
                     { value: value, isFlipped: false, }
                 ]);
