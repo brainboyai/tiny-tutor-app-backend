@@ -167,15 +167,15 @@ You are an expert educational game designer and developer. Your task is to gener
     <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
 </head>
 <body>
-    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
+    <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
         kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 235] });
 
         // --- 1. LOAD ASSETS ---
         /* PLACEHOLDER: Load the sprites you need for your game from the Asset Library. */
-        loadSprite("player_char", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png)");
-        loadSprite("good_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png)");
-        loadSprite("bad_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png)");
+        loadSprite("player_char", "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png");
+        loadSprite("good_item", "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png");
+        loadSprite("bad_item", "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png");
         // --- END OF PLACEHOLDER ---
 
         scene("start", () => {
@@ -192,7 +192,15 @@ You are an expert educational game designer and developer. Your task is to gener
             const scoreLabel = add([ text("Score: 0", { size: 32, font: "sans-serif" }), pos(24, 24) ]);
             const timerLabel = add([ text("Time: " + GAME_DURATION, { size: 32, font: "sans-serif" }), pos(width() - 24, 24), anchor("topright") ]);
             
-            const player = add([ sprite("player_char"), pos(width() / 2, height() - 80), area(), anchor("center"), scale(2.5) ]);
+            // --- FIX: Added a tag to the player for collision detection ---
+            const player = add([
+                sprite("player_char"),
+                pos(width() / 2, height() - 80),
+                area(),
+                anchor("center"),
+                scale(2.5),
+                "player_tag" // The player needs a tag to be identified in collisions
+            ]);
 
             onUpdate(() => { player.pos.x = mousePos().x; });
 
@@ -203,14 +211,15 @@ You are an expert educational game designer and developer. Your task is to gener
                 add([ sprite(itemSprite), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(2), "item" ]);
             });
 
-            onCollide(player, "good", (p, good) => {
+            // --- FIX: Use the player's tag in the collision handlers ---
+            onCollide("player_tag", "good", (p, good) => {
                 destroy(good);
                 score += 10;
                 scoreLabel.text = `Score: ${score}`;
                 addKaboom(good.pos);
             });
             
-            onCollide(player, "bad", (p, bad) => {
+            onCollide("player_tag", "bad", (p, bad) => {
                 destroy(bad);
                 score -= 5;
                 scoreLabel.text = `Score: ${score}`;
