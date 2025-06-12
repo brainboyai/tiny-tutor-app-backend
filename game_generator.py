@@ -105,7 +105,7 @@ You are an expert educational game designer and developer. Your task is to gener
         const GOOD_ITEM_KEYS = ["veg_carrot", "veg_apple", "veg_lettuce"];
         const BAD_ITEM_KEYS = ["meat_steak", "meat_chicken"];
         
-        // Load all needed assets from the master library
+        // Load all needed assets
         loadSprite(PLAYER_SPRITE_KEY, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${PLAYER_SPRITE_KEY}.png`);
         GOOD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
         BAD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
