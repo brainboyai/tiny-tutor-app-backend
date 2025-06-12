@@ -12,28 +12,29 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 ### **MANDATORY WORKFLOW**
 ---
-1.  **Asset-First Analysis:** Deeply analyze the topic: "TOPIC_PLACEHOLDER". First, identify the key objects and concepts. Then, map these concepts to the most appropriate sprites from the **Asset Library** below. For example, for a game about "Herbivores," the player could be "player_char", good items (plants) could be "item_heart", and bad items (predators) could be "enemy_fly".
-2.  **Choose ONE Template:** Review the FIVE Kaboom.js game templates. Choose the single most appropriate template for the topic.
-3.  **State Your Choice & Asset Plan:** At the very beginning of your response, you MUST state your template choice and your asset plan. For example: "The topic is 'Herbivores', which involves collecting good items and avoiding bad ones. I will use Template B: The Collector Game. I will map the assets as follows: Player -> 'player_char', Good Items (Plants) -> 'item_heart', Bad Items (Predators) -> 'enemy_spike'."
+1.  **Asset-First Analysis:** Deeply analyze the topic: "TOPIC_PLACEHOLDER". First, identify the key objects and concepts. Then, map these concepts to the most appropriate sprites from the **Asset Library** below. For example, for a game about "Herbivores," the player could be "player_char", good items (plants) could be "item_heart", and bad items (predators) could be "enemy_1".
+2.  **Choose ONE Template:** Review the FOUR Kaboom.js game templates below. Choose the single most appropriate template for the topic.
+3.  **State Your Choice & Asset Plan:** At the very beginning of your response, you MUST state your template choice and your asset plan. For example: "The topic is 'Herbivores', which involves collecting good items and avoiding bad ones. I will use Template B: The Collector Game. I will map the assets as follows: Player -> 'player_char', Good Items (Plants) -> 'item_heart', Bad Items (Predators) -> 'enemy_2'."
 4.  **Copy & Fill:** Copy the entire code for your chosen template. Your only coding task is to replace the `/* PLACEHOLDER */` comments with relevant JavaScript content. This includes defining the game rules and using the asset keys (e.g., "player_char", "item_coin") in your `loadSprite` and `add` calls.
 5.  **Add "Juice":** Make the game feel alive. Use effects like `scale()`, `rotate()`, and `opacity()` on interaction. For example, when a player collects an item, make it shrink and fade out.
 6.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code.
 
 ---
-### **ASSET LIBRARY (Replace with your URLs)**
+### **ASSET LIBRARY (Using your GitHub URLs)**
 ---
 *You MUST use these asset keys and URLs. Do not invent new ones.*
 -   `player_char`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png"
--   `enemy_fly`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png"
--   `enemy_spike`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey2.png"
+-   `enemy_1`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png"
+-   `enemy_2`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey2.png"
 -   `item_coin`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/coin.png"
 -   `item_diamond`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/diamond.png"
 -   `item_key`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/key.png"
 -   `item_heart`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/heart.png"
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS EDITION v6 - STABLE & ROBUST)**
+### **TEMPLATE LIBRARY (KABOOM.JS ASSET EDITION v7 - ROBUST)**
 ---
+
 #### **TEMPLATE A: THE KABOOM QUIZ GAME**
 * **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
 * **Gameplay:** A question appears. The player clicks one of the answer choices.
@@ -99,7 +100,8 @@ You are an expert educational game designer and developer. Your task is to gener
             const optionsYStart = 250;
             currentQuestion.options.forEach((option, i) => {
                 const btn = add([
-                    rect(width() - 200, 50, { radius: 8 }),
+                    rect(width() - 200, 50),
+                    radius(8),
                     pos(width() / 2, optionsYStart + i * 70),
                     anchor("center"),
                     area(),
@@ -174,7 +176,7 @@ You are an expert educational game designer and developer. Your task is to gener
         /* PLACEHOLDER: Load the sprites you need for your game from the Asset Library. */
         loadSprite("player_char", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png)");
         loadSprite("good_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png)");
-        loadSprite("bad_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemy_fly.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemy_fly.png)");
+        loadSprite("bad_item", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png)");
         // --- END OF PLACEHOLDER ---
 
         scene("start", () => {
@@ -239,7 +241,7 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 #### **TEMPLATE C: THE KABOOM PROCESS & RECIPE GAME**
 * **Best for:** Multi-step processes, cycles (e.g., Photosynthesis, Water Cycle, Digestion).
-* **Gameplay:** Player clicks falling "ingredients" to fill meters and create a "product".
+* **Gameplay:** Player clicks falling sprites to fill meters and create a "product".
 
 ```html
 <!-- TEMPLATE C: KABOOM PROCESS & RECIPE GAME -->
@@ -254,18 +256,21 @@ You are an expert educational game designer and developer. Your task is to gener
     <script>
         kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 250] });
 
-        // --- 1. DEFINE RECIPE & GOAL ---
+        // --- 1. DEFINE RECIPE & GOAL & LOAD ASSETS ---
         const RECIPE = {
-            /* PLACEHOLDER: Define 2 to 4 ingredients */
-            ingredient1: { name: "Sunlight", color: [255, 255, 0], required: 3 },
-            ingredient2: { name: "Water", color: [0, 0, 255], required: 2 },
-            ingredient3: { name: "CO2", color: [100, 100, 100], required: 4 },
+            /* PLACEHOLDER: Define 2 to 4 ingredients with sprite keys from Asset Library */
+            ingredient1: { name: "Sunlight", sprite: "item_diamond", required: 3 },
+            ingredient2: { name: "Water", sprite: "item_key", required: 2 },
         };
         const PRODUCT = {
             /* PLACEHOLDER: Define the final product */
             name: "Glucose",
             goal: 5
         };
+        // Load all sprites defined in the recipe
+        for (const key in RECIPE) {
+            loadSprite(RECIPE[key].sprite, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${RECIPE[key].sprite}.png`);
+        }
         // --- END OF PLACEHOLDER ---
         
         const ingredientKeys = Object.keys(RECIPE);
@@ -285,8 +290,8 @@ You are an expert educational game designer and developer. Your task is to gener
                 const ingredient = RECIPE[key];
                 const meterX = startX + i * (meterWidth + meterGap);
                 add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
-                add([ rect(meterWidth, meterHeight, { radius: 4 }), color(80, 80, 80), pos(meterX, 45) ]);
-                add([ rect(0, meterHeight, { radius: 4 }), color(ingredient.color), pos(meterX, 45), `meter_${key}` ]);
+                add([ rect(meterWidth, meterHeight), radius(4), color(80, 80, 80), pos(meterX, 45) ]);
+                add([ rect(0, meterHeight), radius(4), color(255, 255, 255), pos(meterX, 45), `meter_${key}` ]);
             });
             const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
 
@@ -294,8 +299,8 @@ You are an expert educational game designer and developer. Your task is to gener
                 const key = choose(ingredientKeys);
                 const ing = RECIPE[key];
                 add([
-                    rect(40, 40), pos(rand(0, width()), 80), color(ing.color), move(DOWN, 150), area(), offscreen({ destroy: true }), "ingredient", { type: key }
-                ]).add([ text(ing.name.substring(0,3), { size: 12 }), color(0,0,0), anchor("center") ]);
+                    sprite(ing.sprite), pos(rand(0, width()), 80), move(DOWN, 150), area(), offscreen({ destroy: true }), scale(2), "ingredient", { type: key }
+                ]);
             });
 
             onClick("ingredient", (ing) => {
@@ -341,90 +346,6 @@ You are an expert educational game designer and developer. Your task is to gener
             onClick(() => go("game"));
         });
         
-        go("start");
-    </script>
-</body>
-</html>
-```
-
----
-#### **TEMPLATE D: THE KABOOM STACKING GAME**
-* **Best for:** Hierarchy, structure, sequence (e.g., Food Pyramid, Layers of the Earth, Taxonomy).
-* **Gameplay:** Player moves a platform to catch falling blocks in the correct order.
-
-```html
-<!-- TEMPLATE D: THE KABOOM STACKING GAME -->
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Stacker</title>
-    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
-</head>
-<body>
-    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
-    <script>
-        kaboom({ width: 800, height: 600, letterbox: true, background: [208, 240, 255] });
-
-        // --- 1. DEFINE THE ORDERED BLOCKS TO STACK ---
-        const BUILD_ORDER = [
-            /* PLACEHOLDER: Fill with at least 4 objects to stack in order. */
-            { name: "Producers", color: [0, 255, 0] },
-            { name: "Primary Consumers", color: [0, 150, 255] },
-            { name: "Secondary Consumers", color: [255, 150, 0] },
-            { name: "Apex Predators", color: [255, 0, 0] },
-        ];
-        // --- END OF PLACEHOLDER ---
-
-        scene("game", () => {
-            let currentBlockIndex = 0;
-            const stack = [];
-
-            const platform = add([ rect(160, 20), pos(width() / 2, height() - 40), color(50, 50, 50), area(), anchor("center"), ]);
-            onUpdate(() => { platform.pos.x = mousePos().x; });
-            
-            const nextBlockLabel = add([ text(`Next: ${BUILD_ORDER[0].name}`), pos(20, 20), { value: 0 } ]);
-
-            loop(1.5, () => {
-                const blockIndex = rand() > 0.4 ? currentBlockIndex : randi(0, BUILD_ORDER.length);
-                const blockData = BUILD_ORDER[blockIndex];
-                add([
-                    rect(120, 30, { radius: 4 }), pos(rand(60, width() - 60), 0), color(blockData.color), move(DOWN, 200), area(), offscreen({ destroy: true }), "block", { data: blockData }
-                ]).add([ text(blockData.name, { size: 16 }), anchor("center"), color(0,0,0) ]);
-            });
-
-            platform.onCollide("block", (block) => {
-                if (block.data.name === BUILD_ORDER[currentBlockIndex].name) {
-                    destroy(block);
-                    const newY = platform.pos.y - (stack.length + 1) * 32;
-                    const newBlock = add([ rect(120, 30, { radius: 4 }), pos(platform.pos.x, newY), color(block.data.color), anchor("center") ]);
-                    newBlock.add([ text(block.data.name, { size: 16 }), anchor("center"), color(0,0,0) ]);
-                    stack.push(newBlock);
-                    
-                    currentBlockIndex++;
-                    if (currentBlockIndex >= BUILD_ORDER.length) {
-                        go("end", { success: true });
-                    } else {
-                        nextBlockLabel.text = `Next: ${BUILD_ORDER[currentBlockIndex].name}`;
-                    }
-                } else {
-                    go("end", { success: false });
-                }
-            });
-        });
-
-        scene("end", ({ success }) => {
-            add([ text(success ? "Tower Complete!" : "Wrong Block!", { size: 50 }), pos(center()), anchor("center") ]);
-            add([ text("Click to restart", { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
-            onClick(() => go("start"));
-        });
-        
-        scene("start", () => {
-             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
-             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
-             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
-            onClick(() => go("game"));
-        });
-
         go("start");
     </script>
 </body>
@@ -486,7 +407,8 @@ You are an expert educational game designer and developer. Your task is to gener
 
                 const card = add([
                     pos(startX + col * (cardWidth + gap), 50 + row * (cardHeight + gap)),
-                    rect(cardWidth, cardHeight, { radius: 8 }),
+                    rect(cardWidth, cardHeight),
+                    radius(8),
                     color(60, 60, 180), area(), "card",
                     { value: value, isFlipped: false, }
                 ]);
@@ -496,7 +418,7 @@ You are an expert educational game designer and developer. Your task is to gener
                     
                     card.isFlipped = true;
                     card.color = rgb(150, 150, 200);
-                    card.add([ text(card.value, {size: 20}), anchor("center"), "card-text" ]);
+                    const textObj = card.add([ text(card.value, {size: 20}), anchor("center"), "card-text" ]);
 
                     if (firstCard === null) {
                         firstCard = card;
@@ -513,11 +435,11 @@ You are an expert educational game designer and developer. Your task is to gener
                             wait(1, () => {
                                 card.isFlipped = false;
                                 card.color = rgb(60, 60, 180);
-                                card.get("card-text").forEach(destroy);
+                                destroy(textObj);
                                 
                                 firstCard.isFlipped = false;
                                 firstCard.color = rgb(60, 60, 180);
-                                firstCard.get("card-text").forEach(destroy);
+                                firstCard.children.forEach(child => { if(child.is("card-text")) destroy(child); });
 
                                 firstCard = null;
                                 lockBoard = false;
