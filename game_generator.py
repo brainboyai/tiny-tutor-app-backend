@@ -19,7 +19,7 @@ You are an expert educational game designer and developer. Your task is to gener
 5.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code, with no extra notes or comments outside the code.
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS EDITION v3 - CORRECTED)**
+### **TEMPLATE LIBRARY (KABOOM.JS EDITION v4 - ROBUST)**
 ---
 #### **TEMPLATE A: THE KABOOM QUIZ GAME**
 * **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
@@ -49,6 +49,25 @@ You are an expert educational game designer and developer. Your task is to gener
             */
         ];
         // --- END OF PLACEHOLDER ---
+
+        scene("start", () => {
+             add([
+                text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }),
+                pos(width() / 2, height() / 2 - 100),
+                anchor("center"),
+            ]);
+             add([
+                text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }),
+                pos(width() / 2, height() / 2),
+                anchor("center"),
+            ]);
+             add([
+                text("Click to Start", { size: 32, font: "sans-serif" }),
+                pos(width() / 2, height() / 2 + 100),
+                anchor("center"),
+            ]);
+            onClick(() => go("game", { score: 0, qIndex: 0 }));
+        });
 
         scene("game", ({ score, qIndex }) => {
             const currentQuestion = questions[qIndex];
@@ -118,10 +137,10 @@ You are an expert educational game designer and developer. Your task is to gener
                 pos(width() / 2, height() / 2 + 20),
                 anchor("center"),
             ]);
-            onClick(() => go("game", { score: 0, qIndex: 0 }));
+            onClick(() => go("start"));
         });
 
-        go("game", { score: 0, qIndex: 0 });
+        go("start");
     </script>
 </body>
 </html>
@@ -143,58 +162,34 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [135, 206, 235] }); // Sky blue background
+        kaboom({ background: [135, 206, 235] });
 
         // --- 1. DEFINE GAME ENTITIES & RULES ---
-        const PLAYER_COLOR = [255, 182, 193]; // Light Pink
-        const GOOD_ITEM = { tag: "good", color: [0, 255, 0], score: 10 }; // Green
-        const BAD_ITEM = { tag: "bad", color: [255, 0, 0], score: -5 }; // Red
-        const GAME_DURATION = 30; // in seconds
+        const PLAYER_COLOR = [255, 182, 193];
+        const GOOD_ITEM = { tag: "good", color: [0, 255, 0], score: 10 };
+        const BAD_ITEM = { tag: "bad", color: [255, 0, 0], score: -5 };
+        const GAME_DURATION = 30;
         /* PLACEHOLDER: You can adjust the colors and scores above if needed. */
         // --- END OF PLACEHOLDER ---
 
         scene("game", () => {
             let score = 0;
-            const scoreLabel = add([
-                text("Score: 0", { size: 32, font: "sans-serif" }),
-                pos(24, 24)
-            ]);
-            const timerLabel = add([
-                text("Time: " + GAME_DURATION, { size: 32, font: "sans-serif" }),
-                pos(width() - 24, 24),
-                anchor("topright")
-            ]);
+            const scoreLabel = add([ text("Score: 0", { size: 32, font: "sans-serif" }), pos(24, 24) ]);
+            const timerLabel = add([ text("Time: " + GAME_DURATION, { size: 32, font: "sans-serif" }), pos(width() - 24, 24), anchor("topright") ]);
             
-            const player = add([
-                rect(40, 40),
-                pos(width() / 2, height() / 2),
-                color(...PLAYER_COLOR),
-                area(),
-                anchor("center")
-            ]);
+            const player = add([ rect(40, 40), pos(width() / 2, height() - 60), color(...PLAYER_COLOR), area(), anchor("center") ]);
 
-            onUpdate(() => {
-                player.pos = mousePos();
-            });
+            onUpdate(() => { player.pos.x = mousePos().x; });
 
             loop(0.8, () => {
                 const itemConfig = rand() > 0.4 ? GOOD_ITEM : BAD_ITEM;
-                add([
-                    rect(30, 30),
-                    pos(rand(0, width()), 0),
-                    color(...itemConfig.color),
-                    move(DOWN, 240),
-                    area(),
-                    offscreen({ destroy: true }),
-                    itemConfig.tag,
-                ]);
+                add([ rect(30, 30), pos(rand(0, width()), 0), color(...itemConfig.color), move(DOWN, 240), area(), offscreen({ destroy: true }), itemConfig.tag, ]);
             });
 
             onCollide(player, "good", (p, good) => {
                 destroy(good);
                 score += GOOD_ITEM.score;
                 scoreLabel.text = `Score: ${score}`;
-                play("score");
             });
             
             onCollide(player, "bad", (p, bad) => {
@@ -208,46 +203,22 @@ You are an expert educational game designer and developer. Your task is to gener
             loop(1, () => {
                 time--;
                 timerLabel.text = `Time: ${time}`;
-                if (time <= 0) {
-                    go("end", { finalScore: score });
-                }
+                if (time <= 0) { go("end", { finalScore: score }); }
             });
         });
 
         scene("end", ({ finalScore }) => {
-            add([
-                text(`Final Score: ${finalScore}`, { size: 50, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 - 50),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to play again", { size: 24, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 20),
-                anchor("center"),
-            ]);
-            onClick(() => go("game"));
+            add([ text(`Final Score: ${finalScore}`, { size: 50, font: "sans-serif" }), pos(width() / 2, height() / 2 - 50), anchor("center"), ]);
+            add([ text("Click to play again", { size: 24, font: "sans-serif" }), pos(width() / 2, height() / 2 + 20), anchor("center"), ]);
+            onClick(() => go("start"));
         });
         
-        // --- 2. ADD A START SCREEN ---
         scene("start", () => {
-             add([
-                text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2 - 100),
-                anchor("center"),
-            ]);
-             add([
-                text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to Start", { size: 32, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 100),
-                anchor("center"),
-            ]);
+             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2 - 100), anchor("center"), ]);
+             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2), anchor("center"), ]);
+             add([ text("Click to Start", { size: 32, font: "sans-serif" }), pos(width() / 2, height() / 2 + 100), anchor("center"), ]);
             onClick(() => go("game"));
         });
-        // --- END OF PLACEHOLDER ---
 
         go("start");
     </script>
@@ -278,10 +249,11 @@ You are an expert educational game designer and developer. Your task is to gener
             /* PLACEHOLDER: Define 2 to 4 ingredients */
             ingredient1: { name: "Sunlight", color: [255, 255, 0], required: 3 },
             ingredient2: { name: "Water", color: [0, 0, 255], required: 2 },
+            ingredient3: { name: "CO2", color: [100, 100, 100], required: 4 },
         };
         const PRODUCT = {
             /* PLACEHOLDER: Define the final product */
-            name: "Plant Food",
+            name: "Glucose",
             goal: 5
         };
         // --- END OF PLACEHOLDER ---
@@ -293,29 +265,28 @@ You are an expert educational game designer and developer. Your task is to gener
             ingredientKeys.forEach(key => inventory[key] = 0);
             let productsMade = 0;
 
-            // UI for meters
+            const meterWidth = 150;
+            const meterHeight = 16;
+            const meterGap = 20;
+            const totalMetersWidth = ingredientKeys.length * (meterWidth + meterGap) - meterGap;
+            const startX = (width() - totalMetersWidth) / 2;
+
+            // UI for meters at the top
             ingredientKeys.forEach((key, i) => {
                 const ingredient = RECIPE[key];
-                add([ text(ingredient.name, { size: 20 }), pos(40, 40 + i * 60) ]);
-                add([ rect(200, 20), color(100, 100, 100), pos(40, 70 + i * 60) ]);
-                add([ rect(0, 20), color(ingredient.color), pos(40, 70 + i * 60), `meter_${key}` ]);
+                const meterX = startX + i * (meterWidth + meterGap);
+                add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
+                add([ rect(meterWidth, meterHeight), color(100, 100, 100), pos(meterX, 45) ]);
+                add([ rect(0, meterHeight), color(ingredient.color), pos(meterX, 45), `meter_${key}` ]);
             });
-            const productLabel = add([ text(`${PRODUCT.name}: 0 / ${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
+            const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
 
-            // Spawn ingredients
             loop(1, () => {
                 const key = choose(ingredientKeys);
                 const ing = RECIPE[key];
                 add([
-                    rect(40, 40),
-                    pos(rand(0, width()), 0),
-                    color(ing.color),
-                    move(DOWN, 150),
-                    area(),
-                    offscreen({ destroy: true }),
-                    "ingredient",
-                    { type: key }
-                ]);
+                    rect(40, 40), pos(rand(0, width()), 80), color(ing.color), move(DOWN, 150), area(), offscreen({ destroy: true }), "ingredient", { type: key }
+                ]).add([ text(ing.name, { size: 12 }), color(0,0,0), anchor("center") ]);
             });
 
             onClick("ingredient", (ing) => {
@@ -330,9 +301,7 @@ You are an expert educational game designer and developer. Your task is to gener
             function updateMeters() {
                  ingredientKeys.forEach((key) => {
                     const meter = get(`meter_${key}`)[0];
-                    const inv = inventory[key];
-                    const req = RECIPE[key].required;
-                    meter.width = (inv / req) * 200;
+                    meter.width = (inventory[key] / RECIPE[key].required) * meterWidth;
                  });
             }
 
@@ -343,7 +312,6 @@ You are an expert educational game designer and developer. Your task is to gener
                     productsMade++;
                     productLabel.text = `${PRODUCT.name}: ${productsMade} / ${PRODUCT.goal}`;
                     updateMeters();
-                    play("score"); // <-- FIX: Changed "powerUp" to "score"
                     if (productsMade >= PRODUCT.goal) {
                         go("end", { success: true });
                     }
@@ -352,39 +320,17 @@ You are an expert educational game designer and developer. Your task is to gener
         });
         
         scene("end", ({ success }) => {
-            add([
-                text(success ? "Process Complete!" : "Time's Up!", { size: 50 }),
-                pos(center()),
-                anchor("center")
-            ]);
-            add([
-                text("Click to restart", { size: 24 }),
-                pos(width() / 2, height() / 2 + 50),
-                anchor("center")
-            ]);
-            onClick(() => go("game"));
+            add([ text(success ? "Process Complete!" : "Time's Up!", { size: 50 }), pos(center()), anchor("center") ]);
+            add([ text("Click to restart", { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
+            onClick(() => go("start"));
         });
         
-        // --- 2. ADD A START SCREEN ---
         scene("start", () => {
-             add([
-                text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2 - 100),
-                anchor("center"),
-            ]);
-             add([
-                text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to Start", { size: 32, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 100),
-                anchor("center"),
-            ]);
+             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
+             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
+             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
             onClick(() => go("game"));
         });
-        // --- END OF PLACEHOLDER ---
         
         go("start");
     </script>
@@ -424,63 +370,28 @@ You are an expert educational game designer and developer. Your task is to gener
             let currentBlockIndex = 0;
             const stack = [];
 
-            const platform = add([
-                rect(160, 20),
-                pos(width() / 2, height() - 40),
-                color(50, 50, 50),
-                area(),
-                anchor("center"),
-            ]);
-
-            onUpdate(() => {
-                platform.pos.x = mousePos().x;
-            });
+            const platform = add([ rect(160, 20), pos(width() / 2, height() - 40), color(50, 50, 50), area(), anchor("center"), ]);
+            onUpdate(() => { platform.pos.x = mousePos().x; });
             
-            const nextBlockLabel = add([
-                text(`Next: ${BUILD_ORDER[0].name}`),
-                pos(20, 20),
-                { value: 0 }
-            ]);
+            const nextBlockLabel = add([ text(`Next: ${BUILD_ORDER[0].name}`), pos(20, 20), { value: 0 } ]);
 
             loop(1.5, () => {
                 const blockIndex = rand() > 0.4 ? currentBlockIndex : rint(0, BUILD_ORDER.length);
                 const blockData = BUILD_ORDER[blockIndex];
                 add([
-                    rect(120, 30, { radius: 4 }),
-                    pos(rand(60, width() - 60), 0),
-                    color(blockData.color),
-                    move(DOWN, 200),
-                    area(),
-                    offscreen({ destroy: true }),
-                    "block",
-                    { data: blockData }
-                ]).add([
-                    text(blockData.name, { size: 16 }),
-                    anchor("center"),
-                    color(0,0,0)
-                ]);
+                    rect(120, 30, { radius: 4 }), pos(rand(60, width() - 60), 0), color(blockData.color), move(DOWN, 200), area(), offscreen({ destroy: true }), "block", { data: blockData }
+                ]).add([ text(blockData.name, { size: 16 }), anchor("center"), color(0,0,0) ]);
             });
 
             platform.onCollide("block", (block) => {
                 if (block.data.name === BUILD_ORDER[currentBlockIndex].name) {
                     destroy(block);
                     const newY = platform.pos.y - (stack.length + 1) * 32;
-                    const newBlock = add([
-                        rect(120, 30, { radius: 4 }),
-                        pos(platform.pos.x, newY),
-                        color(block.data.color),
-                        anchor("center")
-                    ]);
-                    newBlock.add([
-                         text(block.data.name, { size: 16 }),
-                         anchor("center"),
-                         color(0,0,0)
-                    ]);
+                    const newBlock = add([ rect(120, 30, { radius: 4 }), pos(platform.pos.x, newY), color(block.data.color), anchor("center") ]);
+                    newBlock.add([ text(block.data.name, { size: 16 }), anchor("center"), color(0,0,0) ]);
                     stack.push(newBlock);
                     
                     currentBlockIndex++;
-                    play("hit");
-
                     if (currentBlockIndex >= BUILD_ORDER.length) {
                         go("end", { success: true });
                     } else {
@@ -493,34 +404,16 @@ You are an expert educational game designer and developer. Your task is to gener
         });
 
         scene("end", ({ success }) => {
-            add([
-                text(success ? "Tower Complete!" : "Wrong Block!", { size: 50 }),
-                pos(center()),
-                anchor("center")
-            ]);
-            onClick(() => go("game"));
+            add([ text(success ? "Tower Complete!" : "Wrong Block!", { size: 50 }), pos(center()), anchor("center") ]);
+            onClick(() => go("start"));
         });
         
-        // --- 2. ADD A START SCREEN ---
         scene("start", () => {
-             add([
-                text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2 - 100),
-                anchor("center"),
-            ]);
-             add([
-                text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to Start", { size: 32, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 100),
-                anchor("center"),
-            ]);
+             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
+             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
+             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
             onClick(() => go("game"));
         });
-        // --- END OF PLACEHOLDER ---
 
         go("start");
     </script>
@@ -531,7 +424,8 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 #### **TEMPLATE E: THE KABOOM MATCHING GAME**
 * **Best for:** Vocabulary, definitions, matching pairs (e.g., Country & Capital, Animal & Habitat).
-* **Gameplay:** A grid of cards is shown. The player clicks two cards to flip them over. If they match, they stay open. Match all pairs to win.
+* **Gameplay:** A grid of cards is shown. The player clicks two cards to flip them over. If they match, they stay open.
+
 ```html
 <!-- TEMPLATE E: THE KABOOM MATCHING GAME -->
 <!DOCTYPE html>
@@ -551,6 +445,17 @@ You are an expert educational game designer and developer. Your task is to gener
             "Dog", "Cat", "Bird", "Fish", "Lion", "Tiger",
         ];
         // --- END OF PLACEHOLDER ---
+        
+        // --- FIX: Added a shuffle function ---
+        function shuffle(array) {
+            let currentIndex = array.length, randomIndex;
+            while (currentIndex != 0) {
+                randomIndex = Math.floor(Math.random() * currentIndex);
+                currentIndex--;
+                [array[currentIndex], array[randomIndex]] = [array[randomIndex], array[currentIndex]];
+            }
+            return array;
+        }
 
         scene("game", () => {
             const cardValues = shuffle([...items, ...items]);
@@ -572,13 +477,8 @@ You are an expert educational game designer and developer. Your task is to gener
                 const card = add([
                     pos(startX + col * (cardWidth + gap), 50 + row * (cardHeight + gap)),
                     rect(cardWidth, cardHeight, { radius: 8 }),
-                    color(60, 60, 180),
-                    area(),
-                    "card",
-                    {
-                        value: value,
-                        isFlipped: false,
-                    }
+                    color(60, 60, 180), area(), "card",
+                    { value: value, isFlipped: false, }
                 ]);
 
                 card.onClick(() => {
@@ -593,8 +493,6 @@ You are an expert educational game designer and developer. Your task is to gener
                     } else {
                         lockBoard = true;
                         if (firstCard.value === card.value) {
-                            // Match!
-                            play("score"); // <-- FIX: Changed "powerUp" to "score"
                             matchedPairs++;
                             firstCard = null;
                             lockBoard = false;
@@ -602,16 +500,13 @@ You are an expert educational game designer and developer. Your task is to gener
                                 wait(1, () => go("end"));
                             }
                         } else {
-                            // No match
                             wait(1, () => {
                                 card.isFlipped = false;
                                 card.color = rgb(60, 60, 180);
                                 card.destroyChildren("card-text");
-
                                 firstCard.isFlipped = false;
                                 firstCard.color = rgb(60, 60, 180);
                                 firstCard.destroyChildren("card-text");
-
                                 firstCard = null;
                                 lockBoard = false;
                             });
@@ -623,29 +518,15 @@ You are an expert educational game designer and developer. Your task is to gener
 
         scene("end", () => {
             add([ text("You Win!"), pos(center()), anchor("center") ]);
-            onClick(() => go("game"));
+            onClick(() => go("start"));
         });
         
-        // --- 2. ADD A START SCREEN ---
         scene("start", () => {
-             add([
-                text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2 - 100),
-                anchor("center"),
-            ]);
-             add([
-                text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to Start", { size: 32, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 100),
-                anchor("center"),
-            ]);
+             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
+             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
+             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
             onClick(() => go("game"));
         });
-        // --- END OF PLACEHOLDER ---
 
         go("start");
     </script>
