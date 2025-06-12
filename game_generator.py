@@ -6,28 +6,31 @@ import logging
 
 # The large prompt template, containing all game variations, is stored here.
 PROMPT_TEMPLATE = """
-You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine and a pre-defined library of sprite assets. Your primary goal is to master dynamic asset loading and create engaging gameplay with effects.
+You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine and the MASTER ASSET LIBRARY provided below.
 
 ---
 ### **MANDATORY WORKFLOW**
 ---
-1.  **Analyze Topic & Plan Gameplay:**
+1.  **Analyze Topic & Create Asset Plan:**
     * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
-    * Is the core mechanic about **collecting/avoiding** (suitable for the Collector Game) or **gathering ingredients to craft something** (suitable for the Crafting Game)?
-    * Based on the topic, define the key game elements. For example:
-        * **For "Herbivores":** The player is a 'player_char'. Good items are plants like `[{ name: "Carrot", sprite: "veg_carrot" }, { name: "Lettuce", sprite: "veg_lettuce" }]`. Bad items are meat like `[{ name: "Steak", sprite: "meat_steak" }, { name: "Fish", sprite: "food_fish" }]`.
-        * **For "Photosynthesis":** This is about crafting. The player is a 'plant_tree'. The required ingredients are `[{ name: "Sun", sprite: "env_sun", key: "sun" }, { name: "Water", sprite: "env_water", key: "water" }]`. The player must also avoid pests like `[{ name: "Pest", sprite: "enemy_1" }]`.
+    * Is the core mechanic **Collecting** or **Crafting**? Choose the appropriate game template.
+    * Create a detailed "Asset Plan" by selecting the most appropriate sprites from the MASTER ASSET LIBRARY. Your plan must be logical and context-aware.
+    * **Example Asset Plan for "Herbivores":**
+        * **Player:** `player_char`
+        * **Good Items (Plants):** `veg_carrot`, `veg_lettuce`, `veg_broccoli`, `veg_apple`
+        * **Bad Items (Meat/Inedible):** `meat_steak`, `food_fish`, `meat_chicken`, `food_egg`
+    * **Example Asset Plan for "Photosynthesis":**
+        * **Player (the Tree):** `plant_tree`
+        * **Recipe Ingredients:** `env_sun`, `env_water`
+        * **Product:** The concept of "Glucose" (no sprite needed, just a counter).
+        * **Enemies (things that harm plants):** `enemy_1` (representing a pest).
 
-2.  **Choose ONE Template:** Review the TWO Kaboom.js game templates below. Choose the single most appropriate template for your gameplay plan.
+2.  **State Your Choice & Plan:** At the very beginning of your response, you MUST state your template choice and your detailed asset plan.
+    * **Example:** "The topic is 'Herbivores'. This is about collecting good food and avoiding bad things. I will use Template B: The Collector Game. Asset Plan: Player -> 'player_char'. Good Items -> `['veg_carrot', 'veg_lettuce']`. Bad Items -> `['meat_steak', 'meat_chicken']`."
 
-3.  **State Your Choice & Asset Plan:** At the very beginning of your response, you MUST state your template choice and your detailed asset plan.
-    * **Example:** "The topic is 'Herbivores'. This is about collecting good food and avoiding bad things. I will use Template B: The Collector Game. Asset Plan: Player -> 'player_char', Good Items (Veggies) -> `['veg_carrot', 'veg_lettuce', 'veg_cabbage']`, Bad Items (Meat) -> `['meat_steak', 'food_fish']`."
+3.  **Copy & Fill Template:** Copy the entire code for your chosen template. Fill in the `/* PLACEHOLDER */` sections using ONLY the assets from your plan.
 
-4.  **Copy & Fill:** Copy the entire code for your chosen template. Fill in the `/* PLACEHOLDER */` sections with your game logic, including the specific asset lists you planned.
-
-5.  **Add "Juice" (Effects):** Make the game feel alive. On collection, use `addKaboom(pos)`. On penalty, use `shake()`.
-
-6.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code.
+4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
 ### **MASTER ASSET LIBRARY**
@@ -38,92 +41,31 @@ You are an expert educational game designer and developer. Your task is to gener
 -   `plant_palm`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Palm_tree.png"
 -   `env_sun`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Sun.png"
 -   `env_water`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/WaterDroplet.png"
--   `enemy_1`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png"
--   `enemy_2`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey2.png"
--   `veg_advocado_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/advocado-half.png"
--   `veg_apple_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/apple-half.png"
 -   `veg_apple`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/apple.png"
--   `veg_artichoke`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/artichoke.png"
 -   `veg_asparagus`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/asparagus.png"
 -   `veg_avocado`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/avocado.png"
--   `food_bacon_raw`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/bacon-raw.png"
--   `food_bacon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/bacon.png"
+-   `meat_bacon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/bacon.png"
 -   `veg_banana`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/banana.png"
 -   `veg_beans`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beans.png"
--   `veg_beans1`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beans1.png"
 -   `veg_beet`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beet.png"
--   `veg_beetroot`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/beetroot.png"
 -   `food_bread`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/bread.png"
--   `veg_brinjal`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/brinjal.png"
 -   `veg_broccoli`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/broccoli.png"
 -   `veg_cabbage`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cabbage.png"
 -   `veg_capsicum`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/capsicum.png"
 -   `veg_carrot`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/carrot.png"
 -   `veg_cauliflower`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cauliflower.png"
--   `food_cheese_cut`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cheese-cut.png"
 -   `food_cheese`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cheese.png"
--   `veg_cherry_tomato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cherry%20tomato.png"
--   `food_chocolate_wrapper`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/chocolate-wrapper.png"
--   `food_chocolate`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/chocolate.png"
--   `veg_coconut_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/coconut-half.png"
--   `food_cookie`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cookie.png"
 -   `veg_corn`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/corn.png"
 -   `veg_cucumber`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/cucumber.png"
--   `food_egg_cooked`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/egg-cooked.png"
--   `food_egg_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/egg-half.png"
 -   `food_egg`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/egg.png"
 -   `veg_eggplant`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/eggplant.png"
 -   `food_fish`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/fish.png"
 -   `veg_garlic`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/garlic.png"
 -   `veg_grapes`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/grapes.png"
--   `veg_green_chilli`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/green_chilli.png"
--   `veg_herb1`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/herb1.png"
--   `veg_herb2`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/herb2.png"
--   `veg_herb3`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/herb3.png"
--   `veg_herb4`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/herb4.png"
--   `veg_herb5`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/herb5.png"
--   `food_honey`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/honey.png"
--   `food_hot_dog`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/hot-dog.png"
--   `food_ice_cream`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/ice-cream-scoop-chocolate.png"
--   `veg_kale`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/kale.png"
--   `veg_kale1`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/kale1.png"
--   `veg_lemon_half`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/lemon-half.png"
--   `veg_lemon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/lemon.png"
 -   `veg_lettuce`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/lettuce.png"
--   `food_baguette`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/loaf-baguette.png"
--   `food_loaf_round`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/loaf-round.png"
--   `food_loaf`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/loaf.png"
--   `food_maki_salmon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/maki-salmon.png"
--   `meat_cooked`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/meat-cooked.png"
--   `meat_raw`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/meat-raw.png"
--   `meat_ribs`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/meat-ribs.png"
--   `meat_sausage`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/meat-sausage.png"
--   `food_mushroom`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/mushroom.png"
--   `food_omlet`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/omlet.png"
--   `veg_onion`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/onion.png"
--   `veg_orange`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/orange.png"
--   `food_pancakes`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/pancakes.png"
--   `veg_paprika_slice`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/paprika-slice.png"
--   `veg_paprika`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/paprika.png"
--   `veg_pomegranate`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/pomogranate.png"
--   `veg_potato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/potato.png"
--   `veg_pumpkin`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/pumpkin.png"
--   `veg_radish`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/radish.png"
--   `veg_red_chilli`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/red_chilli.png"
--   `meat_chicken`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/roastedchicken.png"
--   `food_salmon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/salmon.png"
--   `veg_squash`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/squash.png"
--   `veg_squash1`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/squash1.png"
 -   `meat_steak`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/steak.png"
--   `veg_strawberry`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/strawberry.png"
--   `food_sushi_salmon`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/sushi-salmon.png"
--   `veg_sweetpotato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/sweetpotato.png"
--   `veg_tomato_slice`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/tomato-slice.png"
 -   `veg_tomato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/tomato.png"
--   `meat_turkey`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/turkey.png"
--   `veg_turnip`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/turnip.png"
--   `meat_ham`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/whole-ham.png"
--   `veg_yam`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/yam.png"
+-   `meat_chicken`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/roastedchicken.png"
 
 ---
 ### **TEMPLATE LIBRARY (FOCUSED & INTELLIGENT)**
@@ -133,6 +75,7 @@ You are an expert educational game designer and developer. Your task is to gener
 * **Best for:** Topics about collecting good things and avoiding bad things.
 
 ```html
+<!-- TEMPLATE B: KABOOM COLLECTOR GAME -->
 <!DOCTYPE html>
 <html>
 <head>
@@ -148,7 +91,7 @@ You are an expert educational game designer and developer. Your task is to gener
         /* PLACEHOLDER: Define your assets and game rules based on the topic. */
         const PLAYER_SPRITE = "player_char";
         const GOOD_ITEMS = [ { name: "Carrot", sprite: "veg_carrot" }, { name: "Lettuce", sprite: "veg_lettuce" } ];
-        const BAD_ITEMS = [ { name: "Meat", sprite: "meat_steak" }, { name: "Poison", sprite: "enemy_1" } ];
+        const BAD_ITEMS = [ { name: "Meat", sprite: "meat_steak" }, { name: "Chicken", sprite: "meat_chicken" } ];
         const GAME_DURATION = 30;
         
         loadSprite(PLAYER_SPRITE, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png`);
@@ -177,7 +120,7 @@ You are an expert educational game designer and developer. Your task is to gener
                 const itemData = isGood ? choose(GOOD_ITEMS) : choose(BAD_ITEMS);
                 const itemTag = isGood ? "good" : "bad";
                 
-                const item = add([ sprite(itemData.sprite), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(2), "item" ]);
+                const item = add([ sprite(itemData.sprite), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(1.5), "item" ]);
                 item.add([ text(itemData.name, { size: 12 }), color(0,0,0), anchor("center"), pos(0, -25) ]);
             });
 
