@@ -13,29 +13,27 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 1.  **Analyze Topic & Create Asset Plan:**
     * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
-    * Is the core mechanic **Collecting** or **Crafting**? Choose the appropriate game template.
-    * Create a detailed "Asset Plan" by selecting the most appropriate sprites from the MASTER ASSET LIBRARY. Your plan must be logical and context-aware.
+    * This game is an endless "Swerve Runner". You must define three categories of objects:
+        1.  **Player:** The character the user controls. Select the most thematic sprite.
+        2.  **Good Items:** Things the player should collect. Select a variety of logical items from the library.
+        3.  **Bad Items:** Things the player must avoid. Select a variety of logical items from the library.
+    * Create a detailed "Asset Plan" by selecting the most appropriate sprite keys from the MASTER ASSET LIBRARY.
     * **Example Asset Plan for "Herbivores":**
-        * **Player:** `player_char`
-        * **Good Items (Plants):** `veg_carrot`, `veg_lettuce`, `veg_broccoli`, `veg_apple`
-        * **Bad Items (Meat/Inedible):** `meat_steak`, `food_fish`, `meat_chicken`, `food_egg`
-    * **Example Asset Plan for "Photosynthesis":**
-        * **Player (the Tree):** `plant_tree`
-        * **Recipe Ingredients:** `env_sun`, `env_water`
-        * **Product:** The concept of "Glucose" (no sprite needed, just a counter).
-        * **Enemies (things that harm plants):** `enemy_1` (representing a pest).
+        * **Player Sprite Key:** `player_char`
+        * **Good Item Keys:** `["veg_carrot", "veg_lettuce", "veg_broccoli", "veg_apple"]`
+        * **Bad Item Keys:** `["meat_steak", "food_fish", "meat_chicken", "food_egg"]`
 
-2.  **State Your Choice & Plan:** At the very beginning of your response, you MUST state your template choice and your detailed asset plan.
-    * **Example:** "The topic is 'Herbivores'. This is about collecting good food and avoiding bad things. I will use Template B: The Collector Game. Asset Plan: Player -> 'player_char'. Good Items -> `['veg_carrot', 'veg_lettuce']`. Bad Items -> `['meat_steak', 'meat_chicken']`."
+2.  **State Your Asset Plan:** At the very beginning of your response, you MUST state your complete Asset Plan.
+    * **Example:** "Asset Plan: Player -> 'player_char'. Good Items -> `['veg_carrot', 'veg_lettuce']`. Bad Items -> `['meat_steak', 'meat_chicken']`."
 
-3.  **Copy & Fill Template:** Copy the entire code for your chosen template. Fill in the `/* PLACEHOLDER */` sections using ONLY the assets from your plan.
+3.  **Copy & Fill Template:** Copy the entire Swerve Runner template below. Fill in the `/* PLACEHOLDER */` sections using ONLY the asset keys from your plan. DO NOT change any other part of the code.
 
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
 ### **MASTER ASSET LIBRARY**
 ---
-*You MUST use these asset keys and URLs. Select the most appropriate ones for the game topic.*
+*You MUST use these asset keys and their corresponding URLs. Select the most appropriate ones for the game topic.*
 -   `player_char`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png"
 -   `plant_tree`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Tree1.png"
 -   `plant_palm`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/Palm_tree.png"
@@ -66,20 +64,24 @@ You are an expert educational game designer and developer. Your task is to gener
 -   `meat_steak`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/steak.png"
 -   `veg_tomato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/tomato.png"
 -   `meat_chicken`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/roastedchicken.png"
+-   `food_omlet`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/omlet.png"
+-   `veg_onion`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/onion.png"
+-   `veg_orange`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/orange.png"
+-   `veg_potato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/potato.png"
+-   `veg_pumpkin`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/pumpkin.png"
+-   `veg_radish`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/radish.png"
+-   `veg_strawberry`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/strawberry.png"
+-   `veg_sweetpotato`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/sweetpotato.png"
 
 ---
-### **TEMPLATE LIBRARY (FOCUSED & INTELLIGENT)**
+### **THE "SWERVE RUNNER" GAME TEMPLATE**
 ---
-
-#### **TEMPLATE B: THE KABOOM COLLECTOR GAME**
-* **Best for:** Topics about collecting good things and avoiding bad things.
 
 ```html
-<!-- TEMPLATE B: KABOOM COLLECTOR GAME -->
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Collector</title>
+    <title>Swerve Runner</title>
     <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
 </head>
 <body>
@@ -87,16 +89,16 @@ You are an expert educational game designer and developer. Your task is to gener
     <script>
         kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 235] });
 
-        // --- 1. DEFINE ASSETS & RULES ---
-        /* PLACEHOLDER: Define your assets and game rules based on the topic. */
-        const PLAYER_SPRITE = "player_char";
-        const GOOD_ITEMS = [ { name: "Carrot", sprite: "veg_carrot" }, { name: "Lettuce", sprite: "veg_lettuce" } ];
-        const BAD_ITEMS = [ { name: "Meat", sprite: "meat_steak" }, { name: "Chicken", sprite: "meat_chicken" } ];
-        const GAME_DURATION = 30;
+        // --- 1. DEFINE & LOAD ASSETS ---
+        /* PLACEHOLDER: The AI will define these lists of sprite keys based on its Asset Plan. */
+        const PLAYER_SPRITE_KEY = "player_char";
+        const GOOD_ITEM_KEYS = ["veg_carrot", "veg_apple", "veg_lettuce"];
+        const BAD_ITEM_KEYS = ["meat_steak", "meat_chicken"];
         
-        loadSprite(PLAYER_SPRITE, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png`);
-        GOOD_ITEMS.forEach(item => loadSprite(item.sprite, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${item.sprite}.png`));
-        BAD_ITEMS.forEach(item => loadSprite(item.sprite, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${item.sprite}.png`));
+        // Load all needed assets
+        loadSprite(PLAYER_SPRITE_KEY, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${PLAYER_SPRITE_KEY}.png`);
+        GOOD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
+        BAD_ITEM_KEYS.forEach(key => loadSprite(key, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${key}.png`));
         // --- END OF PLACEHOLDER ---
 
         scene("start", () => {
@@ -108,20 +110,34 @@ You are an expert educational game designer and developer. Your task is to gener
 
         scene("game", () => {
             let score = 0;
-            const scoreLabel = add([ text("Score: 0", { size: 32, font: "sans-serif" }), pos(24, 24) ]);
-            const timerLabel = add([ text("Time: " + GAME_DURATION, { size: 32, font: "sans-serif" }), pos(width() - 24, 24), anchor("topright") ]);
+            let lives = 3;
+            let speed = 120;
+
+            const scoreLabel = add([ text("Score: 0", { size: 32 }), pos(24, 24) ]);
+            const livesLabel = add([ text("Lives: 3", { size: 32 }), pos(width() - 24, 24), anchor("topright") ]);
             
-            const player = add([ sprite(PLAYER_SPRITE), pos(width() / 2, height() - 80), area(), anchor("center"), scale(2.5), "player" ]);
+            const player = add([ sprite(PLAYER_SPRITE_KEY), pos(width() / 2, height() - 80), area(), anchor("center"), scale(1.5), "player" ]);
 
-            onUpdate(() => { player.pos.x = mousePos().x; });
+            onUpdate(() => {
+                player.pos.x = lerp(player.pos.x, mousePos().x, 0.1);
+            });
 
-            loop(0.8, () => {
-                const isGood = rand() > 0.3;
-                const itemData = isGood ? choose(GOOD_ITEMS) : choose(BAD_ITEMS);
+            loop(1, () => {
+                speed = 120 + (score * 2); // Progressive difficulty
+                const isGood = rand() > 0.4;
+                const itemKey = isGood ? choose(GOOD_ITEM_KEYS) : choose(BAD_ITEM_KEYS);
                 const itemTag = isGood ? "good" : "bad";
                 
-                const item = add([ sprite(itemData.sprite), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(1.5), "item" ]);
-                item.add([ text(itemData.name, { size: 12 }), color(0,0,0), anchor("center"), pos(0, -25) ]);
+                add([
+                    sprite(itemKey),
+                    pos(rand(0, width()), -60),
+                    move(DOWN, speed),
+                    area(),
+                    offscreen({ destroy: true }),
+                    itemTag,
+                    scale(1.5),
+                    "item"
+                ]);
             });
 
             onCollide("player", "good", (p, good) => {
@@ -133,146 +149,19 @@ You are an expert educational game designer and developer. Your task is to gener
             
             onCollide("player", "bad", (p, bad) => {
                 destroy(bad);
-                score -= 5;
-                scoreLabel.text = `Score: ${score}`;
-                shake(12);
-            });
-            
-            let time = GAME_DURATION;
-            onUpdate(() => {
-                time -= dt();
-                timerLabel.text = `Time: ${time.toFixed(0)}`;
-                if (time <= 0) { go("end", { finalScore: score }); }
+                lives--;
+                livesLabel.text = `Lives: ${lives}`;
+                shake(20);
+                if (lives <= 0) {
+                    go("end", { finalScore: score });
+                }
             });
         });
 
         scene("end", ({ finalScore }) => {
-            add([ text(`Final Score: ${finalScore}`, { size: 50, font: "sans-serif" }), pos(width() / 2, height() / 2 - 50), anchor("center"), ]);
-            add([ text("Click to play again", { size: 24, font: "sans-serif" }), pos(width() / 2, height() / 2 + 20), anchor("center"), ]);
-            onClick(() => go("start"));
-        });
-        
-        go("start");
-    </script>
-</body>
-</html>
-```
----
-#### **TEMPLATE C: THE KABOOM CRAFTING GAME**
-* **Best for:** Multi-step processes, cycles (e.g., Photosynthesis, Digestion).
-* **Gameplay:** Player (bottom of screen) moves to collect falling ingredient sprites to craft a product, while avoiding enemies.
-
-```html
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Crafting</title>
-    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
-</head>
-<body>
-    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
-    <script>
-        kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 250] });
-
-        // --- 1. DEFINE RECIPE, GOAL, & ASSETS ---
-        /* PLACEHOLDER: Define your recipe, product, and enemies based on the topic. */
-        const RECIPE = {
-            sun: { name: "Sun", sprite: "env_sun", required: 3 },
-            water: { name: "Water", sprite: "env_water", required: 2 },
-        };
-        const PRODUCT = { name: "Glucose", goal: 5 };
-        const ENEMIES = [ { name: "Pest", sprite: "enemy_1" } ];
-        const PLAYER_SPRITE = "plant_tree";
-
-        // Auto-load all necessary sprites
-        loadSprite(PLAYER_SPRITE, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${PLAYER_SPRITE}.png`);
-        ENEMIES.forEach(item => loadSprite(item.sprite, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${item.sprite}.png`));
-        for (const key in RECIPE) {
-            loadSprite(RECIPE[key].sprite, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${RECIPE[key].sprite}.png`);
-        }
-        // --- END OF PLACEHOLDER ---
-        
-        const ingredientKeys = Object.keys(RECIPE);
-        
-        scene("start", () => {
-             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
-             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
-             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
-            onClick(() => go("game"));
-        });
-
-        scene("game", () => {
-            let inventory = {};
-            ingredientKeys.forEach(key => inventory[key] = 0);
-            let productsMade = 0;
-            
-            const player = add([ sprite(PLAYER_SPRITE), pos(width()/2, height() - 60), area({scale: 0.8}), anchor("center"), scale(0.3), "player" ]);
-            
-            const meterWidth = 150, meterHeight = 16, meterGap = 20;
-            const totalMetersWidth = ingredientKeys.length * (meterWidth + meterGap) - meterGap;
-            const startX = (width() - totalMetersWidth) / 2;
-            ingredientKeys.forEach((key, i) => {
-                const ing = RECIPE[key];
-                const meterX = startX + i * (meterWidth + meterGap);
-                add([ text(ing.name, { size: 16 }), pos(meterX, 20) ]);
-                add([ rect(meterWidth, meterHeight, { radius: 4 }), color(80, 80, 80), pos(meterX, 45) ]);
-                add([ rect(0, meterHeight, { radius: 4 }), color(255, 255, 255), pos(meterX, 45), `meter_${key}` ]);
-            });
-            const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
-
-            // Game Loops
-            loop(1.2, () => {
-                const key = choose(ingredientKeys);
-                const ing = RECIPE[key];
-                const item = add([ sprite(ing.sprite), pos(rand(0, width()), -60), move(DOWN, 150), area(), offscreen({ destroy: true }), scale(1.5), "ingredient", { type: key } ]);
-                item.add([text(ing.name, {size: 10}), color(0,0,0), anchor("center"), pos(0, -25)]);
-            });
-            loop(2.5, () => { 
-                const enemyData = choose(ENEMIES);
-                const enemy = add([ sprite(enemyData.sprite), pos(rand(0, width()), -60), move(DOWN, 200), area(), offscreen({ destroy: true }), scale(2.5), "enemy" ]); 
-                enemy.add([text(enemyData.name, {size: 10}), color(255,0,0), anchor("center"), pos(0, -25)]);
-            });
-
-            onClick("ingredient", (ing) => {
-                const key = ing.type;
-                if (inventory[key] < RECIPE[key].required) {
-                    inventory[key]++;
-                    updateMeters();
-                    checkRecipe();
-                }
-                destroy(ing);
-                addKaboom(ing.pos);
-            });
-
-            onCollide("player", "enemy", (p, enemy) => {
-                go("end", { success: false, finalScore: productsMade });
-            });
-
-            function updateMeters() {
-                 ingredientKeys.forEach((key) => {
-                    const meter = get(`meter_${key}`)[0];
-                    meter.width = (inventory[key] / RECIPE[key].required) * meterWidth;
-                 });
-            }
-
-            function checkRecipe() {
-                const canMake = ingredientKeys.every(key => inventory[key] >= RECIPE[key].required);
-                if (canMake) {
-                    ingredientKeys.forEach(key => inventory[key] = 0);
-                    productsMade++;
-                    productLabel.text = `${PRODUCT.name}: ${productsMade} / ${PRODUCT.goal}`;
-                    updateMeters();
-                    if (productsMade >= PRODUCT.goal) {
-                        go("end", { success: true, finalScore: productsMade });
-                    }
-                }
-            }
-        });
-        
-        scene("end", ({ success, finalScore }) => {
-            add([ text(success ? "Process Complete!" : "Game Over!", { size: 50 }), pos(center()), anchor("center") ]);
-            add([ text(`You made ${finalScore} ${PRODUCT.name}(s)!`, { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
-            add([ text("Click to restart", { size: 20 }), pos(width() / 2, height() / 2 + 100), anchor("center") ]);
+            add([ text("Game Over", { size: 60 }), pos(width()/2, height()/2 - 80), anchor("center") ]);
+            add([ text(`Final Score: ${finalScore}`, { size: 40 }), pos(width() / 2, height() / 2), anchor("center"), ]);
+            add([ text("Click to play again", { size: 24 }), pos(width() / 2, height() / 2 + 80), anchor("center"), ]);
             onClick(() => go("start"));
         });
         
