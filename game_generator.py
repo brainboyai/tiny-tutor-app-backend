@@ -5,18 +5,30 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
 
 # The large prompt template, containing all game variations, is stored here.
-# This keeps the main app.py file clean and focused on routing.
 PROMPT_TEMPLATE = """
-You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine and a pre-defined library of sprite assets.
+You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine and a pre-defined library of sprite assets. Your primary goal is to master dynamic asset loading and create engaging gameplay with effects.
 
 ---
 ### **MANDATORY WORKFLOW**
 ---
-1.  **Asset-First Analysis:** Deeply analyze the topic: "TOPIC_PLACEHOLDER". First, identify the key objects and concepts. Then, map these concepts to the most appropriate sprites from the **Asset Library** below. For example, for a game about "Herbivores," the player could be "player_char", good items (plants) could be "item_heart", and bad items (predators) could be "enemy_1".
-2.  **Choose ONE Template:** Review the FOUR Kaboom.js game templates below. Choose the single most appropriate template for the topic.
-3.  **State Your Choice & Asset Plan:** At the very beginning of your response, you MUST state your template choice and your asset plan. For example: "The topic is 'Herbivores', which involves collecting good items and avoiding bad ones. I will use Template B: The Collector Game. I will map the assets as follows: Player -> 'player_char', Good Items (Plants) -> 'item_heart', Bad Items (Predators) -> 'enemy_2'."
-4.  **Copy & Fill:** Copy the entire code for your chosen template. Your only coding task is to replace the `/* PLACEHOLDER */` comments with relevant JavaScript content. This includes defining the game rules and using the asset keys (e.g., "player_char", "item_coin") in your `loadSprite` and `add` calls.
-5.  **Add "Juice":** Make the game feel alive. Use effects like `scale()`, `rotate()`, and `opacity()` on interaction. For example, when a player collects an item, make it shrink and fade out.
+1.  **Analyze Topic & Plan Gameplay:**
+    * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
+    * Is the core mechanic about **collecting/avoiding** (suitable for the Collector Game) or **gathering ingredients to craft something** (suitable for the Crafting Game)?
+    * Based on the topic, define the key game elements. For example:
+        * **For "Herbivores" (Collector Game):** The player is a 'player_char' (like a rabbit). Good items are 'item_heart' (representing plants/food). Bad items are 'enemy_1' and 'enemy_2' (representing predators or inedible things).
+        * **For "Photosynthesis" (Crafting Game):** This is about crafting Glucose. The required ingredients are sunlight ('item_diamond'), water ('item_key'), and CO2 ('item_coin'). The player must also avoid pests ('enemy_1').
+
+2.  **Choose ONE Template:** Review the TWO Kaboom.js game templates below. Choose the single most appropriate template for your gameplay plan.
+
+3.  **State Your Choice & Asset Plan:** At the very beginning of your response, you MUST state your template choice and your detailed asset plan.
+    * **Example:** "The topic is 'Herbivores'. This is about collecting good food and avoiding bad things. I will use Template B: The Collector Game. Assets: Player -> 'player_char', Good Food (Vegetables) -> 'item_heart', Bad Items (Meat) -> 'enemy_1'."
+
+4.  **Copy & Fill:** Copy the entire code for your chosen template. Fill in the `/* PLACEHOLDER */` sections with your game logic and asset choices.
+
+5.  **Add "Juice" (Effects):** Make the game feel alive. Use effects on interaction.
+    * **On Collect:** Make the item flash, shrink, or have particles. Use `addKaboom(pos)`.
+    * **On Penalty:** Use `shake()`.
+
 6.  **Final Output:** Your entire response must be ONLY the completed, clean HTML code.
 
 ---
@@ -32,131 +44,11 @@ You are an expert educational game designer and developer. Your task is to gener
 -   `item_heart`: "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/heart.png"
 
 ---
-### **TEMPLATE LIBRARY (KABOOM.JS ASSET EDITION v8 - STABLE)**
+### **TEMPLATE LIBRARY (DEBUG LABELS EDITION)**
 ---
 
-#### **TEMPLATE A: THE KABOOM QUIZ GAME**
-* **Best for:** Math, vocabulary, definitions (e.g., Algebra, Countries).
-* **Gameplay:** A question appears. The player clicks one of the answer choices.
-
-```html
-<!-- TEMPLATE A: KABOOM QUIZ GAME -->
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Quiz</title>
-    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
-</head>
-<body>
-    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
-    <script>
-        kaboom({ width: 800, height: 600, letterbox: true, background: [0, 0, 0] });
-
-        // --- 1. DEFINE QUESTIONS & OPTIONS ---
-        const questions = [
-            /* PLACEHOLDER: Fill with at least 3 question objects.
-            {
-                question: "What is the capital of France?",
-                options: ["Berlin", "Madrid", "Paris", "Rome"],
-                answer: "Paris",
-            },
-            */
-        ];
-        // --- END OF PLACEHOLDER ---
-
-        scene("start", () => {
-             add([
-                text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2 - 100),
-                anchor("center"),
-            ]);
-             add([
-                text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }),
-                pos(width() / 2, height() / 2),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to Start", { size: 32, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 100),
-                anchor("center"),
-            ]);
-            onClick(() => go("game", { score: 0, qIndex: 0 }));
-        });
-
-        scene("game", ({ score, qIndex }) => {
-            const currentQuestion = questions[qIndex];
-            
-            add([
-                text(currentQuestion.question, { size: 32, width: width() - 80, font: "sans-serif" }),
-                pos(width() / 2, 120),
-                anchor("center"),
-            ]);
-
-            add([
-                text(`Score: ${score}`, { size: 24, font: "sans-serif" }),
-                pos(20, 20),
-            ]);
-
-            const optionsYStart = 250;
-            currentQuestion.options.forEach((option, i) => {
-                const btn = add([
-                    rect(width() - 200, 50, { radius: 8 }),
-                    pos(width() / 2, optionsYStart + i * 70),
-                    anchor("center"),
-                    area(),
-                    color(100, 100, 255),
-                    outline(2),
-                    "optionBtn"
-                ]);
-                btn.add([
-                    text(option, { size: 28, font: "sans-serif" }),
-                    anchor("center"),
-                    color(255, 255, 255),
-                ]);
-
-                btn.onClick(() => {
-                    let newScore = score;
-                    if (option === currentQuestion.answer) {
-                        btn.color = rgb(0, 255, 0);
-                        newScore += 10;
-                    } else {
-                        btn.color = rgb(255, 0, 0);
-                    }
-                    wait(1, () => {
-                        if (qIndex + 1 < questions.length) {
-                            go("game", { score: newScore, qIndex: qIndex + 1 });
-                        } else {
-                            go("end", { finalScore: newScore });
-                        }
-                    });
-                });
-            });
-        });
-
-        scene("end", ({ finalScore }) => {
-            add([
-                text(`Final Score: ${finalScore}`, { size: 50, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 - 50),
-                anchor("center"),
-            ]);
-             add([
-                text("Click to play again", { size: 24, font: "sans-serif" }),
-                pos(width() / 2, height() / 2 + 20),
-                anchor("center"),
-            ]);
-            onClick(() => go("start"));
-        });
-
-        go("start");
-    </script>
-</body>
-</html>
-```
-
----
 #### **TEMPLATE B: THE KABOOM COLLECTOR GAME (WITH SPRITES)**
-* **Best for:** Navigation, collection, simple simulation (e.g., Herbivores, Circulatory System, Pollination).
-* **Gameplay:** Player moves a character sprite to collect "good" item sprites and avoid "bad" enemy sprites.
+* **Best for:** Topics about collecting good things and avoiding bad things.
 
 ```html
 <!-- TEMPLATE B: KABOOM COLLECTOR GAME (WITH SPRITES)-->
@@ -167,15 +59,20 @@ You are an expert educational game designer and developer. Your task is to gener
     <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
 </head>
 <body>
-    <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
+    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
         kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 235] });
 
-        // --- 1. LOAD ASSETS ---
-        /* PLACEHOLDER: Load the sprites you need for your game from the Asset Library. */
-        loadSprite("player_char", "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png");
-        loadSprite("good_item", "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/item_heart.png");
-        loadSprite("bad_item", "https://raw.githack.com/brainboyai/tiny-tutor-assets/main/enemey1.png");
+        // --- 1. DEFINE ASSETS & RULES ---
+        /* PLACEHOLDER: Define your assets and game rules based on the topic. */
+        const PLAYER_SPRITE = "player_char";
+        const GOOD_ITEM_SPRITES = ["item_heart", "item_coin"]; 
+        const BAD_ITEM_SPRITES = ["enemy_1", "enemy_2"];    
+        const GAME_DURATION = 30;
+        
+        loadSprite(PLAYER_SPRITE, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${PLAYER_SPRITE}.png`);
+        GOOD_ITEM_SPRITES.forEach(name => loadSprite(name, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${name}.png`));
+        BAD_ITEM_SPRITES.forEach(name => loadSprite(name, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${name}.png`));
         // --- END OF PLACEHOLDER ---
 
         scene("start", () => {
@@ -186,32 +83,24 @@ You are an expert educational game designer and developer. Your task is to gener
         });
 
         scene("game", () => {
-            const GAME_DURATION = 30;
             let score = 0;
-            
             const scoreLabel = add([ text("Score: 0", { size: 32, font: "sans-serif" }), pos(24, 24) ]);
             const timerLabel = add([ text("Time: " + GAME_DURATION, { size: 32, font: "sans-serif" }), pos(width() - 24, 24), anchor("topright") ]);
             
-            // --- FIX: Added a tag to the player for collision detection ---
-            const player = add([
-                sprite("player_char"),
-                pos(width() / 2, height() - 80),
-                area(),
-                anchor("center"),
-                scale(2.5),
-                "player_tag" // The player needs a tag to be identified in collisions
-            ]);
+            const player = add([ sprite(PLAYER_SPRITE), pos(width() / 2, height() - 80), area(), anchor("center"), scale(2.5), "player_tag" ]);
+            player.add([ text(PLAYER_SPRITE, { size: 10 }), pos(0, -30), anchor("center"), color(0,0,0) ]);
 
             onUpdate(() => { player.pos.x = mousePos().x; });
 
-            loop(0.6, () => {
+            loop(0.8, () => {
                 const isGood = rand() > 0.3;
-                const itemSprite = isGood ? "good_item" : "bad_item";
+                const itemSpriteKey = isGood ? choose(GOOD_ITEM_SPRITES) : choose(BAD_ITEM_SPRITES);
                 const itemTag = isGood ? "good" : "bad";
-                add([ sprite(itemSprite), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(2), "item" ]);
+                
+                const item = add([ sprite(itemSpriteKey), pos(rand(0, width()), -60), move(DOWN, 280), area(), offscreen({ destroy: true }), itemTag, scale(2), "item" ]);
+                item.add([ text(itemTag, { size: 12 }), color(0,0,0), anchor("center"), pos(0, -25) ]);
             });
 
-            // --- FIX: Use the player's tag in the collision handlers ---
             onCollide("player_tag", "good", (p, good) => {
                 destroy(good);
                 score += 10;
@@ -245,37 +134,35 @@ You are an expert educational game designer and developer. Your task is to gener
 </body>
 </html>
 ```
-
 ---
-#### **TEMPLATE C: THE KABOOM PROCESS & RECIPE GAME**
-* **Best for:** Multi-step processes, cycles (e.g., Photosynthesis, Water Cycle, Digestion).
-* **Gameplay:** Player clicks falling sprites to fill meters and create a "product".
+#### **TEMPLATE C: THE KABOOM CRAFTING GAME**
+* **Best for:** Multi-step processes, cycles (e.g., Photosynthesis, Digestion).
+* **Gameplay:** Player (bottom of screen) clicks falling ingredient sprites to craft a product, while avoiding enemies.
 
 ```html
-<!-- TEMPLATE C: KABOOM PROCESS & RECIPE GAME -->
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Recipe</title>
+    <title>Crafting</title>
     <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
 </head>
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ width: 800, height: 600, letterbox: true, background: [135, 206, 250] });
+        kaboom({ width: 800, height: 600, letterbox: true, background: [15, 15, 40] });
 
-        // --- 1. DEFINE RECIPE & GOAL & LOAD ASSETS ---
+        // --- 1. DEFINE RECIPE, GOAL, & ASSETS ---
+        /* PLACEHOLDER: Define your recipe, product, and enemies based on the topic. */
         const RECIPE = {
-            /* PLACEHOLDER: Define 2 to 4 ingredients with sprite keys from Asset Library */
-            ingredient1: { name: "Sunlight", sprite: "item_diamond", required: 3 },
-            ingredient2: { name: "Water", sprite: "item_key", required: 2 },
+            sun: { name: "Sunlight", sprite: "item_diamond", required: 3 },
+            water: { name: "Water", sprite: "item_key", required: 2 },
         };
-        const PRODUCT = {
-            /* PLACEHOLDER: Define the final product */
-            name: "Glucose",
-            goal: 5
-        };
-        // Load all sprites defined in the recipe
+        const PRODUCT = { name: "Glucose", goal: 5 };
+        const ENEMIES = ["enemy_1", "enemy_2"];
+
+        // Auto-load all necessary sprites
+        loadSprite("player_char", "[https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png](https://raw.githack.com/brainboyai/tiny-tutor-assets/main/player.png)");
+        ENEMIES.forEach(name => loadSprite(name, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${name}.png`));
         for (const key in RECIPE) {
             loadSprite(RECIPE[key].sprite, `https://raw.githack.com/brainboyai/tiny-tutor-assets/main/${RECIPE[key].sprite}.png`);
         }
@@ -283,41 +170,55 @@ You are an expert educational game designer and developer. Your task is to gener
         
         const ingredientKeys = Object.keys(RECIPE);
         
+        scene("start", () => {
+             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
+             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
+             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
+            onClick(() => go("game"));
+        });
+
         scene("game", () => {
             let inventory = {};
             ingredientKeys.forEach(key => inventory[key] = 0);
             let productsMade = 0;
+            
+            const player = add([ sprite("player_char"), pos(width()/2, height() - 60), area(), anchor("center"), scale(2.5), "player_tag" ]);
+            onUpdate(() => { player.pos.x = mousePos().x; });
 
-            const meterWidth = 150;
-            const meterHeight = 16;
-            const meterGap = 20;
+            const meterWidth = 150, meterHeight = 16, meterGap = 20;
             const totalMetersWidth = ingredientKeys.length * (meterWidth + meterGap) - meterGap;
             const startX = (width() - totalMetersWidth) / 2;
-
             ingredientKeys.forEach((key, i) => {
-                const ingredient = RECIPE[key];
+                const ing = RECIPE[key];
                 const meterX = startX + i * (meterWidth + meterGap);
-                add([ text(ingredient.name, { size: 16 }), pos(meterX, 20) ]);
+                add([ text(ing.name, { size: 16 }), pos(meterX, 20) ]);
                 add([ rect(meterWidth, meterHeight, { radius: 4 }), color(80, 80, 80), pos(meterX, 45) ]);
                 add([ rect(0, meterHeight, { radius: 4 }), color(255, 255, 255), pos(meterX, 45), `meter_${key}` ]);
             });
             const productLabel = add([ text(`${PRODUCT.name}: 0/${PRODUCT.goal}`, { size: 24 }), pos(width() - 40, 40), anchor("topright") ]);
 
-            loop(1, () => {
+            // Game Loops
+            loop(1.2, () => {
                 const key = choose(ingredientKeys);
                 const ing = RECIPE[key];
-                add([
-                    sprite(ing.sprite), pos(rand(0, width()), 80), move(DOWN, 150), area(), offscreen({ destroy: true }), scale(2), "ingredient", { type: key }
-                ]);
+                const item = add([ sprite(ing.sprite), pos(rand(0, width()), -60), move(DOWN, 150), area(), offscreen({ destroy: true }), scale(2), "ingredient", { type: key } ]);
+                item.add([text(ing.name, {size: 10}), color(0,0,0), anchor("center"), pos(0, -25)]);
             });
+            loop(2.5, () => { add([ sprite(choose(ENEMIES)), pos(rand(0, width()), -60), move(DOWN, 200), area(), offscreen({ destroy: true }), scale(2.5), "enemy" ]); });
 
-            onClick("ingredient", (ing) => {
-                if (inventory[ing.type] < RECIPE[ing.type].required) {
-                    inventory[ing.type]++;
-                    destroy(ing);
+            onCollide("player_tag", "ingredient", (p, ing) => {
+                const key = ing.type;
+                if (inventory[key] < RECIPE[key].required) {
+                    inventory[key]++;
                     updateMeters();
                     checkRecipe();
                 }
+                destroy(ing);
+                addKaboom(ing.pos);
+            });
+
+            onCollide("player_tag", "enemy", (p, enemy) => {
+                go("end", { success: false, finalScore: productsMade });
             });
 
             function updateMeters() {
@@ -330,28 +231,22 @@ You are an expert educational game designer and developer. Your task is to gener
             function checkRecipe() {
                 const canMake = ingredientKeys.every(key => inventory[key] >= RECIPE[key].required);
                 if (canMake) {
-                    ingredientKeys.forEach(key => inventory[key] -= RECIPE[key].required);
+                    ingredientKeys.forEach(key => inventory[key] = 0);
                     productsMade++;
                     productLabel.text = `${PRODUCT.name}: ${productsMade} / ${PRODUCT.goal}`;
                     updateMeters();
                     if (productsMade >= PRODUCT.goal) {
-                        go("end", { success: true });
+                        go("end", { success: true, finalScore: productsMade });
                     }
                 }
             }
         });
         
-        scene("end", ({ success }) => {
-            add([ text(success ? "Process Complete!" : "Time's Up!", { size: 50 }), pos(center()), anchor("center") ]);
-            add([ text("Click to restart", { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
+        scene("end", ({ success, finalScore }) => {
+            add([ text(success ? "Process Complete!" : "Game Over!", { size: 50 }), pos(center()), anchor("center") ]);
+            add([ text(`You made ${finalScore} ${PRODUCT.name}(s)!`, { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
+            add([ text("Click to restart", { size: 20 }), pos(width() / 2, height() / 2 + 100), anchor("center") ]);
             onClick(() => go("start"));
-        });
-        
-        scene("start", () => {
-             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
-             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
-             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
-            onClick(() => go("game"));
         });
         
         go("start");
@@ -360,123 +255,7 @@ You are an expert educational game designer and developer. Your task is to gener
 </html>
 ```
 
----
-#### **TEMPLATE E: THE KABOOM MATCHING GAME**
-* **Best for:** Vocabulary, definitions, matching pairs (e.g., Country & Capital, Animal & Habitat).
-* **Gameplay:** A grid of cards is shown. The player clicks two cards to flip them over. If they match, they stay open.
-
-```html
-<!-- TEMPLATE E: THE KABOOM MATCHING GAME -->
-<!DOCTYPE html>
-<html>
-<head>
-    <title>Matching</title>
-    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
-</head>
-<body>
-    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
-    <script>
-        kaboom({ width: 800, height: 600, letterbox: true, background: [45, 45, 70] });
-
-        // --- 1. DEFINE YOUR MATCHING PAIRS ---
-        const items = [
-            /* PLACEHOLDER: Fill with at least 6 unique string values. */
-            "Dog", "Cat", "Bird", "Fish", "Lion", "Tiger",
-        ];
-        // --- END OF PLACEHOLDER ---
-        
-        function shuffle(array) {
-            let currentIndex = array.length, randomIndex;
-            while (currentIndex > 0) {
-                randomIndex = Math.floor(Math.random() * currentIndex);
-                currentIndex--;
-                [array[currentIndex], array[randomIndex]] = [
-                array[randomIndex], array[currentIndex]];
-            }
-            return array;
-        }
-
-        scene("game", () => {
-            const cardValues = shuffle([...items, ...items]);
-            let firstCard = null;
-            let lockBoard = false;
-            let matchedPairs = 0;
-            const gridCols = 4;
-            const gridRows = Math.ceil(cardValues.length / gridCols);
-            const cardWidth = 120;
-            const cardHeight = 160;
-            const gap = 15;
-            const totalWidth = gridCols * (cardWidth + gap) - gap;
-            const startX = (width() - totalWidth) / 2;
-
-            cardValues.forEach((value, i) => {
-                const row = Math.floor(i / gridCols);
-                const col = i % gridCols;
-
-                const card = add([
-                    pos(startX + col * (cardWidth + gap), 50 + row * (cardHeight + gap)),
-                    rect(cardWidth, cardHeight, { radius: 8 }),
-                    color(60, 60, 180), area(), "card",
-                    { value: value, isFlipped: false, }
-                ]);
-
-                card.onClick(() => {
-                    if (lockBoard || card.isFlipped) return;
-                    
-                    card.isFlipped = true;
-                    card.color = rgb(150, 150, 200);
-                    const textObj = card.add([ text(card.value, {size: 20}), anchor("center"), "card-text" ]);
-
-                    if (firstCard === null) {
-                        firstCard = card;
-                    } else {
-                        lockBoard = true;
-                        if (firstCard.value === card.value) {
-                            matchedPairs++;
-                            firstCard = null;
-                            lockBoard = false;
-                            if (matchedPairs === items.length) {
-                                wait(1, () => go("end"));
-                            }
-                        } else {
-                            wait(1, () => {
-                                card.isFlipped = false;
-                                card.color = rgb(60, 60, 180);
-                                destroy(textObj);
-                                
-                                firstCard.isFlipped = false;
-                                firstCard.color = rgb(60, 60, 180);
-                                firstCard.children.forEach(child => { if(child.is("card-text")) destroy(child); });
-
-                                firstCard = null;
-                                lockBoard = false;
-                            });
-                        }
-                    }
-                });
-            });
-        });
-
-        scene("end", () => {
-            add([ text("You Win!"), pos(center()), anchor("center") ]);
-            add([ text("Click to play again", { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
-            onClick(() => go("start"));
-        });
-        
-        scene("start", () => {
-             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, width: width() - 100 }), pos(center().x, height() / 2 - 100), anchor("center"), ]);
-             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, width: width() - 100 }), pos(center().x, height() / 2), anchor("center"), ]);
-             add([ text("Click to Start", { size: 32 }), pos(center().x, height() / 2 + 100), anchor("center"), ]);
-            onClick(() => go("game"));
-        });
-
-        go("start");
-    </script>
-</body>
-</html>
-```
 """
-
 
 def generate_game_for_topic(topic: str):
     """
