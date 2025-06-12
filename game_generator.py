@@ -36,7 +36,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [0, 0, 0] });
+        kaboom({ background: [0, 0, 0], letterbox: true, });
 
         // --- 1. DEFINE QUESTIONS & OPTIONS ---
         const questions = [
@@ -71,23 +71,16 @@ You are an expert educational game designer and developer. Your task is to gener
 
         scene("game", ({ score, qIndex }) => {
             const currentQuestion = questions[qIndex];
-
-            add([
-                text("Question:", { size: 24, font: "sans-serif" }),
-                pos(width() / 2, 80),
-                anchor("center"),
-            ]);
             
             add([
                 text(currentQuestion.question, { size: 32, width: width() - 40, font: "sans-serif" }),
-                pos(width() / 2, 140),
+                pos(width() / 2, 120),
                 anchor("center"),
             ]);
 
             add([
                 text(`Score: ${score}`, { size: 24, font: "sans-serif" }),
                 pos(20, 20),
-                "scoreLabel"
             ]);
 
             const optionsYStart = 250;
@@ -162,7 +155,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [135, 206, 235] });
+        kaboom({ background: [135, 206, 235], letterbox: true, });
 
         // --- 1. DEFINE GAME ENTITIES & RULES ---
         const PLAYER_COLOR = [255, 182, 193];
@@ -242,7 +235,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [135, 206, 250] });
+        kaboom({ background: [135, 206, 250], letterbox: true, });
 
         // --- 1. DEFINE RECIPE & GOAL ---
         const RECIPE = {
@@ -354,7 +347,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [208, 240, 255] });
+        kaboom({ background: [208, 240, 255], letterbox: true, });
 
         // --- 1. DEFINE THE ORDERED BLOCKS TO STACK ---
         const BUILD_ORDER = [
@@ -376,7 +369,6 @@ You are an expert educational game designer and developer. Your task is to gener
             const nextBlockLabel = add([ text(`Next: ${BUILD_ORDER[0].name}`), pos(20, 20), { value: 0 } ]);
 
             loop(1.5, () => {
-                // FIX: Changed rint to randi
                 const blockIndex = rand() > 0.4 ? currentBlockIndex : randi(0, BUILD_ORDER.length);
                 const blockData = BUILD_ORDER[blockIndex];
                 add([
@@ -406,6 +398,7 @@ You are an expert educational game designer and developer. Your task is to gener
 
         scene("end", ({ success }) => {
             add([ text(success ? "Tower Complete!" : "Wrong Block!", { size: 50 }), pos(center()), anchor("center") ]);
+            add([ text("Click to restart", { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
             onClick(() => go("start"));
         });
         
@@ -438,7 +431,7 @@ You are an expert educational game designer and developer. Your task is to gener
 <body>
     <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
     <script>
-        kaboom({ background: [45, 45, 70] });
+        kaboom({ background: [45, 45, 70], letterbox: true, });
 
         // --- 1. DEFINE YOUR MATCHING PAIRS ---
         const items = [
@@ -504,7 +497,6 @@ You are an expert educational game designer and developer. Your task is to gener
                             wait(1, () => {
                                 card.isFlipped = false;
                                 card.color = rgb(60, 60, 180);
-                                // FIX: Correctly destroy child text objects
                                 card.get("card-text").forEach(child => destroy(child));
                                 
                                 firstCard.isFlipped = false;
@@ -522,6 +514,7 @@ You are an expert educational game designer and developer. Your task is to gener
 
         scene("end", () => {
             add([ text("You Win!"), pos(center()), anchor("center") ]);
+            add([ text("Click to play again", { size: 24 }), pos(width() / 2, height() / 2 + 50), anchor("center") ]);
             onClick(() => go("start"));
         });
         
