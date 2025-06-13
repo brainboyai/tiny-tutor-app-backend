@@ -70,13 +70,14 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        // Use the standard global initialization for maximum stability.
         kaboom({{
             width: 800,
             height: 600,
             letterbox: true,
             background: [20, 20, 30],
         }});
+
+        layers(["obj", "ui"], "obj");
 
         // --- Asset and Item Data (Injected by Backend) ---
         const assets = {assets_json};
@@ -112,7 +113,6 @@ GAME_HTML_TEMPLATE = """
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
             
-            // UI elements are now created without the crashing 'layer' component.
             function makeUIPanel(p, icon, initialText) {{
                 add([
                     rect(180, 40, {{ radius: 8 }}),
@@ -120,16 +120,19 @@ GAME_HTML_TEMPLATE = """
                     anchor("center"),
                     color(10, 10, 15),
                     outline(2, color(80, 85, 95)),
+                    layer("ui"),
                 ]);
                 add([
                     text(icon, {{ size: 20 }}),
                     pos(p.x - 65, p.y),
                     anchor("center"),
+                    layer("ui"),
                 ]);
                 return add([
                     text(initialText, {{ size: 20, font: "sans-serif"}}),
                     pos(p.x + 15, p.y),
                     anchor("center"),
+                    layer("ui"),
                 ]);
             }}
 
@@ -137,7 +140,7 @@ GAME_HTML_TEMPLATE = """
             const levelLabel = makeUIPanel(vec2(width() / 2, 40), "📈", `Level: ${{level}}`);
             const timerLabel = makeUIPanel(vec2(width() - 110, 40), "⏱️", `Time: ${{timer.toFixed(1)}}`);
             
-            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 85), anchor("center")]);
+            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 85), anchor("center"), layer("ui")]);
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
@@ -150,6 +153,7 @@ GAME_HTML_TEMPLATE = """
                     outline(4, color(80, 85, 95)),
                     area(),
                     anchor("center"),
+                    layer("obj"),
                     "object",
                     itemTag,
                     {{ 
@@ -164,9 +168,12 @@ GAME_HTML_TEMPLATE = """
                         anchor("center")
                     ]);
                 }} else {{
+                    // *** FIX: Removed the 'width' and 'align' properties from the child text object. ***
+                    // This prevents the IndexSizeError crash.
                     parentObj.add([
-                        text(itemName, {{ size: 16, width: objectSize.w - 10, align: "center" }}),
-                        anchor("center")
+                        text(itemName, {{ size: 16 }}),
+                        anchor("center"),
+                        color(255, 255, 255)
                     ]);
                 }}
             }}
@@ -179,10 +186,10 @@ GAME_HTML_TEMPLATE = """
                     item.isAnimating = true;
                     play("powerUp", {{ volume: 0.5 }});
                     
-                    add([ rect(item.width, item.height, {{ radius: 12 }}), pos(item.pos), anchor("center"), color(0, 255, 0), opacity(0.8), lifespan(0.3, {{ fade: 0.3 }}) ]);
+                    add([ rect(item.width, item.height, {{ radius: 12 }}), pos(item.pos), anchor("center"), color(0, 255, 0), opacity(0.8), lifespan(0.3, {{ fade: 0.3 }}), layer("ui") ]);
                     
                     for (let i = 0; i < 15; i++) {{
-                        add([ pos(item.pos), rect(rand(3, 8), rand(3, 8)), color(120, 255, 120), lifespan(0.4, {{ fade: 0.4 }}), move(rand(0, 360), rand(50, 150)) ]);
+                        add([ pos(item.pos), rect(rand(3, 8), rand(3, 8)), color(120, 255, 120), lifespan(0.4, {{ fade: 0.4 }}), move(rand(0, 360), rand(50, 150)), layer("ui") ]);
                     }}
 
                     tween(item.scale, vec2(0), 0.3, (s) => item.scale = s).onEnd(() => destroy(item));
@@ -202,7 +209,7 @@ GAME_HTML_TEMPLATE = """
                 play("hit", {{ volume: 0.5 }});
                 shake(15);
                 
-                add([ rect(item.width, item.height, {{ radius: 12 }}), pos(item.pos), anchor("center"), color(255, 0, 0), opacity(0.7), lifespan(0.4, {{ fade: 0.4 }}) ]);
+                add([ rect(item.width, item.height, {{ radius: 12 }}), pos(item.pos), anchor("center"), color(255, 0, 0), opacity(0.7), lifespan(0.4, {{ fade: 0.4 }}), layer("ui") ]);
 
                 score = Math.max(0, score - 5);
                 scoreLabel.text = `Score: ${{score}}`;
