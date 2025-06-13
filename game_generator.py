@@ -114,7 +114,9 @@ GAME_HTML_TEMPLATE = """
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
-                const obj = add([
+                
+                // *** FIX: Build components first, then add the object ***
+                const commonComponents = [
                     pos(rand(80, width() - 80), rand(120, height() - 80)),
                     area({{ scale: 0.8 }}),
                     anchor("center"),
@@ -122,19 +124,24 @@ GAME_HTML_TEMPLATE = """
                     "object",
                     itemTag,
                     {{ name: itemName }}
-                ]);
+                ];
 
+                let renderComponents = [];
                 if (getSprite(itemName)) {{
-                    obj.add(sprite(itemName, {{ width: 90, height: 90 }}));
+                    renderComponents = [
+                        sprite(itemName, {{ width: 90, height: 90 }})
+                    ];
                 }} else {{
-                    // *** FIX: Corrected fallback logic ***
-                    // Add the rectangle component and its color
-                    obj.add(rect(120, 50, {{ radius: 8 }}));
-                    obj.add(color(200, 200, 200));
-                    // Add the text component. It will be black by default.
-                    obj.add(text(itemName, {{ size: 16, width: 110, align: "center" }}));
-                    // The incorrect second color() call has been removed.
+                    // Fallback components for when an image is missing
+                    renderComponents = [
+                        rect(120, 50, {{ radius: 8 }}),
+                        color(200, 200, 200),
+                        text(itemName, {{ size: 16, width: 110, align: "center" }})
+                    ];
                 }}
+
+                // Create the object in one call with all components
+                add([...commonComponents, ...renderComponents]);
             }}
 
             itemsToFind.forEach(name => spawnObject(name, "correct"));
