@@ -70,7 +70,7 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        // Standard global initialization for maximum stability
+        // Use the standard global initialization for maximum stability.
         kaboom({{
             width: 800,
             height: 600,
@@ -112,6 +112,7 @@ GAME_HTML_TEMPLATE = """
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
             
+            // UI elements now use z() for layering
             function makeUIPanel(p, icon, initialText) {{
                 add([
                     rect(180, 40, {{ radius: 8 }}),
@@ -170,6 +171,7 @@ GAME_HTML_TEMPLATE = """
                         anchor("center")
                     ]);
                 }} else {{
+                    // Fallback for missing images
                     add([
                         ...components,
                         rect(120, 50, {{ radius: 8 }}),
