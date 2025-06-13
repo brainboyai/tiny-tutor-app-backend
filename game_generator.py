@@ -16,26 +16,14 @@ ASSET_BASE_URL = "https://raw.githubusercontent.com/brainboyai/tiny-tutor-game-o
 def get_image_urls(object_names: list[str]) -> dict[str, str]:
     """
     Constructs full image URLs for a list of object names from the GitHub repo.
-
-    Args:
-        object_names: A list of object names (e.g., ['Tiger', 'Rice', 'Wolf']).
-
-    Returns:
-        A dictionary mapping each object name to its corresponding image URL.
     """
     image_urls = {}
     for name in object_names:
         if not name or not isinstance(name, str):
             continue
         
-        # Clean and format the name for the URL.
         url_friendly_name = quote(name.strip())
-
-        # *** FIX: Removed the random logic that added " (1)". ***
-        # This will now correctly look for "rabbit.png" instead of guessing "rabbit (1).png".
         image_filename = f"{url_friendly_name}.png"
-            
-        # All GitHub image names are lowercase, so we convert the final URL.
         full_url = f"{ASSET_BASE_URL}{image_filename.lower()}"
         image_urls[name] = full_url
         
@@ -94,7 +82,6 @@ GAME_HTML_TEMPLATE = """
         // Load all sprites from the URLs
         for (const name in assets) {{
             if (assets[name]) {{
-                // Use a try-catch to handle cases where an image fails to load
                 try {{
                     loadSprite(name, assets[name], {{ crossOrigin: "anonymous" }});
                 }} catch (e) {{
@@ -137,15 +124,16 @@ GAME_HTML_TEMPLATE = """
                     {{ name: itemName }}
                 ]);
 
-                // Check if the sprite exists before trying to add it
                 if (getSprite(itemName)) {{
                     obj.add(sprite(itemName, {{ width: 90, height: 90 }}));
                 }} else {{
-                    // Fallback to a rectangle with text if the image failed to load
+                    // *** FIX: Corrected fallback logic ***
+                    // Add the rectangle component and its color
                     obj.add(rect(120, 50, {{ radius: 8 }}));
                     obj.add(color(200, 200, 200));
+                    // Add the text component. It will be black by default.
                     obj.add(text(itemName, {{ size: 16, width: 110, align: "center" }}));
-                    obj.add(color(0,0,0)); // Text color
+                    // The incorrect second color() call has been removed.
                 }}
             }}
 
@@ -231,17 +219,14 @@ def generate_game_for_topic(topic: str):
         response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
         reasoning_text = response.text.strip()
         
-        # Parse the entire AI response to get our structured data
         title, instructions, correct_items, incorrect_items = parse_ai_reasoning(reasoning_text)
 
         if not correct_items or not incorrect_items:
              raise ValueError(f"AI did not return valid item lists. Full response: {reasoning_text}")
 
-        # Get image URLs for all items from the asset helper
         all_game_objects = correct_items + incorrect_items
         asset_urls = get_image_urls(all_game_objects)
 
-        # Inject the dynamic data into the HTML template
         final_html = GAME_HTML_TEMPLATE.format(
             title=title,
             assets_json=json.dumps(asset_urls),
@@ -251,12 +236,10 @@ def generate_game_for_topic(topic: str):
             instructions_json=json.dumps(instructions)
         )
         
-        # The "reasoning" is the full text output from the AI for debugging or display
         return reasoning_text, final_html
 
     except Exception as e:
         logging.error(f"Exception in generate_game_for_topic for topic '{topic}': {e}")
-        # Provide a user-friendly error message in the game window itself
         error_html = f"<h1>Error Generating Game</h1><p>An error occurred: {e}</p><p>Please try a different topic.</p>"
         return f"Internal Server Error: {e}", error_html
 
