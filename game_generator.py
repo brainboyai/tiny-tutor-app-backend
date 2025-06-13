@@ -13,16 +13,16 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 1.  **Analyze Topic & Create Item Lists:**
     * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
-    * Your primary task is to generate two distinct lists of items based on this topic:
+    * Your primary task is to generate two distinct lists of items that are thematically related but distinct:
         1.  **`correctItems`**: A JavaScript array of strings that are correct examples of the topic.
-        2.  **`incorrectItems`**: A JavaScript array of strings that are plausible but incorrect examples (distractors).
+        2.  **`incorrectItems`**: A JavaScript array of strings that are plausible but **incorrect distractors**. These should be from a similar category to make the game challenging.
     * These lists should be rich and varied. Aim for at least 5-10 items in each list if the topic allows.
     * **Example for "Herbivores":**
-        * `correctItems`: `["Cow", "Goat", "Rabbit", "Deer", "Sheep", "Horse", "Elephant"]`
-        * `incorrectItems`: `["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear"]`
+        * `correctItems`: `["Cow", "Goat", "Rabbit", "Deer", "Sheep", "Horse", "Elephant"]` (All are herbivores)
+        * `incorrectItems`: `["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear"]` (These are all *animals*, but are carnivores/omnivores, making them good distractors).
     * **Example for "Metals":**
-        * `correctItems`: `["Gold", "Silver", "Iron", "Copper", "Aluminum", "Steel", "Lead"]`
-        * `incorrectItems`: `["Wood", "Glass", "Plastic", "Rubber", "Clay", "Stone"]`
+        * `correctItems`: `["Gold", "Silver", "Iron", "Copper", "Aluminum", "Steel", "Lead"]` (All are metals)
+        * `incorrectItems`: `["Wood", "Glass", "Plastic", "Rubber", "Clay", "Stone"]` (These are all *materials*, but are non-metals).
 
 2.  **State Your Item Lists:** At the very beginning of your response, you MUST state the lists you have generated.
     * **Example:** "Correct Items: `[\"Cow\", \"Goat\"]`. Incorrect Items: `[\"Lion\", \"Tiger\"]`."
@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v5 - BOUNCING LOGIC)**
+### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v6 - FINAL)**
 ---
 
 ```html
@@ -79,17 +79,23 @@ You are an expert educational game designer and developer. Your task is to gener
             const speed = 60 + (level * 10);
             const itemColor = color(220, 220, 220);
 
-            // Function to spawn a single item
+            // Function to spawn a single item, ensuring no initial overlap
             function spawnItem(itemName, itemTag) {
+                let overlapping = true;
+                let newItemPos;
+                while (overlapping) {
+                    newItemPos = pos(rand(80, width() - 80), rand(120, height() - 80));
+                    overlapping = get("item").some(item => item.pos.dist(newItemPos) < 100);
+                }
+
                 const item = add([
                     rect(120, 50, { radius: 8 }),
-                    pos(rand(80, width() - 80), rand(120, height() - 80)),
+                    newItemPos,
                     itemColor,
                     area(),
                     anchor("center"),
                     "item",
                     itemTag,
-                    // --- NEW: Custom movement property ---
                     {
                         vel: Vec2.fromAngle(rand(360)).scale(speed),
                     }
@@ -132,10 +138,11 @@ You are an expert educational game designer and developer. Your task is to gener
                 item.pos.x += item.vel.x * dt();
                 item.pos.y += item.vel.y * dt();
 
-                if (item.pos.x < 40 || item.pos.x > width() - 40) {
+                // Bounce off the walls
+                if (item.pos.x < 60 || item.pos.x > width() - 60) {
                     item.vel.x = -item.vel.x;
                 }
-                if (item.pos.y < 90 || item.pos.y > height() - 40) {
+                if (item.pos.y < 80 || item.pos.y > height() - 30) {
                     item.vel.y = -item.vel.y;
                 }
             });
