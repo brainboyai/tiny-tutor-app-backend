@@ -103,11 +103,13 @@ GAME_HTML_TEMPLATE = """
         }});
 
         scene("game", ({{ level, score }}) => {{
+            // *** FIX: Define rendering layers ***
+            layers(["obj", "ui"], "obj");
+
             let timer = 15;
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
             
-            // --- NEW: Gamified UI Panels ---
             function makeUIPanel(p, icon, initialText) {{
                 const panel = add([
                     rect(180, 40, {{ radius: 8 }}),
@@ -147,6 +149,7 @@ GAME_HTML_TEMPLATE = """
                     outline(4, color(80, 85, 95)),
                     area(),
                     anchor("center"),
+                    layer("obj"), // Assign to "obj" layer
                     "object",
                     itemTag,
                     {{ 
@@ -172,35 +175,31 @@ GAME_HTML_TEMPLATE = """
             chooseMultiple(incorrectItems, 2 + level).forEach(name => spawnObject(name, "incorrect"));
             
             onClick("correct", (item) => {{
-                if (itemsToFind.includes(item.name)) {{
-                    // Prevent multiple clicks on the same item
-                    if (item.isAnimating) return;
+                if (itemsToFind.includes(item.name) && !item.isAnimating) {{
                     item.isAnimating = true;
-
                     play("powerUp", {{ volume: 0.5 }});
-
-                    // Add a temporary green flash effect
+                    
                     add([
                         rect(item.width, item.height, {{ radius: 12 }}),
                         pos(item.pos),
                         anchor("center"),
                         color(0, 255, 0),
                         opacity(0.8),
-                        lifespan(0.3, {{ fade: 0.3 }})
+                        lifespan(0.3, {{ fade: 0.3 }}),
+                        layer("ui")
                     ]);
                     
-                    // Particle explosion effect
                     for (let i = 0; i < 15; i++) {{
                         add([
                             pos(item.pos),
                             rect(rand(3, 8), rand(3, 8)),
                             color(120, 255, 120),
                             lifespan(0.4, {{ fade: 0.4 }}),
-                            move(rand(0, 360), rand(50, 150))
+                            move(rand(0, 360), rand(50, 150)),
+                            layer("ui")
                         ]);
                     }}
 
-                    // Shrink and destroy
                     tween(item.scale, vec2(0), 0.3, (s) => item.scale = s).onEnd(() => destroy(item));
                     
                     score += 10;
@@ -218,14 +217,14 @@ GAME_HTML_TEMPLATE = """
                 play("hit", {{ volume: 0.5 }});
                 shake(15);
                 
-                // Add a temporary red flash effect
                 add([
                     rect(item.width, item.height, {{ radius: 12 }}),
                     pos(item.pos),
                     anchor("center"),
                     color(255, 0, 0),
                     opacity(0.7),
-                    lifespan(0.4, {{ fade: 0.4 }})
+                    lifespan(0.4, {{ fade: 0.4 }}),
+                    layer("ui")
                 ]);
 
                 score = Math.max(0, score - 5);
