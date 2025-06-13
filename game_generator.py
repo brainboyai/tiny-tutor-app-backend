@@ -32,7 +32,7 @@ You are an expert educational game designer and developer. Your task is to gener
 4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
 
 ---
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v4 - FINAL)**
+### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v5 - BOUNCING LOGIC)**
 ---
 
 ```html
@@ -76,29 +76,30 @@ You are an expert educational game designer and developer. Your task is to gener
             const timerLabel = add([ text(`Time: ${timer.toFixed(1)}`), pos(width() - 24, 24), anchor("topright"), { layer: "ui" } ]);
             const levelLabel = add([ text(`Level: ${level}`), pos(width() / 2, 24), anchor("top"), { layer: "ui" } ]);
 
-            const speed = 50 + (level * 10);
-            const itemColor = color(220, 220, 220); // Uniform color for all items
+            const speed = 60 + (level * 10);
+            const itemColor = color(220, 220, 220);
 
             // Function to spawn a single item
             function spawnItem(itemName, itemTag) {
                 const item = add([
                     rect(120, 50, { radius: 8 }),
-                    pos(rand(80, width() - 80), rand(80, height() - 80)),
+                    pos(rand(80, width() - 80), rand(120, height() - 80)),
                     itemColor,
                     area(),
                     anchor("center"),
-                    move(choose([LEFT, RIGHT, UP, DOWN]), speed), // Start moving in a random direction
                     "item",
-                    itemTag
+                    itemTag,
+                    // --- NEW: Custom movement property ---
+                    {
+                        vel: Vec2.fromAngle(rand(360)).scale(speed),
+                    }
                 ]);
                 item.add([ text(itemName, { size: 16, width: 110 }), anchor("center"), color(0,0,0) ]);
             }
 
-            // Spawn Correct Items
             const itemsToFind = chooseMultiple(correctItems, numCorrectToSpawn);
             itemsToFind.forEach(name => spawnItem(name, "correct"));
             
-            // Spawn Incorrect Items
             const incorrectToSpawn = chooseMultiple(incorrectItems, numIncorrectToSpawn);
             incorrectToSpawn.forEach(name => spawnItem(name, "incorrect"));
             
@@ -126,17 +127,16 @@ You are an expert educational game designer and developer. Your task is to gener
                 ]);
             });
 
-            // --- NEW: Rebounding Logic ---
+            // --- NEW: Robust Rebounding Logic ---
             onUpdate("item", (item) => {
-                if (item.pos.x < 0 || item.pos.x > width()) {
-                    if (item.vel) {
-                        item.vel.x = -item.vel.x;
-                    }
+                item.pos.x += item.vel.x * dt();
+                item.pos.y += item.vel.y * dt();
+
+                if (item.pos.x < 40 || item.pos.x > width() - 40) {
+                    item.vel.x = -item.vel.x;
                 }
-                if (item.pos.y < 80 || item.pos.y > height()) {
-                   if (item.vel) {
-                        item.vel.y = -item.vel.y;
-                    }
+                if (item.pos.y < 90 || item.pos.y > height() - 40) {
+                    item.vel.y = -item.vel.y;
                 }
             });
             
