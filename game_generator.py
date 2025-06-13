@@ -70,10 +70,11 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        // *** FIX: Use a robust destructuring assignment for all Kaboom functions ***
+        // Call kaboom and destructure all the functions we need.
+        // *** FIX: Removed 'kaboom' from the destructuring list to prevent name collision. ***
         const {{
-            kaboom,
             scene,
+            go,
             layers,
             add,
             text,
@@ -93,6 +94,7 @@ GAME_HTML_TEMPLATE = """
             wait,
             lifespan,
             opacity,
+            sprite,
             getSprite,
             loadSprite,
             onClick,
@@ -105,12 +107,11 @@ GAME_HTML_TEMPLATE = """
             height: 600,
             letterbox: true,
             background: [20, 20, 30],
-            global: false // Disable global injection to prevent conflicts
+            global: false
         }});
 
         layers(["obj", "ui"], "obj");
 
-        // --- Asset and Item Data (Injected by Backend) ---
         const assets = {assets_json};
         const correctItems = {correct_items_json};
         const incorrectItems = {incorrect_items_json};
