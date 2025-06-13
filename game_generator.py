@@ -29,14 +29,11 @@ def get_image_urls(object_names: list[str]) -> dict[str, str]:
             continue
         
         # Clean and format the name for the URL.
-        # quote() handles spaces and special characters, e.g., "Piger (1)" -> "Piger%20(1)".
         url_friendly_name = quote(name.strip())
 
-        # Randomly choose between the base name ("cow.png") and a variant ("cow (1).png")
-        if random.choice([True, False]):
-            image_filename = f"{url_friendly_name}%20(1).png"
-        else:
-            image_filename = f"{url_friendly_name}.png"
+        # *** FIX: Removed the random logic that added " (1)". ***
+        # This will now correctly look for "rabbit.png" instead of guessing "rabbit (1).png".
+        image_filename = f"{url_friendly_name}.png"
             
         # All GitHub image names are lowercase, so we convert the final URL.
         full_url = f"{ASSET_BASE_URL}{image_filename.lower()}"
