@@ -114,12 +114,9 @@ GAME_HTML_TEMPLATE = """
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
-                const objectSize = {{ w: 100, h: 100 }};
                 
                 const commonComponents = [
-                    pos(rand(objectSize.w, width() - objectSize.w), rand(120, height() - objectSize.h)),
-                    // *** FIX: Use area() without args to prevent duplicate width property. ***
-                    // It will automatically use the size from the sprite or rect component.
+                    pos(rand(100, width() - 100), rand(120, height() - 100)),
                     area(),
                     anchor("center"),
                     "object",
@@ -133,16 +130,18 @@ GAME_HTML_TEMPLATE = """
                 let renderComponents = [];
                 if (getSprite(itemName)) {{
                     renderComponents = [
-                        rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                        rect(100, 100, {{ radius: 12 }}),
                         color(40, 45, 55),
                         outline(2, color(80, 85, 95)),
-                        sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }})
+                        sprite(itemName, {{ width: 80, height: 80 }})
                     ];
                 }} else {{
+                    // *** FIX: Removed the conflicting 'width' property from the text component ***
                     renderComponents = [
                         rect(120, 50, {{ radius: 8 }}),
                         color(200, 200, 200),
-                        text(itemName, {{ size: 16, width: 110, align: "center" }})
+                        // The text component no longer sets a width, avoiding the conflict.
+                        text(itemName, {{ size: 16 }})
                     ];
                 }}
 
