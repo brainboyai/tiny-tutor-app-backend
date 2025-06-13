@@ -3,184 +3,228 @@
 import google.generativeai as genai
 from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
+import json
+import re
+import random
+from urllib.parse import quote
 
-# The large prompt template, containing all game variations, is stored here.
+# --- Asset Management Logic (Integrated) ---
+
+# The base URL for your raw GitHub content.
+ASSET_BASE_URL = "https://raw.githubusercontent.com/brainboyai/tiny-tutor-game-objects/main/"
+
+def get_image_urls(object_names: list[str]) -> dict[str, str]:
+    """
+    Constructs full image URLs for a list of object names from the GitHub repo.
+
+    Args:
+        object_names: A list of object names (e.g., ['Tiger', 'Rice', 'Wolf']).
+
+    Returns:
+        A dictionary mapping each object name to its corresponding image URL.
+    """
+    image_urls = {}
+    for name in object_names:
+        if not name or not isinstance(name, str):
+            continue
+        
+        # Clean and format the name for the URL.
+        # quote() handles spaces and special characters, e.g., "Piger (1)" -> "Piger%20(1)".
+        url_friendly_name = quote(name.strip())
+
+        # Randomly choose between the base name ("cow.png") and a variant ("cow (1).png")
+        if random.choice([True, False]):
+            image_filename = f"{url_friendly_name}%20(1).png"
+        else:
+            image_filename = f"{url_friendly_name}.png"
+            
+        # All GitHub image names are lowercase, so we convert the final URL.
+        full_url = f"{ASSET_BASE_URL}{image_filename.lower()}"
+        image_urls[name] = full_url
+        
+    return image_urls
+
+# --- End of Asset Management Logic ---
+
+
+# The prompt to the AI, instructing it how to design the game content.
 PROMPT_TEMPLATE = """
-You are an expert educational game designer and developer. Your task is to generate a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine. The game is a fast-paced "Tap the Right Ones" challenge.
+You are an expert educational game designer and developer. Your task is to generate the content for a complete, single-file HTML game for the topic: "TOPIC_PLACEHOLDER" using the Kaboom.js game engine. The game is a fast-paced "Tap the Right Ones" challenge.
 
 ---
 ### **MANDATORY WORKFLOW**
 ---
-1.  **Analyze Topic & Create Item Lists:**
+1.  **Analyze Topic & Create Content:**
     * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
-    * Your primary task is to generate two distinct lists of items that are thematically related but distinct:
-        1.  **`correctItems`**: A JavaScript array of strings that are correct examples of the topic.
-        2.  **`incorrectItems`**: A JavaScript array of strings that are plausible but **incorrect distractors**. These should be from a similar category to make the game challenging.
-    * These lists should be rich and varied. Aim for at least 5-10 items in each list if the topic allows.
-    * **Example for "Herbivores":**
-        * `correctItems`: `["Cow", "Goat", "Rabbit", "Deer", "Sheep", "Horse", "Elephant"]` (All are herbivores)
-        * `incorrectItems`: `["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear"]` (These are all *animals*, but are carnivores/omnivores, making them good distractors).
-    * **Example for "Metals":**
-        * `correctItems`: `["Gold", "Silver", "Iron", "Copper", "Aluminum", "Steel", "Lead"]` (All are metals)
-        * `incorrectItems`: `["Wood", "Glass", "Plastic", "Rubber", "Clay", "Stone"]` (These are all *materials*, but are non-metals).
+    * Your primary task is to generate the following content:
+        1.  **Game Title:** A short, fun title for the game.
+        2.  **Game Instructions:** A clear, one-sentence instruction for the player.
+        3.  **`correctItems`**: A JavaScript array of strings that are correct examples of the topic.
+        4.  **`incorrectItems`**: A JavaScript array of strings that are plausible but incorrect distractors.
+    * The item lists should be rich and varied. Aim for 5-10 items each.
 
-2.  **State Your Item Lists:** At the very beginning of your response, you MUST state the lists you have generated.
-    * **Example:** "Correct Items: `[\"Cow\", \"Goat\"]`. Incorrect Items: `[\"Lion\", \"Tiger\"]`."
+2.  **Format Your Output:** At the very beginning of your response, you MUST state the content you have generated, with each item on a new line.
 
-3.  **Copy & Fill Template:** Copy the entire "Tap the Right Ones" game template below. Your only task is to replace the `/* PLACEHOLDER */` sections with the `correctItems` and `incorrectItems` arrays you just created. DO NOT change any other part of the code.
+    * **Example for topic "Herbivores":**
+    * Game Title: Herbivore Hunt
+    * Game Instructions: Tap all the animals that only eat plants!
+    * Correct Items: ["Cow", "Goat", "Rabbit", "Deer", "Sheep", "Horse", "Zebra"]
+    * Incorrect Items: ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear"]
 
-4.  **Final Output:** Your response must be ONLY the completed, clean HTML code.
+3.  **Provide ONLY The Content:** Do not output any HTML. Your entire response should just be the four lines of content as specified above.
+"""
 
----
-### **THE "TAP THE RIGHT ONES" GAME TEMPLATE (v6 - FINAL)**
----
-
-```html
+# The HTML structure for the game, with placeholders for the AI-generated content.
+GAME_HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Tap the Right Ones</title>
-    <style>body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }</style>
+    <title>{title}</title>
+    <style>body, html {{ margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #000; }}</style>
 </head>
 <body>
-    <script src="[https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js](https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js)"></script>
+    <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        kaboom({ width: 800, height: 600, letterbox: true, background: [20, 20, 30] });
+        kaboom({{ width: 800, height: 600, letterbox: true, background: [20, 20, 30] }});
 
-        // --- 1. DEFINE ITEMS ---
-        /* PLACEHOLDER: The AI will define these lists based on its analysis. */
-        const correctItems = ["Cow", "Goat", "Rabbit", "Deer", "Zebra", "Horse", "Elephant"];
-        const incorrectItems = ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear", "Crocodile", "Snake"];
-        // --- END OF PLACEHOLDER ---
+        // --- Asset and Item Data (Injected by Backend) ---
+        const assets = {assets_json};
+        const correctItems = {correct_items_json};
+        const incorrectItems = {incorrect_items_json};
+        const gameTitle = {title_json};
+        const gameInstructions = {instructions_json};
 
-        // --- Helper function to select multiple unique items from an array ---
-        function chooseMultiple(arr, num) {
+        // Load all sprites from the URLs
+        for (const name in assets) {{
+            if (assets[name]) {{
+                // Use a try-catch to handle cases where an image fails to load
+                try {{
+                    loadSprite(name, assets[name], {{ crossOrigin: "anonymous" }});
+                }} catch (e) {{
+                    console.error(`Could not load sprite for ${{name}} from ${{assets[name]}}`, e);
+                }}
+            }}
+        }}
+        
+        function chooseMultiple(arr, num) {{
             const shuffled = [...arr].sort(() => 0.5 - Math.random());
             return shuffled.slice(0, num);
-        }
+        }}
 
-        scene("start", () => {
-             add([ text("/* PLACEHOLDER: Game Title */", { size: 50, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2 - 100), anchor("center"), ]);
-             add([ text("/* PLACEHOLDER: Game Instructions */", { size: 24, font: "sans-serif", width: width() - 100 }), pos(width() / 2, height() / 2), anchor("center"), ]);
-             add([ text("Click to Start", { size: 32, font: "sans-serif" }), pos(width() / 2, height() / 2 + 100), anchor("center"), ]);
-            onClick(() => go("game", { level: 1, score: 0 }));
-        });
+        scene("start", () => {{
+             add([ text(gameTitle, {{ size: 48, font: "sans-serif", width: width() - 100 }}), pos(width() / 2, height() / 2 - 120), anchor("center") ]);
+             add([ text(gameInstructions, {{ size: 22, font: "sans-serif", width: width() - 100 }}), pos(width() / 2, height() / 2 - 20), anchor("center") ]);
+             add([ text("Click to Start", {{ size: 32, font: "sans-serif" }}), pos(width() / 2, height() / 2 + 80), anchor("center") ]);
+            onClick(() => go("game", {{ level: 1, score: 0 }}));
+        }});
 
-        scene("game", ({ level, score }) => {
+        scene("game", ({{ level, score }}) => {{
             let timer = 15;
+            const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
-            const numCorrectToSpawn = Math.min(2 + level, correctItems.length);
-            const numIncorrectToSpawn = 2 + level;
 
-            const scoreLabel = add([ text(`Score: ${score}`), pos(24, 24), { layer: "ui" } ]);
-            const timerLabel = add([ text(`Time: ${timer.toFixed(1)}`), pos(width() - 24, 24), anchor("topright"), { layer: "ui" } ]);
-            const levelLabel = add([ text(`Level: ${level}`), pos(width() / 2, 24), anchor("top"), { layer: "ui" } ]);
+            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24), {{ layer: "ui" }} ]);
+            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright"), {{ layer: "ui" }} ]);
+            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top"), {{ layer: "ui" }} ]);
+            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40 }}), pos(width()/2, 60), anchor("top")]);
 
-            const speed = 60 + (level * 10);
-            const itemColor = color(220, 220, 220);
-
-            // Function to spawn a single item, ensuring no initial overlap
-            function spawnItem(itemName, itemTag) {
-                let overlapping = true;
-                let newItemPos;
-                while (overlapping) {
-                    newItemPos = pos(rand(80, width() - 80), rand(120, height() - 80));
-                    overlapping = get("item").some(item => item.pos.dist(newItemPos) < 100);
-                }
-
-                const item = add([
-                    rect(120, 50, { radius: 8 }),
-                    newItemPos,
-                    itemColor,
-                    area(),
+            function spawnObject(itemName, itemTag) {{
+                const speed = 80 + (level * 15);
+                const obj = add([
+                    pos(rand(80, width() - 80), rand(120, height() - 80)),
+                    area({{ scale: 0.8 }}),
                     anchor("center"),
-                    "item",
+                    move(choose([UP, DOWN, LEFT, RIGHT]), speed),
+                    "object",
                     itemTag,
-                    {
-                        vel: Vec2.fromAngle(rand(360)).scale(speed),
-                    }
+                    {{ name: itemName }}
                 ]);
-                item.add([ text(itemName, { size: 16, width: 110 }), anchor("center"), color(0,0,0) ]);
-            }
 
-            const itemsToFind = chooseMultiple(correctItems, numCorrectToSpawn);
-            itemsToFind.forEach(name => spawnItem(name, "correct"));
-            
-            const incorrectToSpawn = chooseMultiple(incorrectItems, numIncorrectToSpawn);
-            incorrectToSpawn.forEach(name => spawnItem(name, "incorrect"));
-            
-            onClick("correct", (item) => {
-                destroy(item);
-                score += 10;
-                correctTaps++;
-                scoreLabel.text = `Score: ${score}`;
-                addKaboom(item.pos);
-                if (correctTaps >= numCorrectToSpawn) {
-                    go("game", { level: level + 1, score: score });
-                }
-            });
+                // Check if the sprite exists before trying to add it
+                if (getSprite(itemName)) {{
+                    obj.add(sprite(itemName, {{ width: 90, height: 90 }}));
+                }} else {{
+                    // Fallback to a rectangle with text if the image failed to load
+                    obj.add(rect(120, 50, {{ radius: 8 }}));
+                    obj.add(color(200, 200, 200));
+                    obj.add(text(itemName, {{ size: 16, width: 110, align: "center" }}));
+                    obj.add(color(0,0,0)); // Text color
+                }}
+            }}
 
-            onClick("incorrect", (item) => {
+            itemsToFind.forEach(name => spawnObject(name, "correct"));
+            chooseMultiple(incorrectItems, 2 + level).forEach(name => spawnObject(name, "incorrect"));
+            
+            onClick("correct", (item) => {{
+                if (itemsToFind.includes(item.name)) {{
+                    destroy(item);
+                    score += 10;
+                    correctTaps++;
+                    scoreLabel.text = `Score: ${{score}}`;
+                    addKaboom(item.pos);
+                    if (correctTaps >= itemsToFind.length) {{
+                        go("game", {{ level: level + 1, score: score }});
+                    }}
+                }}
+            }});
+
+            onClick("incorrect", (item) => {{
                 shake(15);
-                score -= 5;
-                scoreLabel.text = `Score: ${score}`;
-                add([
-                    text("-5", { size: 24 }),
-                    pos(item.pos),
-                    lifespan(1, { fade: 0.5 }),
-                    anchor("center"),
-                    color(255, 0, 0)
-                ]);
-            });
+                score = Math.max(0, score - 5);
+                scoreLabel.text = `Score: ${{score}}`;
+            }});
 
-            // --- NEW: Robust Rebounding Logic ---
-            onUpdate("item", (item) => {
-                item.pos.x += item.vel.x * dt();
-                item.pos.y += item.vel.y * dt();
-
-                // Bounce off the walls
-                if (item.pos.x < 60 || item.pos.x > width() - 60) {
-                    item.vel.x = -item.vel.x;
-                }
-                if (item.pos.y < 80 || item.pos.y > height() - 30) {
-                    item.vel.y = -item.vel.y;
-                }
-            });
+            onUpdate("object", (item) => {{
+                if (item.pos.x < 40) {{ item.pos.x = width() - 40; }}
+                if (item.pos.x > width() - 40) {{ item.pos.x = 40; }}
+                if (item.pos.y < 80) {{ item.pos.y = height() - 40; }}
+                if (item.pos.y > height() - 40) {{ item.pos.y = 80; }}
+            }});
             
-            onUpdate(() => {
+            onUpdate(() => {{
                 timer -= dt();
-                timerLabel.text = `Time: ${timer.toFixed(1)}`;
-                if (timer <= 0) {
-                    go("end", { finalScore: score });
-                }
-            });
-        });
+                timerLabel.text = `Time: ${{timer.toFixed(1)}}`;
+                if (timer <= 0) {{
+                    go("end", {{ finalScore: score }});
+                }}
+            }});
+        }});
 
-        scene("end", ({ finalScore }) => {
-            add([ text("Time's Up!", { size: 60 }), pos(width()/2, height()/2 - 80), anchor("center") ]);
-            add([ text(`Final Score: ${finalScore}`, { size: 40 }), pos(width() / 2, height() / 2), anchor("center"), ]);
-            add([ text("Click to play again", { size: 24 }), pos(width() / 2, height() / 2 + 80), anchor("center"), ]);
+        scene("end", ({{ finalScore }}) => {{
+            add([ text("Time's Up!", {{ size: 60 }}), pos(width()/2, height()/2 - 80), anchor("center") ]);
+            add([ text(`Final Score: ${{finalScore}}`, {{ size: 40 }}), pos(width() / 2, height() / 2), anchor("center"), ]);
+            add([ text("Click to play again", {{ size: 24 }}), pos(width() / 2, height() / 2 + 80), anchor("center"), ]);
             onClick(() => go("start"));
-        });
+        }});
         
         go("start");
     </script>
 </body>
 </html>
-```
 """
 
+def parse_ai_reasoning(reasoning_text: str):
+    """Parses the reasoning text from the AI to extract game metadata."""
+    title_match = re.search(r"Game Title:\s*(.*)", reasoning_text)
+    instructions_match = re.search(r"Game Instructions:\s*(.*)", reasoning_text)
+    correct_match = re.search(r"Correct Items:\s*(\[.*?\])", reasoning_text, re.DOTALL)
+    incorrect_match = re.search(r"Incorrect Items:\s*(\[.*?\])", reasoning_text, re.DOTALL)
+
+    title = title_match.group(1).strip() if title_match else "Tiny Tutor Game"
+    instructions = instructions_match.group(1).strip() if instructions_match else "Tap the correct items!"
+    
+    try:
+        correct_items = json.loads(correct_match.group(1)) if correct_match else []
+        incorrect_items = json.loads(incorrect_match.group(1)) if incorrect_match else []
+    except (json.JSONDecodeError, AttributeError):
+        correct_items = []
+        incorrect_items = []
+
+    return title, instructions, correct_items, incorrect_items
+
+
 def generate_game_for_topic(topic: str):
-    """
-    Generates game HTML by calling the Gemini API.
-
-    Args:
-        topic: The user-provided topic for the game.
-
-    Returns:
-        A tuple containing (reasoning, game_html).
-        Returns (None, None) on failure.
-    """
+    """Generates game HTML by calling the Gemini API and injecting content."""
     try:
         prompt = PROMPT_TEMPLATE.replace("TOPIC_PLACEHOLDER", topic)
 
@@ -188,30 +232,34 @@ def generate_game_for_topic(topic: str):
         safety_settings = {HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE}
         
         response = gemini_model.generate_content(prompt, safety_settings=safety_settings)
+        reasoning_text = response.text.strip()
         
-        generated_text = response.text.strip()
+        # Parse the entire AI response to get our structured data
+        title, instructions, correct_items, incorrect_items = parse_ai_reasoning(reasoning_text)
+
+        if not correct_items or not incorrect_items:
+             raise ValueError(f"AI did not return valid item lists. Full response: {reasoning_text}")
+
+        # Get image URLs for all items from the asset helper
+        all_game_objects = correct_items + incorrect_items
+        asset_urls = get_image_urls(all_game_objects)
+
+        # Inject the dynamic data into the HTML template
+        final_html = GAME_HTML_TEMPLATE.format(
+            title=title,
+            assets_json=json.dumps(asset_urls),
+            correct_items_json=json.dumps(correct_items),
+            incorrect_items_json=json.dumps(incorrect_items),
+            title_json=json.dumps(title),
+            instructions_json=json.dumps(instructions)
+        )
         
-        # Isolate the HTML part from the reasoning part
-        html_start_index = generated_text.find('<!DOCTYPE html>')
-        if html_start_index == -1:
-            html_start_index = generated_text.find('<')
-
-        if html_start_index != -1:
-            reasoning = generated_text[:html_start_index].strip()
-            generated_html = generated_text[html_start_index:]
-
-            # Clean up markdown fences if they exist
-            if generated_html.startswith("```html"):
-                generated_html = generated_html[7:].strip()
-            if generated_html.endswith("```"):
-                generated_html = generated_html[:-3].strip()
-            
-            return reasoning, generated_html
-        else:
-            # AI failed to return valid HTML
-            logging.error(f"AI failed to generate valid HTML for topic '{topic}'")
-            return "HTML Generation Error", f"<p>Error: AI did not generate valid HTML. Full response: {generated_text}</p>"
+        # The "reasoning" is the full text output from the AI for debugging or display
+        return reasoning_text, final_html
 
     except Exception as e:
         logging.error(f"Exception in generate_game_for_topic for topic '{topic}': {e}")
-        return "Internal Server Error", f"<p>An exception occurred: {e}</p>"
+        # Provide a user-friendly error message in the game window itself
+        error_html = f"<h1>Error Generating Game</h1><p>An error occurred: {e}</p><p>Please try a different topic.</p>"
+        return f"Internal Server Error: {e}", error_html
+
