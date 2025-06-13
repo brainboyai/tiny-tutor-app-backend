@@ -70,48 +70,19 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        // Call kaboom and destructure all the functions we need.
-        // *** FIX: Removed 'kaboom' from the destructuring list to prevent name collision. ***
-        const {{
-            scene,
-            go,
-            layers,
-            add,
-            text,
-            pos,
-            rect,
-            color,
-            outline,
-            area,
-            anchor,
-            layer,
-            move,
-            vec2,
-            rand,
-            play,
-            shake,
-            tween,
-            wait,
-            lifespan,
-            opacity,
-            sprite,
-            getSprite,
-            loadSprite,
-            onClick,
-            onUpdate,
-            width,
-            height,
-            choose,
-        }} = kaboom({{
+        // *** FIX: Reverted to the standard, global Kaboom initialization. ***
+        // This is the most robust method and ensures all functions are available.
+        kaboom({{
             width: 800,
             height: 600,
             letterbox: true,
             background: [20, 20, 30],
-            global: false
         }});
 
+        // Now, this call will work correctly.
         layers(["obj", "ui"], "obj");
 
+        // --- Asset and Item Data (Injected by Backend) ---
         const assets = {assets_json};
         const correctItems = {correct_items_json};
         const incorrectItems = {incorrect_items_json};
@@ -189,7 +160,7 @@ GAME_HTML_TEMPLATE = """
                     itemTag,
                     {{ 
                         name: itemName,
-                        vel: vec2.fromAngle(rand(360)).scale(speed)
+                        vel: vec2(rand(-1, 1), rand(-1, 1)).unit().scale(speed)
                     }}
                 ]);
 
