@@ -70,6 +70,8 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
+        // *** FIX: Reverted to the standard, global Kaboom initialization. ***
+        // This is the most robust method and ensures all functions are available.
         kaboom({{
             width: 800,
             height: 600,
@@ -77,7 +79,8 @@ GAME_HTML_TEMPLATE = """
             background: [20, 20, 30],
         }});
 
-        layers(["bg", "obj", "ui"], "obj");
+        // Now, this call will work correctly in the global scope.
+        layers(["obj", "ui"], "obj");
 
         // --- Asset and Item Data (Injected by Backend) ---
         const assets = {assets_json};
@@ -113,9 +116,7 @@ GAME_HTML_TEMPLATE = """
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
             
-            // *** FIX: Create UI elements as separate objects to prevent crashes ***
             function makeUIPanel(p, icon, initialText) {{
-                // Background Panel
                 add([
                     rect(180, 40, {{ radius: 8 }}),
                     pos(p),
@@ -124,14 +125,12 @@ GAME_HTML_TEMPLATE = """
                     outline(2, color(80, 85, 95)),
                     layer("ui"),
                 ]);
-                // Icon
                 add([
                     text(icon, {{ size: 20 }}),
                     pos(p.x - 65, p.y),
                     anchor("center"),
                     layer("ui"),
                 ]);
-                // Text Label (this is the object we'll update)
                 return add([
                     text(initialText, {{ size: 20, font: "sans-serif"}}),
                     pos(p.x + 15, p.y),
@@ -150,8 +149,11 @@ GAME_HTML_TEMPLATE = """
                 const speed = 80 + (level * 15);
                 const objectSize = {{ w: 100, h: 100 }};
                 
-                const components = [
+                const parentObj = add([
                     pos(rand(objectSize.w, width() - objectSize.w), rand(140, height() - objectSize.h)),
+                    rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                    color(40, 45, 55),
+                    outline(4, color(80, 85, 95)),
                     area(),
                     anchor("center"),
                     layer("obj"),
@@ -161,25 +163,17 @@ GAME_HTML_TEMPLATE = """
                         name: itemName,
                         vel: vec2(rand(-1, 1), rand(-1, 1)).unit().scale(speed)
                     }}
-                ];
+                ]);
 
                 if (getSprite(itemName)) {{
-                    add([
-                        ...components,
-                        rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
-                        color(40, 45, 55),
-                        outline(4, color(80, 85, 95)),
-                        {{" "}} // Empty sprite to be filled
-                    ]).add([
+                    parentObj.add([
                         sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
                         anchor("center")
                     ]);
                 }} else {{
-                    add([
-                        ...components,
-                        rect(120, 50, {{ radius: 8 }}),
-                        color(200, 200, 200),
-                        text(itemName, {{ size: 16 }})
+                    parentObj.add([
+                        text(itemName, {{ size: 16, width: objectSize.w - 10, align: "center" }}),
+                        anchor("center")
                     ]);
                 }}
             }}
