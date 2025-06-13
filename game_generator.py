@@ -72,6 +72,9 @@ GAME_HTML_TEMPLATE = """
     <script>
         kaboom({{ width: 800, height: 600, letterbox: true, background: [20, 20, 30] }});
 
+        // *** FIX: Define rendering layers globally, right after initialization. ***
+        layers(["obj", "ui"], "obj");
+
         // --- Asset and Item Data (Injected by Backend) ---
         const assets = {assets_json};
         const correctItems = {correct_items_json};
@@ -103,9 +106,6 @@ GAME_HTML_TEMPLATE = """
         }});
 
         scene("game", ({{ level, score }}) => {{
-            // *** FIX: Define rendering layers ***
-            layers(["obj", "ui"], "obj");
-
             let timer = 15;
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
@@ -149,7 +149,7 @@ GAME_HTML_TEMPLATE = """
                     outline(4, color(80, 85, 95)),
                     area(),
                     anchor("center"),
-                    layer("obj"), // Assign to "obj" layer
+                    layer("obj"),
                     "object",
                     itemTag,
                     {{ 
