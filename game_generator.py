@@ -70,9 +70,44 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        kaboom({{ width: 800, height: 600, letterbox: true, background: [20, 20, 30] }});
+        // *** FIX: Use a robust destructuring assignment for all Kaboom functions ***
+        const {{
+            kaboom,
+            scene,
+            layers,
+            add,
+            text,
+            pos,
+            rect,
+            color,
+            outline,
+            area,
+            anchor,
+            layer,
+            move,
+            vec2,
+            rand,
+            play,
+            shake,
+            tween,
+            wait,
+            lifespan,
+            opacity,
+            getSprite,
+            loadSprite,
+            onClick,
+            onUpdate,
+            width,
+            height,
+            choose,
+        }} = kaboom({{
+            width: 800,
+            height: 600,
+            letterbox: true,
+            background: [20, 20, 30],
+            global: false // Disable global injection to prevent conflicts
+        }});
 
-        // *** FIX: Define rendering layers globally, right after initialization. ***
         layers(["obj", "ui"], "obj");
 
         // --- Asset and Item Data (Injected by Backend) ---
@@ -82,7 +117,6 @@ GAME_HTML_TEMPLATE = """
         const gameTitle = {title_json};
         const gameInstructions = {instructions_json};
 
-        // Load all sprites from the URLs
         for (const name in assets) {{
             if (assets[name]) {{
                 try {{
@@ -154,7 +188,7 @@ GAME_HTML_TEMPLATE = """
                     itemTag,
                     {{ 
                         name: itemName,
-                        vel: Vec2.fromAngle(rand(360)).scale(speed)
+                        vel: vec2.fromAngle(rand(360)).scale(speed)
                     }}
                 ]);
 
