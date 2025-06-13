@@ -112,7 +112,6 @@ GAME_HTML_TEMPLATE = """
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
             
-            // *** FIX: Use z() component for reliable layering. ***
             function makeUIPanel(p, icon, initialText) {{
                 add([
                     rect(180, 40, {{ radius: 8 }}),
@@ -120,19 +119,19 @@ GAME_HTML_TEMPLATE = """
                     anchor("center"),
                     color(10, 10, 15),
                     outline(2, color(80, 85, 95)),
-                    z(100) // High z-index for UI background
+                    z(100) 
                 ]);
                 add([
                     text(icon, {{ size: 20 }}),
                     pos(p.x - 65, p.y),
                     anchor("center"),
-                    z(110) // Higher z-index for UI icon
+                    z(110)
                 ]);
                 return add([
                     text(initialText, {{ size: 20, font: "sans-serif"}}),
                     pos(p.x + 15, p.y),
                     anchor("center"),
-                    z(110) // Higher z-index for UI text
+                    z(110)
                 ]);
             }}
 
@@ -146,32 +145,36 @@ GAME_HTML_TEMPLATE = """
                 const speed = 80 + (level * 15);
                 const objectSize = {{ w: 100, h: 100 }};
                 
-                const parentObj = add([
+                const components = [
                     pos(rand(objectSize.w, width() - objectSize.w), rand(140, height() - objectSize.h)),
-                    rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
-                    color(40, 45, 55),
-                    outline(4, color(80, 85, 95)),
                     area(),
                     anchor("center"),
-                    z(50), // Lower z-index for game objects
+                    z(50),
                     "object",
                     itemTag,
                     {{ 
                         name: itemName,
                         vel: vec2(rand(-1, 1), rand(-1, 1)).unit().scale(speed)
                     }}
-                ]);
+                ];
 
                 if (getSprite(itemName)) {{
+                    const parentObj = add([
+                        ...components,
+                        rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                        color(40, 45, 55),
+                        outline(4, color(80, 85, 95)),
+                    ]);
                     parentObj.add([
                         sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
                         anchor("center")
                     ]);
                 }} else {{
-                    parentObj.add([
-                        text(itemName, {{ size: 16 }}),
-                        anchor("center"),
-                        color(255, 255, 255)
+                    add([
+                        ...components,
+                        rect(120, 50, {{ radius: 8 }}),
+                        color(200, 200, 200),
+                        text(itemName, {{ size: 16 }}), 
                     ]);
                 }}
             }}
