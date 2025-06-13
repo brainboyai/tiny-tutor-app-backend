@@ -153,7 +153,7 @@ GAME_HTML_TEMPLATE = """
             
             onClick("correct", (item) => {{
                 if (itemsToFind.includes(item.name)) {{
-                    play("powerUp", {{ volume: 0.5 }});
+                    burp(); // Using stable, built-in sound
                     destroy(item);
                     
                     score += 10;
@@ -167,8 +167,7 @@ GAME_HTML_TEMPLATE = """
             }});
 
             onClick("incorrect", (item) => {{
-                play("hit", {{ volume: 0.5 }});
-                shake(10);
+                shake(10); // Using stable, built-in effect instead of a sound that might not be loaded
                 score = Math.max(0, score - 5);
                 scoreLabel.text = `Score: ${{score}}`;
             }});
