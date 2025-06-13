@@ -114,10 +114,18 @@ GAME_HTML_TEMPLATE = """
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
+                const objectSize = {{ w: 100, h: 100 }};
                 
-                const commonComponents = [
-                    pos(rand(100, width() - 100), rand(120, height() - 100)),
-                    area(),
+                // *** FIX: Create the object using a parent/child structure ***
+
+                // 1. Create the parent container object (the "box").
+                // This object handles movement and collision.
+                const parentObj = add([
+                    pos(rand(objectSize.w, width() - objectSize.w), rand(120, height() - objectSize.h)),
+                    rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                    color(40, 45, 55),
+                    outline(4, color(80, 85, 95)),
+                    area(), // The clickable area is the box itself.
                     anchor("center"),
                     "object",
                     itemTag,
@@ -125,27 +133,22 @@ GAME_HTML_TEMPLATE = """
                         name: itemName,
                         vel: Vec2.fromAngle(rand(360)).scale(speed)
                     }}
-                ];
+                ]);
 
-                let renderComponents = [];
+                // 2. Add the sprite or text as a CHILD of the parent.
+                // The child is purely visual and will move with the parent.
                 if (getSprite(itemName)) {{
-                    renderComponents = [
-                        rect(100, 100, {{ radius: 12 }}),
-                        color(40, 45, 55),
-                        outline(2, color(80, 85, 95)),
-                        sprite(itemName, {{ width: 80, height: 80 }})
-                    ];
+                    parentObj.add([
+                        sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
+                        anchor("center") // Center the sprite within the parent box
+                    ]);
                 }} else {{
-                    // *** FIX: Removed the conflicting 'width' property from the text component ***
-                    renderComponents = [
-                        rect(120, 50, {{ radius: 8 }}),
-                        color(200, 200, 200),
-                        // The text component no longer sets a width, avoiding the conflict.
-                        text(itemName, {{ size: 16 }})
-                    ];
+                    // Fallback for missing images
+                    parentObj.add([
+                        text(itemName, {{ size: 16, width: objectSize.w - 10 }}),
+                        anchor("center") // Center the text within the parent box
+                    ]);
                 }}
-
-                add([...commonComponents, ...renderComponents]);
             }}
 
             itemsToFind.forEach(name => spawnObject(name, "correct"));
