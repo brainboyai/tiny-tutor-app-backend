@@ -112,38 +112,47 @@ GAME_HTML_TEMPLATE = """
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
             
-            // Simplified UI Text Objects
-            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24) ]);
-            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top") ]);
-            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright") ]);
-            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center") ]);
+            // Simplified UI Text Objects - using z() for layering
+            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24), z(100) ]);
+            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top"), z(100) ]);
+            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright"), z(100) ]);
+            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center"), z(100) ]);
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
+                const objectSize = {{ w: 100, h: 100 }};
                 
-                const components = [
-                    pos(rand(100, width() - 100), rand(120, height() - 100)),
-                    area(),
+                // Create the parent container object (the "box").
+                // This object handles movement, collisions, and has the clickable area.
+                const parentObj = add([
+                    pos(rand(objectSize.w, width() - objectSize.w), rand(140, height() - objectSize.h)),
+                    rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                    color(40, 45, 55),
+                    outline(4, color(80, 85, 95)),
+                    area(), // The clickable area is the full box.
                     anchor("center"),
+                    z(50),
                     "object",
                     itemTag,
                     {{ 
                         name: itemName,
                         vel: vec2(rand(-1, 1), rand(-1, 1)).unit().scale(speed)
                     }}
-                ];
+                ]);
 
+                // Add the sprite or text as a CHILD of the parent.
+                // This is visually nested and will not cause rendering crashes.
                 if (getSprite(itemName)) {{
-                    add([
-                        ...components,
-                        sprite(itemName, {{ width: 100, height: 100 }}),
+                    parentObj.add([
+                        sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
+                        anchor("center")
                     ]);
                 }} else {{
-                    // Fallback for missing images is simple text, preventing crashes.
-                    add([
-                        ...components,
-                        text(itemName, {{ size: 24 }}),
-                        color(255, 255, 255),
+                    // Fallback text is a simple child object with no conflicting properties.
+                    parentObj.add([
+                        text(itemName, {{ size: 16 }}),
+                        anchor("center"),
+                        color(255, 255, 255)
                     ]);
                 }}
             }}
@@ -167,7 +176,7 @@ GAME_HTML_TEMPLATE = """
             }});
 
             onClick("incorrect", (item) => {{
-                shake(10); // Using stable, built-in effect instead of a sound that might not be loaded
+                shake(10);
                 score = Math.max(0, score - 5);
                 scoreLabel.text = `Score: ${{score}}`;
             }});
