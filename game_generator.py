@@ -114,25 +114,34 @@ GAME_HTML_TEMPLATE = """
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
+                const objectSize = {{ w: 100, h: 100 }};
                 
-                // *** FIX: Build components first, then add the object ***
                 const commonComponents = [
-                    pos(rand(80, width() - 80), rand(120, height() - 80)),
-                    area({{ scale: 0.8 }}),
+                    pos(rand(objectSize.w, width() - objectSize.w), rand(120, height() - objectSize.h)),
+                    area({{ shape: "rect", width: objectSize.w, height: objectSize.h }}),
                     anchor("center"),
-                    move(choose([UP, DOWN, LEFT, RIGHT]), speed),
                     "object",
                     itemTag,
-                    {{ name: itemName }}
+                    {{ 
+                        name: itemName,
+                        vel: Vec2.fromAngle(rand(360)).scale(speed)
+                    }}
                 ];
 
                 let renderComponents = [];
                 if (getSprite(itemName)) {{
+                    // *** NEW: Create a gamified box for the sprite ***
                     renderComponents = [
-                        sprite(itemName, {{ width: 90, height: 90 }})
+                        // Background box
+                        rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                        color(40, 45, 55),
+                        // Outer border
+                        outline(2, color(80, 85, 95)),
+                        // The actual sprite, centered
+                        sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }})
                     ];
                 }} else {{
-                    // Fallback components for when an image is missing
+                    // Fallback components remain the same
                     renderComponents = [
                         rect(120, 50, {{ radius: 8 }}),
                         color(200, 200, 200),
@@ -140,7 +149,6 @@ GAME_HTML_TEMPLATE = """
                     ];
                 }}
 
-                // Create the object in one call with all components
                 add([...commonComponents, ...renderComponents]);
             }}
 
@@ -153,7 +161,8 @@ GAME_HTML_TEMPLATE = """
                     score += 10;
                     correctTaps++;
                     scoreLabel.text = `Score: ${{score}}`;
-                    addKaboom(item.pos);
+                    // *** NEW: Replaced addKaboom() with a subtle particle effect ***
+                    burp(); 
                     if (correctTaps >= itemsToFind.length) {{
                         go("game", {{ level: level + 1, score: score }});
                     }}
@@ -166,11 +175,17 @@ GAME_HTML_TEMPLATE = """
                 scoreLabel.text = `Score: ${{score}}`;
             }});
 
+            // *** NEW: Updated object movement to bounce off walls ***
             onUpdate("object", (item) => {{
-                if (item.pos.x < 40) {{ item.pos.x = width() - 40; }}
-                if (item.pos.x > width() - 40) {{ item.pos.x = 40; }}
-                if (item.pos.y < 80) {{ item.pos.y = height() - 40; }}
-                if (item.pos.y > height() - 40) {{ item.pos.y = 80; }}
+                item.move(item.vel); // Move object by its velocity
+                // Bounce off horizontal walls
+                if (item.pos.x < item.width / 2 || item.pos.x > width() - item.width / 2) {{
+                    item.vel.x = -item.vel.x;
+                }}
+                // Bounce off vertical walls
+                if (item.pos.y < 80 || item.pos.y > height() - item.height / 2) {{
+                    item.vel.y = -item.vel.y;
+                }}
             }});
             
             onUpdate(() => {{
