@@ -118,7 +118,9 @@ GAME_HTML_TEMPLATE = """
                 
                 const commonComponents = [
                     pos(rand(objectSize.w, width() - objectSize.w), rand(120, height() - objectSize.h)),
-                    area({{ shape: "rect", width: objectSize.w, height: objectSize.h }}),
+                    // *** FIX: Use area() without args to prevent duplicate width property. ***
+                    // It will automatically use the size from the sprite or rect component.
+                    area(),
                     anchor("center"),
                     "object",
                     itemTag,
@@ -130,18 +132,13 @@ GAME_HTML_TEMPLATE = """
 
                 let renderComponents = [];
                 if (getSprite(itemName)) {{
-                    // *** NEW: Create a gamified box for the sprite ***
                     renderComponents = [
-                        // Background box
                         rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
                         color(40, 45, 55),
-                        // Outer border
                         outline(2, color(80, 85, 95)),
-                        // The actual sprite, centered
                         sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }})
                     ];
                 }} else {{
-                    // Fallback components remain the same
                     renderComponents = [
                         rect(120, 50, {{ radius: 8 }}),
                         color(200, 200, 200),
@@ -161,7 +158,6 @@ GAME_HTML_TEMPLATE = """
                     score += 10;
                     correctTaps++;
                     scoreLabel.text = `Score: ${{score}}`;
-                    // *** NEW: Replaced addKaboom() with a subtle particle effect ***
                     burp(); 
                     if (correctTaps >= itemsToFind.length) {{
                         go("game", {{ level: level + 1, score: score }});
@@ -175,14 +171,11 @@ GAME_HTML_TEMPLATE = """
                 scoreLabel.text = `Score: ${{score}}`;
             }});
 
-            // *** NEW: Updated object movement to bounce off walls ***
             onUpdate("object", (item) => {{
-                item.move(item.vel); // Move object by its velocity
-                // Bounce off horizontal walls
+                item.move(item.vel);
                 if (item.pos.x < item.width / 2 || item.pos.x > width() - item.width / 2) {{
                     item.vel.x = -item.vel.x;
                 }}
-                // Bounce off vertical walls
                 if (item.pos.y < 80 || item.pos.y > height() - item.height / 2) {{
                     item.vel.y = -item.vel.y;
                 }}
