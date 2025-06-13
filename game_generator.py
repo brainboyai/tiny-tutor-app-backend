@@ -70,7 +70,7 @@ GAME_HTML_TEMPLATE = """
 <body>
     <script src="https://unpkg.com/kaboom@3000.0.1/dist/kaboom.js"></script>
     <script>
-        // Use the standard global initialization for maximum stability.
+        // Standard global initialization for maximum stability.
         kaboom({{
             width: 800,
             height: 600,
@@ -111,43 +111,18 @@ GAME_HTML_TEMPLATE = """
             let timer = 15;
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
-            
-            // UI elements now use z() for layering
-            function makeUIPanel(p, icon, initialText) {{
-                add([
-                    rect(180, 40, {{ radius: 8 }}),
-                    pos(p),
-                    anchor("center"),
-                    color(10, 10, 15),
-                    outline(2, color(80, 85, 95)),
-                    z(100) 
-                ]);
-                add([
-                    text(icon, {{ size: 20 }}),
-                    pos(p.x - 65, p.y),
-                    anchor("center"),
-                    z(110)
-                ]);
-                return add([
-                    text(initialText, {{ size: 20, font: "sans-serif"}}),
-                    pos(p.x + 15, p.y),
-                    anchor("center"),
-                    z(110)
-                ]);
-            }}
 
-            const scoreLabel = makeUIPanel(vec2(110, 40), "⭐", `Score: ${{score}}`);
-            const levelLabel = makeUIPanel(vec2(width() / 2, 40), "📈", `Level: ${{level}}`);
-            const timerLabel = makeUIPanel(vec2(width() - 110, 40), "⏱️", `Time: ${{timer.toFixed(1)}}`);
-            
-            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 85), anchor("center"), z(100) ]);
+            // Simplified UI Text Objects
+            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24), z(100) ]);
+            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top"), z(100) ]);
+            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright"), z(100) ]);
+            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center"), z(100) ]);
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
-                const objectSize = {{ w: 100, h: 100 }};
                 
                 const components = [
-                    pos(rand(objectSize.w, width() - objectSize.w), rand(140, height() - objectSize.h)),
+                    pos(rand(100, width() - 100), rand(120, height() - 100)),
                     area(),
                     anchor("center"),
                     z(50),
@@ -160,23 +135,16 @@ GAME_HTML_TEMPLATE = """
                 ];
 
                 if (getSprite(itemName)) {{
-                    const parentObj = add([
-                        ...components,
-                        rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
-                        color(40, 45, 55),
-                        outline(4, color(80, 85, 95)),
-                    ]);
-                    parentObj.add([
-                        sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
-                        anchor("center")
-                    ]);
-                }} else {{
-                    // Fallback for missing images
                     add([
                         ...components,
-                        rect(120, 50, {{ radius: 8 }}),
-                        color(200, 200, 200),
-                        text(itemName, {{ size: 16 }}), 
+                        sprite(itemName, {{ width: 100, height: 100 }}),
+                    ]);
+                }} else {{
+                    // Fallback for missing images is now just simple text.
+                    add([
+                        ...components,
+                        text(itemName, {{ size: 24 }}),
+                        color(255, 255, 255),
                     ]);
                 }}
             }}
@@ -185,35 +153,23 @@ GAME_HTML_TEMPLATE = """
             chooseMultiple(incorrectItems, 2 + level).forEach(name => spawnObject(name, "incorrect"));
             
             onClick("correct", (item) => {{
-                if (itemsToFind.includes(item.name) && !item.isAnimating) {{
-                    item.isAnimating = true;
+                if (itemsToFind.includes(item.name)) {{
                     play("powerUp", {{ volume: 0.5 }});
-                    
-                    add([ rect(item.width, item.height, {{ radius: 12 }}), pos(item.pos), anchor("center"), color(0, 255, 0), opacity(0.8), lifespan(0.3, {{ fade: 0.3 }}), z(200) ]);
-                    
-                    for (let i = 0; i < 15; i++) {{
-                        add([ pos(item.pos), rect(rand(3, 8), rand(3, 8)), color(120, 255, 120), lifespan(0.4, {{ fade: 0.4 }}), move(rand(0, 360), rand(50, 150)), z(200) ]);
-                    }}
-
-                    tween(item.scale, vec2(0), 0.3, (s) => item.scale = s).onEnd(() => destroy(item));
+                    destroy(item);
                     
                     score += 10;
                     correctTaps++;
                     scoreLabel.text = `Score: ${{score}}`;
 
                     if (correctTaps >= itemsToFind.length) {{
-                        wait(1, () => go("game", {{ level: level + 1, score: score }}));
+                        wait(0.5, () => go("game", {{ level: level + 1, score: score }}));
                     }}
                 }}
             }});
 
             onClick("incorrect", (item) => {{
-                if (item.isAnimating) return;
                 play("hit", {{ volume: 0.5 }});
-                shake(15);
-                
-                add([ rect(item.width, item.height, {{ radius: 12 }}), pos(item.pos), anchor("center"), color(255, 0, 0), opacity(0.7), lifespan(0.4, {{ fade: 0.4 }}), z(200) ]);
-
+                shake(10);
                 score = Math.max(0, score - 5);
                 scoreLabel.text = `Score: ${{score}}`;
             }});
