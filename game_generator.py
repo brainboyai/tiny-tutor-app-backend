@@ -106,26 +106,46 @@ GAME_HTML_TEMPLATE = """
             let timer = 15;
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
             let correctTaps = 0;
+            
+            // --- NEW: Gamified UI Panels ---
+            function makeUIPanel(p, icon, initialText) {{
+                const panel = add([
+                    rect(180, 40, {{ radius: 8 }}),
+                    pos(p),
+                    anchor("center"),
+                    color(10, 10, 15),
+                    outline(2, color(80, 85, 95)),
+                    layer("ui")
+                ]);
+                panel.add([
+                    text(icon, {{ size: 20 }}),
+                    pos(-65, 0),
+                    anchor("center"),
+                ]);
+                const label = panel.add([
+                    text(initialText, {{ size: 20, font: "sans-serif"}}),
+                    pos(15, 0),
+                    anchor("center"),
+                ]);
+                return label;
+            }}
 
-            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24), {{ layer: "ui" }} ]);
-            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright"), {{ layer: "ui" }} ]);
-            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top"), {{ layer: "ui" }} ]);
-            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40 }}), pos(width()/2, 60), anchor("top")]);
+            const scoreLabel = makeUIPanel(vec2(110, 40), "⭐", `Score: ${{score}}`);
+            const levelLabel = makeUIPanel(vec2(width() / 2, 40), "📈", `Level: ${{level}}`);
+            const timerLabel = makeUIPanel(vec2(width() - 110, 40), "⏱️", `Time: ${{timer.toFixed(1)}}`);
+            
+            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 85), anchor("center"), layer("ui")]);
 
             function spawnObject(itemName, itemTag) {{
                 const speed = 80 + (level * 15);
                 const objectSize = {{ w: 100, h: 100 }};
                 
-                // *** FIX: Create the object using a parent/child structure ***
-
-                // 1. Create the parent container object (the "box").
-                // This object handles movement and collision.
                 const parentObj = add([
-                    pos(rand(objectSize.w, width() - objectSize.w), rand(120, height() - objectSize.h)),
+                    pos(rand(objectSize.w, width() - objectSize.w), rand(140, height() - objectSize.h)),
                     rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
                     color(40, 45, 55),
                     outline(4, color(80, 85, 95)),
-                    area(), // The clickable area is the box itself.
+                    area(),
                     anchor("center"),
                     "object",
                     itemTag,
@@ -135,18 +155,15 @@ GAME_HTML_TEMPLATE = """
                     }}
                 ]);
 
-                // 2. Add the sprite or text as a CHILD of the parent.
-                // The child is purely visual and will move with the parent.
                 if (getSprite(itemName)) {{
                     parentObj.add([
                         sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
-                        anchor("center") // Center the sprite within the parent box
+                        anchor("center")
                     ]);
                 }} else {{
-                    // Fallback for missing images
                     parentObj.add([
-                        text(itemName, {{ size: 16, width: objectSize.w - 10 }}),
-                        anchor("center") // Center the text within the parent box
+                        text(itemName, {{ size: 16, width: objectSize.w - 10, align: "center" }}),
+                        anchor("center")
                     ]);
                 }}
             }}
@@ -156,19 +173,61 @@ GAME_HTML_TEMPLATE = """
             
             onClick("correct", (item) => {{
                 if (itemsToFind.includes(item.name)) {{
-                    destroy(item);
+                    // Prevent multiple clicks on the same item
+                    if (item.isAnimating) return;
+                    item.isAnimating = true;
+
+                    play("powerUp", {{ volume: 0.5 }});
+
+                    // Add a temporary green flash effect
+                    add([
+                        rect(item.width, item.height, {{ radius: 12 }}),
+                        pos(item.pos),
+                        anchor("center"),
+                        color(0, 255, 0),
+                        opacity(0.8),
+                        lifespan(0.3, {{ fade: 0.3 }})
+                    ]);
+                    
+                    // Particle explosion effect
+                    for (let i = 0; i < 15; i++) {{
+                        add([
+                            pos(item.pos),
+                            rect(rand(3, 8), rand(3, 8)),
+                            color(120, 255, 120),
+                            lifespan(0.4, {{ fade: 0.4 }}),
+                            move(rand(0, 360), rand(50, 150))
+                        ]);
+                    }}
+
+                    // Shrink and destroy
+                    tween(item.scale, vec2(0), 0.3, (s) => item.scale = s).onEnd(() => destroy(item));
+                    
                     score += 10;
                     correctTaps++;
                     scoreLabel.text = `Score: ${{score}}`;
-                    burp(); 
+
                     if (correctTaps >= itemsToFind.length) {{
-                        go("game", {{ level: level + 1, score: score }});
+                        wait(1, () => go("game", {{ level: level + 1, score: score }}));
                     }}
                 }}
             }});
 
             onClick("incorrect", (item) => {{
+                if (item.isAnimating) return;
+                play("hit", {{ volume: 0.5 }});
                 shake(15);
+                
+                // Add a temporary red flash effect
+                add([
+                    rect(item.width, item.height, {{ radius: 12 }}),
+                    pos(item.pos),
+                    anchor("center"),
+                    color(255, 0, 0),
+                    opacity(0.7),
+                    lifespan(0.4, {{ fade: 0.4 }})
+                ]);
+
                 score = Math.max(0, score - 5);
                 scoreLabel.text = `Score: ${{score}}`;
             }});
@@ -178,7 +237,7 @@ GAME_HTML_TEMPLATE = """
                 if (item.pos.x < item.width / 2 || item.pos.x > width() - item.width / 2) {{
                     item.vel.x = -item.vel.x;
                 }}
-                if (item.pos.y < 80 || item.pos.y > height() - item.height / 2) {{
+                if (item.pos.y < 120 || item.pos.y > height() - item.height / 2) {{
                     item.vel.y = -item.vel.y;
                 }}
             }});
