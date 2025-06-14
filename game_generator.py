@@ -51,20 +51,18 @@ You are an expert educational game designer and developer. Your task is to gener
 ---
 1.  **Analyze Topic & Create Content:**
     * Deeply analyze the topic: **"TOPIC_PLACEHOLDER"**.
-    * Your primary task is to generate the following content:
-        1.  **Game Title:** A short, fun title for the game.
-        2.  **Game Instructions:** A clear, one-sentence instruction for the player.
-        3.  **`correctItems`**: A JavaScript array of strings that are correct examples of the topic.
-        4.  **`incorrectItems`**: A JavaScript array of strings that are plausible but incorrect distractors.
-    * The item lists should be rich and varied. Aim for 5-10 items each.
+    * Your primary task is to generate two **large and diverse** lists of items:
+        1.  **`correctItems`**: A JavaScript array of strings that are correct examples of the topic.
+        2.  **`incorrectItems`**: A JavaScript array of strings that are plausible but incorrect distractors.
+    * The item lists should be as rich and varied as possible. **Aim for 15-20 items in each list** if the topic allows, to ensure high replayability.
 
 2.  **Format Your Output:** At the very beginning of your response, you MUST state the content you have generated, with each item on a new line.
 
-    * **Example for topic "Herbivores":**
-    * Game Title: Herbivore Hunt
-    * Game Instructions: Tap all the animals that only eat plants!
-    * Correct Items: ["Cow", "Goat", "Rabbit", "Deer", "Sheep", "Horse", "Zebra"]
-    * Incorrect Items: ["Lion", "Tiger", "Shark", "Wolf", "Fox", "Bear"]
+    * **Example for topic "Fruits":**
+    * Game Title: Fruit Frenzy
+    * Game Instructions: Tap on all the fruits!
+    * Correct Items: ["Apple", "Banana", "Orange", "Grape", "Strawberry", "Watermelon", "Pineapple", "Mango", "Peach", "Pear", "Cherry", "Kiwi", "Blueberry", "Raspberry", "Plum"]
+    * Incorrect Items: ["Carrot", "Broccoli", "Potato", "Lettuce", "Onion", "Tomato", "Cucumber", "Celery", "Mushroom", "Zucchini", "Bell Pepper", "Cabbage", "Spinach", "Garlic", "Eggplant"]
 
 3.  **Provide ONLY The Content:** Do not output any HTML. Your entire response should just be the four lines of content as specified above.
 """
@@ -127,7 +125,6 @@ GAME_HTML_TEMPLATE = """
             const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright") ]);
             add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center") ]);
             
-            // --- NEW: Grid Logic with Fixed Box Sizes ---
             const gridConf = {{
                 level1: {{rows: 2, cols: 3}},
                 level2: {{rows: 2, cols: 4}},
