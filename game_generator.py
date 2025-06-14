@@ -108,16 +108,15 @@ GAME_HTML_TEMPLATE = """
         }});
 
         scene("game", ({{ level, score }}) => {{
-            let timer = 20 - level > 5 ? 20 - level : 5; // Timer gets shorter with levels
+            let timer = 20 - level > 5 ? 20 - level : 5;
             const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, 5));
             let correctTaps = 0;
             
-            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24), z(100) ]);
-            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top"), z(100) ]);
-            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright"), z(100) ]);
-            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center"), z(100) ]);
+            const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24) ]);
+            const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top") ]);
+            const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright") ]);
+            add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center") ]);
             
-            // --- NEW: Stable Grid Layout Logic ---
             const gridConf = {{
                 level1: {{rows: 2, cols: 3}},
                 level2: {{rows: 2, cols: 4}},
@@ -156,7 +155,7 @@ GAME_HTML_TEMPLATE = """
                     outline(4, color(80, 85, 95)),
                     area(),
                     anchor("center"),
-                    "object", // Tag for clicking
+                    "object",
                     {{
                         isCorrect: isCorrect,
                         tapped: false,
@@ -182,8 +181,9 @@ GAME_HTML_TEMPLATE = """
 
                 if (obj.isCorrect) {{
                     obj.tapped = true;
-                    obj.color = hsl2rgb(0.33, 0.7, 0.6); // Green glow
-                    burp();
+                    addKaboom(obj.pos); // NEW: Kaboom effect on correct answer
+                    destroy(obj);
+                    
                     correctTaps++;
                     score += 10;
                     scoreLabel.text = `Score: ${{score}}`;
@@ -193,7 +193,7 @@ GAME_HTML_TEMPLATE = """
                     }}
                 }} else {{
                     obj.tapped = true;
-                    obj.color = hsl2rgb(0, 0.7, 0.6); // Red glow
+                    obj.color = rgb(255, 50, 50); // NEW: Turn box red on wrong answer
                     shake(10);
                     score = Math.max(0, score - 5);
                     scoreLabel.text = `Score: ${{score}}`;
