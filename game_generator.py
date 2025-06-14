@@ -15,16 +15,26 @@ ASSET_BASE_URL = "https://raw.githubusercontent.com/brainboyai/tiny-tutor-game-o
 
 def get_image_urls(object_names: list[str]) -> dict[str, str]:
     """
-    Constructs full image URLs for a list of object names from the GitHub repo.
+    Constructs a full image URL for each object name.
+    This function correctly handles names with spaces and variants like "(1)".
+    For example, an AI-generated item named "Bengal Tiger (1)" will correctly
+    look for a file named "bengal tiger (1).png".
     """
     image_urls = {}
     for name in object_names:
         if not name or not isinstance(name, str):
             continue
-        
-        url_friendly_name = quote(name.strip())
+
+        # Clean the name: lowercase, strip whitespace.
+        cleaned_name = name.strip().lower()
+        # URL-encode the cleaned name to handle spaces and parentheses.
+        # e.g., "bengal tiger (1)" -> "bengal%20tiger%20(1)"
+        url_friendly_name = quote(cleaned_name)
+
+        # Construct the final URL.
         image_filename = f"{url_friendly_name}.png"
-        full_url = f"{ASSET_BASE_URL}{image_filename.lower()}"
+        full_url = f"{ASSET_BASE_URL}{image_filename}"
+        # The key is the original name from the AI, so we can find it later.
         image_urls[name] = full_url
         
     return image_urls
@@ -117,6 +127,7 @@ GAME_HTML_TEMPLATE = """
             const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright") ]);
             add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center") ]);
             
+            // --- NEW: Grid Logic with Fixed Box Sizes ---
             const gridConf = {{
                 level1: {{rows: 2, cols: 3}},
                 level2: {{rows: 2, cols: 4}},
@@ -126,12 +137,14 @@ GAME_HTML_TEMPLATE = """
             }};
 
             const currentGrid = gridConf[`level${{level}}`] || gridConf.default;
-            const gridWidth = width() - 100;
-            const gridHeight = height() - 150;
-            const gridOrigin = vec2(50, 120);
+            const boxSize = 110;
+            const gap = 15;
+
+            const totalGridWidth = (currentGrid.cols * boxSize) + ((currentGrid.cols - 1) * gap);
+            const totalGridHeight = (currentGrid.rows * boxSize) + ((currentGrid.rows - 1) * gap);
             
-            const cellWidth = gridWidth / currentGrid.cols;
-            const cellHeight = gridHeight / currentGrid.rows;
+            const gridOriginX = (width() - totalGridWidth) / 2;
+            const gridOriginY = 120;
 
             const totalSlots = currentGrid.cols * currentGrid.rows;
             const incorrectCount = totalSlots - itemsToFind.length;
@@ -145,12 +158,12 @@ GAME_HTML_TEMPLATE = """
                 const row = Math.floor(i / currentGrid.cols);
                 const col = i % currentGrid.cols;
 
-                const x = gridOrigin.x + col * cellWidth + cellWidth / 2;
-                const y = gridOrigin.y + row * cellHeight + cellHeight / 2;
+                const x = gridOriginX + col * (boxSize + gap) + boxSize / 2;
+                const y = gridOriginY + row * (boxSize + gap) + boxSize / 2;
                 
                 const box = add([
                     pos(x, y),
-                    rect(cellWidth - 10, cellHeight - 10, {{ radius: 12 }}),
+                    rect(boxSize, boxSize, {{ radius: 12 }}),
                     color(40, 45, 55),
                     outline(4, color(80, 85, 95)),
                     area(),
@@ -164,7 +177,7 @@ GAME_HTML_TEMPLATE = """
 
                 if (getSprite(itemName)) {{
                     box.add([
-                        sprite(itemName, {{ width: cellWidth - 30, height: cellHeight - 30 }}),
+                        sprite(itemName, {{ width: boxSize - 20, height: boxSize - 20 }}),
                         anchor("center"),
                     ]);
                 }} else {{
@@ -181,9 +194,8 @@ GAME_HTML_TEMPLATE = """
 
                 if (obj.isCorrect) {{
                     obj.tapped = true;
-                    addKaboom(obj.pos); // NEW: Kaboom effect on correct answer
-                    destroy(obj);
-                    
+                    obj.color = hsl2rgb(0.33, 0.7, 0.6);
+                    burp();
                     correctTaps++;
                     score += 10;
                     scoreLabel.text = `Score: ${{score}}`;
@@ -193,7 +205,7 @@ GAME_HTML_TEMPLATE = """
                     }}
                 }} else {{
                     obj.tapped = true;
-                    obj.color = rgb(255, 50, 50); // NEW: Turn box red on wrong answer
+                    obj.color = hsl2rgb(0, 0.7, 0.6);
                     shake(10);
                     score = Math.max(0, score - 5);
                     scoreLabel.text = `Score: ${{score}}`;
