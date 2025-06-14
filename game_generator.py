@@ -108,89 +108,98 @@ GAME_HTML_TEMPLATE = """
         }});
 
         scene("game", ({{ level, score }}) => {{
-            let timer = 15;
-            const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, correctItems.length));
+            let timer = 20 - level > 5 ? 20 - level : 5; // Timer gets shorter with levels
+            const itemsToFind = chooseMultiple(correctItems, Math.min(2 + level, 5));
             let correctTaps = 0;
             
-            // Simplified UI Text Objects - using z() for layering
             const scoreLabel = add([ text(`Score: ${{score}}`), pos(24, 24), z(100) ]);
             const levelLabel = add([ text(`Level: ${{level}}`), pos(width() / 2, 24), anchor("top"), z(100) ]);
             const timerLabel = add([ text(`Time: ${{timer.toFixed(1)}}`), pos(width() - 24, 24), anchor("topright"), z(100) ]);
             add([ text("Find: " + itemsToFind.join(', '), {{ size: 18, width: width() - 40, align: "center" }}), pos(width()/2, 60), anchor("center"), z(100) ]);
+            
+            // --- NEW: Stable Grid Layout Logic ---
+            const gridConf = {{
+                level1: {{rows: 2, cols: 3}},
+                level2: {{rows: 2, cols: 4}},
+                level3: {{rows: 3, cols: 4}},
+                level4: {{rows: 3, cols: 5}},
+                default: {{rows: 4, cols: 5}},
+            }};
 
-            function spawnObject(itemName, itemTag) {{
-                const speed = 80 + (level * 15);
-                const objectSize = {{ w: 100, h: 100 }};
+            const currentGrid = gridConf[`level${{level}}`] || gridConf.default;
+            const gridWidth = width() - 100;
+            const gridHeight = height() - 150;
+            const gridOrigin = vec2(50, 120);
+            
+            const cellWidth = gridWidth / currentGrid.cols;
+            const cellHeight = gridHeight / currentGrid.rows;
+
+            const totalSlots = currentGrid.cols * currentGrid.rows;
+            const incorrectCount = totalSlots - itemsToFind.length;
+            const itemsForGrid = [...itemsToFind, ...chooseMultiple(incorrectItems, incorrectCount)];
+            const shuffledItems = itemsForGrid.sort(() => 0.5 - Math.random());
+            
+            for (let i = 0; i < shuffledItems.length; i++) {{
+                const itemName = shuffledItems[i];
+                const isCorrect = itemsToFind.includes(itemName);
+
+                const row = Math.floor(i / currentGrid.cols);
+                const col = i % currentGrid.cols;
+
+                const x = gridOrigin.x + col * cellWidth + cellWidth / 2;
+                const y = gridOrigin.y + row * cellHeight + cellHeight / 2;
                 
-                // Create the parent container object (the "box").
-                // This object handles movement, collisions, and has the clickable area.
-                const parentObj = add([
-                    pos(rand(objectSize.w, width() - objectSize.w), rand(140, height() - objectSize.h)),
-                    rect(objectSize.w, objectSize.h, {{ radius: 12 }}),
+                const box = add([
+                    pos(x, y),
+                    rect(cellWidth - 10, cellHeight - 10, {{ radius: 12 }}),
                     color(40, 45, 55),
                     outline(4, color(80, 85, 95)),
-                    area(), // The clickable area is the full box.
+                    area(),
                     anchor("center"),
-                    z(50),
-                    "object",
-                    itemTag,
-                    {{ 
-                        name: itemName,
-                        vel: vec2(rand(-1, 1), rand(-1, 1)).unit().scale(speed)
+                    "object", // Tag for clicking
+                    {{
+                        isCorrect: isCorrect,
+                        tapped: false,
                     }}
                 ]);
 
-                // Add the sprite or text as a CHILD of the parent.
-                // This is visually nested and will not cause rendering crashes.
                 if (getSprite(itemName)) {{
-                    parentObj.add([
-                        sprite(itemName, {{ width: objectSize.w - 20, height: objectSize.h - 20 }}),
-                        anchor("center")
+                    box.add([
+                        sprite(itemName, {{ width: cellWidth - 30, height: cellHeight - 30 }}),
+                        anchor("center"),
                     ]);
                 }} else {{
-                    // Fallback text is a simple child object with no conflicting properties.
-                    parentObj.add([
+                    box.add([
                         text(itemName, {{ size: 16 }}),
                         anchor("center"),
-                        color(255, 255, 255)
+                        color(255, 255, 255),
                     ]);
                 }}
             }}
-
-            itemsToFind.forEach(name => spawnObject(name, "correct"));
-            chooseMultiple(incorrectItems, 2 + level).forEach(name => spawnObject(name, "incorrect"));
             
-            onClick("correct", (item) => {{
-                if (itemsToFind.includes(item.name)) {{
-                    burp(); // Using stable, built-in sound
-                    destroy(item);
-                    
-                    score += 10;
+            onClick("object", (obj) => {{
+                if (obj.tapped) return;
+
+                if (obj.isCorrect) {{
+                    obj.tapped = true;
+                    obj.color = hsl2rgb(0.33, 0.7, 0.6); // Green glow
+                    burp();
                     correctTaps++;
+                    score += 10;
                     scoreLabel.text = `Score: ${{score}}`;
 
                     if (correctTaps >= itemsToFind.length) {{
                         wait(0.5, () => go("game", {{ level: level + 1, score: score }}));
                     }}
+                }} else {{
+                    obj.tapped = true;
+                    obj.color = hsl2rgb(0, 0.7, 0.6); // Red glow
+                    shake(10);
+                    score = Math.max(0, score - 5);
+                    scoreLabel.text = `Score: ${{score}}`;
                 }}
             }});
 
-            onClick("incorrect", (item) => {{
-                shake(10);
-                score = Math.max(0, score - 5);
-                scoreLabel.text = `Score: ${{score}}`;
-            }});
-
-            onUpdate("object", (item) => {{
-                item.move(item.vel);
-                if (item.pos.x < item.width / 2 || item.pos.x > width() - item.width / 2) {{
-                    item.vel.x = -item.vel.x;
-                }}
-                if (item.pos.y < 120 || item.pos.y > height() - item.height / 2) {{
-                    item.vel.y = -item.vel.y;
-                }}
-            }});
-            
             onUpdate(() => {{
                 timer -= dt();
                 timerLabel.text = `Time: ${{timer.toFixed(1)}}`;
