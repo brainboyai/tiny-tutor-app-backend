@@ -45,7 +45,7 @@ Your response must consist strictly of the two definition sentences containing t
 
 """
     try:
-        
+    # Use the global model instance
         response = gemini_model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
@@ -89,6 +89,8 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
     
     try:
        
+        # FIX 1 (Memory Crash): The local model instantiation has been removed.
+        # This function now uses the single, global 'gemini_model' instance.
         response = gemini_model.generate_content(prompt)
         llm_output_text = response.text.strip()
         
