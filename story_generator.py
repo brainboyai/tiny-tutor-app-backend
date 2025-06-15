@@ -44,6 +44,7 @@ You MUST generate a response that strictly matches the turn type determined by t
 2.  **Randomize Correct Answer Position:** This is a mandatory, non-negotiable rule. After creating the options for a question, you MUST reorder them so that the 'Correct' answer is not in the first position. Its placement must be varied and unpredictable.
 3.  **Language Mandate:** You MUST generate all user-facing text (dialogue, options) in the following language code: '{language}'.
 4.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
+5.  **JSON Validity:** You MUST ensure all text content, especially dialogue containing apostrophes or quotes, is properly escaped so the final output is a single, valid JSON object.
 """
 
 # The expected JSON structure for the AI's response is defined here.
