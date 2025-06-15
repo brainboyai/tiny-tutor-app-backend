@@ -53,48 +53,40 @@ prompt += f"\\nNonce: {nonce}"
         logging.error(f"Error in generate_explanation for word '{word}': {e}")
         raise
 
+# In explore_generator.py
+
 def generate_quiz_from_text(word: str, explanation_text: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
     Generates a multiple-choice quiz question based on provided text.
-
-    Args:
-        word (str): The word the explanation is for.
-        explanation_text (str): The text to base the quiz on.
-        streak_context (list, optional): A list of previously explored words. Defaults to None.
-
-    Returns:
-        list: A list containing a single formatted quiz question string.
-    
-    Raises:
-        Exception: If the Gemini API call fails.
     """
     context_hint_for_quiz = ""
     if streak_context:
         context_hint_for_quiz = f" The learning path so far included: {', '.join(streak_context)}."
 
-    prompt = (
-        f"Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. "
-        f"The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}\n\n"
-        f"Explanation Text:\n\"\"\"{explanation_text}\"\"\"\n\n"
-        f"Language Mandate: You MUST generate the entire quiz (question, all options, and the explanation text) in the following language code: '{language}'. Do not use English unless the language code is 'en'.\n\n"
-        "For each question, strictly follow this exact format, including newlines:\n"
-        "**Question [Number]:** [Your Question Text Here]\n"
-        "A) [Option A Text]\n"
-        "B) [Option B Text]\n"
-        "C) [Option C Text]\n"
-        "D) [Option D Text]\n"
-        "Correct Answer: [Single Letter A, B, C, or D]\n"
-        "Explanation: [Optional: A brief explanation for the correct answer or why other options are incorrect]\n"
-        "Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'."
-        prompt += f"\\nNonce: {nonce}"
-    )
+    # FIX: The entire prompt is now a single, triple-quoted f-string for clarity and to prevent syntax errors.
+    # The nonce is included at the end.
+    prompt = f"""Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}
+
+Explanation Text:
+\"\"\"{explanation_text}\"\"\"
+
+Language Mandate: You MUST generate the entire quiz (question, all options, and the explanation text) in the following language code: '{language}'. Do not use English unless the language code is 'en'.
+
+For each question, strictly follow this exact format, including newlines:
+**Question [Number]:** [Your Question Text Here]
+A) [Option A Text]
+B) [Option B Text]
+C) [Option C Text]
+D) [Option D Text]
+Correct Answer: [Single Letter A, B, C, or D]
+Explanation: [Optional: A brief explanation for the correct answer or why other options are incorrect]
+Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'.
+Nonce: {nonce}
+"""
     
     try:
-        # --- ADD THIS DEBUGGING LINE ---
         logging.info(f"QUIZ PROMPT SENT TO AI: {prompt}")
         
-        # FIX 1 (Memory Crash): The local model instantiation has been removed.
-        # This function now uses the single, global 'gemini_model' instance.
         response = gemini_model.generate_content(prompt)
         llm_output_text = response.text.strip()
         
@@ -106,4 +98,3 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
     except Exception as e:
         logging.error(f"Error in generate_quiz_from_text for word '{word}': {e}")
         raise
-
