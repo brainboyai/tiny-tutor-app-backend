@@ -2,7 +2,6 @@
 
 import google.generativeai as genai
 import logging
-import time
 
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
