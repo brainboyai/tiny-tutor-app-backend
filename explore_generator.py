@@ -88,7 +88,9 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
     )
     
     try:
-       
+        # --- ADD THIS DEBUGGING LINE ---
+        logging.info(f"QUIZ PROMPT SENT TO AI: {prompt}")
+        
         # FIX 1 (Memory Crash): The local model instantiation has been removed.
         # This function now uses the single, global 'gemini_model' instance.
         response = gemini_model.generate_content(prompt)
