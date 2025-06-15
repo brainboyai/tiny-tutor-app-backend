@@ -49,7 +49,7 @@ Your response must consist strictly of the two definition sentences containing t
         logging.error(f"Error in generate_explanation for word '{word}': {e}")
         raise
 
-def generate_quiz_from_text(word: str, explanation_text: str, streak_context: list = None):
+def generate_quiz_from_text(word: str, explanation_text: str, streak_context: list = None, language: str = 'en'):
     """
     Generates a multiple-choice quiz question based on provided text.
 

@@ -77,7 +77,7 @@ STORY_NODE_SCHEMA = {
 }
 
 
-def generate_story_node(topic: str, history: list, last_choice_leads_to: str, str, language: str = 'en'):
+def generate_story_node(topic: str, history: list, last_choice_leads_to: str, language: str = 'en'):
     """
     Generates a single story node by calling the Gemini API.
 
