@@ -85,7 +85,8 @@ Nonce: {nonce}
 """
     
     try:
-        logging.info(f"QUIZ PROMPT SENT TO AI: {prompt}")
+        # --- CHANGE logging.info TO logging.warning ---
+        logging.warning(f"QUIZ PROMPT SENT TO AI: {prompt}")
         
         response = gemini_model.generate_content(prompt)
         llm_output_text = response.text.strip()

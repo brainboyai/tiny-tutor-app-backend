@@ -96,6 +96,10 @@ def generate_explanation_route(current_user_id):
     # ADD THIS LINE
     language = data.get('language', 'en') 
 
+    # --- ADD THIS DEBUGGING LINE ---
+    # We are using the app's logger to be sure it appears.
+    current_app.logger.warning(f"LANGUAGE RECEIVED IN REQUEST: {language}")
+
     if not word: return jsonify({"error": "Word/concept is required"}), 400
 
     try:
