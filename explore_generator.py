@@ -6,14 +6,14 @@ import logging
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-def generate_explanation(word: str, streak_context: list = None, language: str = 'en'):
+def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
     Generates a simple or context-aware explanation for a word.
 
     Args:
         word (str): The word or concept to explain.
         streak_context (list, optional): A list of previously explored words in the streak.
-                                          If provided, the explanation will be contextual. Defaults to None.
+        If provided, the explanation will be contextual. Defaults to None.
         language (str, optional): The language for the response. Defaults to 'en'
         
     Returns:
@@ -30,7 +30,7 @@ Instructions: Define '{word}' in exactly two sentences using the simplest, most 
 Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO_2+6H_2O+textLightrightarrowC_6H_12O_6+6O_2</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
 Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
 Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-
+prompt += f"\\nNonce: {nonce}"
 """
     else:
         # This is the prompt for a subsequent word in an existing streak, requiring context.
@@ -42,8 +42,9 @@ Instructions: Define '{word}' in exactly two sentences using the simplest, most 
 Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO2​+6H2​O+Light→C6​H12​O6​+6O2​</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
 Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
 Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-
+prompt += f"\\nNonce: {nonce}"
 """
+
     try:
     # Use the global model instance
         response = gemini_model.generate_content(prompt)
@@ -52,7 +53,7 @@ Your response must consist strictly of the two definition sentences containing t
         logging.error(f"Error in generate_explanation for word '{word}': {e}")
         raise
 
-def generate_quiz_from_text(word: str, explanation_text: str, streak_context: list = None, language: str = 'en'):
+def generate_quiz_from_text(word: str, explanation_text: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
     Generates a multiple-choice quiz question based on provided text.
 
@@ -85,6 +86,7 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
         "Correct Answer: [Single Letter A, B, C, or D]\n"
         "Explanation: [Optional: A brief explanation for the correct answer or why other options are incorrect]\n"
         "Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'."
+        prompt += f"\\nNonce: {nonce}"
     )
     
     try:

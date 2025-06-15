@@ -100,14 +100,14 @@ def generate_explanation_route(current_user_id):
     try:
         if mode == 'explain':
             # PASS 'language' TO THE GENERATOR
-            explanation = generate_explanation(word, data.get('streakContext'), language)
+            explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
         
         elif mode == 'quiz':
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
             # PASS 'language' TO THE GENERATOR
-            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language)
+            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
 
         else:
