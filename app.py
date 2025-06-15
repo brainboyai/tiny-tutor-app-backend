@@ -89,22 +89,25 @@ def token_required(f):
 @token_required
 @limiter.limit("150/hour")
 def generate_explanation_route(current_user_id):
-    # This route now primarily deals with request validation and data flow
     data = request.get_json()
     word = data.get('word', '').strip()
     mode = data.get('mode', 'explain').strip()
-    
+    # ADD THIS LINE
+    language = data.get('language', 'en') 
+
     if not word: return jsonify({"error": "Word/concept is required"}), 400
 
     try:
         if mode == 'explain':
-            explanation = generate_explanation(word, data.get('streakContext'))
+            # PASS 'language' TO THE GENERATOR
+            explanation = generate_explanation(word, data.get('streakContext'), language)
             return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
         
         elif mode == 'quiz':
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
-            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'))
+            # PASS 'language' TO THE GENERATOR
+            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language)
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
 
         else:
@@ -120,11 +123,15 @@ def generate_explanation_route(current_user_id):
 @limiter.limit("200/hour")
 def generate_story_node_route(current_user_id):
     data = request.get_json()
+    # ADD THIS LINE
+    language = data.get('language', 'en')
     try:
+        # PASS 'language' TO THE GENERATOR
         parsed_node = generate_story_node(
             topic=data.get('topic', '').strip(),
             history=data.get('history', []),
-            last_choice_leads_to=data.get('leads_to')
+            last_choice_leads_to=data.get('leads_to'),
+            language=language
         )
         return jsonify(parsed_node), 200
     except ValueError as e:
@@ -133,7 +140,7 @@ def generate_story_node_route(current_user_id):
     except Exception as e:
         app.logger.error(f"FATAL Exception in /generate_story_node for user {current_user_id}: {e}")
         return jsonify({"error": "An unexpected server error occurred."}), 500
-
+    
 
 @app.route('/generate_game', methods=['POST'])
 @token_required

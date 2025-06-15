@@ -3,7 +3,7 @@
 import google.generativeai as genai
 import logging
 
-def generate_explanation(word: str, streak_context: list = None):
+def generate_explanation(word: str, streak_context: list = None, language: str = 'en'):
     """
     Generates a simple or context-aware explanation for a word.
 
@@ -11,7 +11,8 @@ def generate_explanation(word: str, streak_context: list = None):
         word (str): The word or concept to explain.
         streak_context (list, optional): A list of previously explored words in the streak.
                                           If provided, the explanation will be contextual. Defaults to None.
-    
+        language (str, optional): The language for the response. Defaults to 'en'
+        
     Returns:
         str: The generated explanation text.
     
@@ -24,6 +25,9 @@ def generate_explanation(word: str, streak_context: list = None):
         prompt = f"""Your task is to define '{word}', acting as a knowledgeable guide introducing a foundational concept to a curious beginner.
 Instructions: Define '{word}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner with no prior knowledge; focus on its core, fundamental aspects. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas) that are crucial not only for grasping '{word}' but also for sparking further inquiry and naturally leading towards a deeper exploration—think of these as initial pathways into a fascinating subject. These sub-topics must not be mere synonyms or rephrasing of '{word}'. If '{word}' involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>energy conversion</click>, <click>$A=\pi r^2$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
 Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO_2+6H_2O+textLightrightarrowC_6H_12O_6+6O_2</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
+Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
+Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
+
 """
     else:
         # This is the prompt for a subsequent word in an existing streak, requiring context.
@@ -33,6 +37,9 @@ Example of the expected output format: Photosynthesis is a <click>biological pro
         prompt = f"""Your task is to define '{word}', acting as a teacher guiding a student step-by-step down a 'rabbit hole' of knowledge. The student has already learned about the following concepts in this order: '{context_string}'.
 Instructions: Define '{word}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner. Your explanation must clearly show how '{word}' relates to, builds upon, or offers a new dimension to the established learning path of '{context_string}'. Focus on its core aspects as they specifically connect to this narrative of exploration. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas). These sub-topics should be crucial for understanding '{word}' within this specific learning sequence and should themselves be chosen to intelligently suggest further avenues of exploration, continuing the streak of discovery. Crucially, these embedded sub-topics must not be a simple reiteration of any words found in '{reiteration_check_string}'. If '{word}' (when considered in the context of '{context_string}') involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>relevant concept</click>, <click>$y=mx+c$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
 Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO2​+6H2​O+Light→C6​H12​O6​+6O2​</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
+Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
+Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
+
 """
     try:
         gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
@@ -65,6 +72,7 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
         f"Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. "
         f"The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}\n\n"
         f"Explanation Text:\n\"\"\"{explanation_text}\"\"\"\n\n"
+        f"Language Mandate: You MUST generate the entire quiz (question, options, explanation) in the following language code: '{language}'.\n\n"
         "For each question, strictly follow this exact format, including newlines:\n"
         "**Question [Number]:** [Your Question Text Here]\n"
         "A) [Option A Text]\n"

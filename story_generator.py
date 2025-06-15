@@ -42,7 +42,8 @@ You MUST generate a response that strictly matches the turn type determined by t
 **--- Universal Principles ---**
 1.  **Image Prompt Mandate:** Every single turn MUST have EXACTLY ONE `image_prompt`. It must be descriptive (15+ words) and request a 'photorealistic' style where possible.
 2.  **Randomize Correct Answer Position:** This is a mandatory, non-negotiable rule. After creating the options for a question, you MUST reorder them so that the 'Correct' answer is not in the first position. Its placement must be varied and unpredictable.
-3.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
+3.  **Language Mandate:** You MUST generate all user-facing text (dialogue, options) in the following language code: '{language}'.
+4.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
 """
 
 # The expected JSON structure for the AI's response is defined here.
@@ -76,11 +77,12 @@ STORY_NODE_SCHEMA = {
 }
 
 
-def generate_story_node(topic: str, history: list, last_choice_leads_to: str):
+def generate_story_node(topic: str, history: list, last_choice_leads_to: str, str, language: str = 'en'):
     """
     Generates a single story node by calling the Gemini API.
 
     Args:
+        language (str, optional): The language for the response. Defaults to 'en'
         topic: The overall topic of the story.
         history: The list of previous conversation turns.
         last_choice_leads_to: The 'leads_to' value from the user's last choice.
@@ -95,7 +97,7 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str):
     history_str = json.dumps(history, indent=2)
     
     prompt_to_send = (
-        f"{BASE_PROMPT.format(topic=topic)}\n\n"
+        f"{BASE_PROMPT.format(topic=topic, language=language)}\n\n"
         f"--- YOUR CURRENT TASK ---\n"
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
