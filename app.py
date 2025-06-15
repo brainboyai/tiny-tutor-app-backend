@@ -130,6 +130,10 @@ def generate_story_node_route(current_user_id):
     data = request.get_json()
     # ADD THIS LINE
     language = data.get('language', 'en')
+    history = data.get('history', [])
+    # --- ADD THESE DEBUGGING LINES ---
+    current_app.logger.warning(f"STORY MODE REQUEST: Language='{language}'")
+    current_app.logger.warning(f"STORY MODE HISTORY RECEIVED: {history}")
     try:
         # PASS 'language' TO THE GENERATOR
         parsed_node = generate_story_node(
