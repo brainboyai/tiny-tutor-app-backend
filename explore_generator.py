@@ -3,6 +3,9 @@
 import google.generativeai as genai
 import logging
 
+# FIX: Load the model once when the module is first imported.
+gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en'):
     """
     Generates a simple or context-aware explanation for a word.
@@ -42,7 +45,7 @@ Your response must consist strictly of the two definition sentences containing t
 
 """
     try:
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        
         response = gemini_model.generate_content(prompt)
         return response.text.strip()
     except Exception as e:
@@ -85,7 +88,7 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
     )
     
     try:
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+       
         response = gemini_model.generate_content(prompt)
         llm_output_text = response.text.strip()
         
