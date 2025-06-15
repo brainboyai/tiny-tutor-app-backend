@@ -75,7 +75,7 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
         f"Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. "
         f"The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}\n\n"
         f"Explanation Text:\n\"\"\"{explanation_text}\"\"\"\n\n"
-        f"Language Mandate: You MUST generate the entire quiz (question, options, explanation) in the following language code: '{language}'.\n\n"
+        f"Language Mandate: You MUST generate the entire quiz (question, all options, and the explanation text) in the following language code: '{language}'. Do not use English unless the language code is 'en'.\n\n"
         "For each question, strictly follow this exact format, including newlines:\n"
         "**Question [Number]:** [Your Question Text Here]\n"
         "A) [Option A Text]\n"
