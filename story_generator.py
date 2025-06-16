@@ -81,6 +81,28 @@ STORY_NODE_SCHEMA = {
     "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]
 }
 
+def repair_json(broken_json_text: str) -> str:
+    """A helper function to ask the AI to repair a broken JSON string."""
+    logging.warning(f"Attempting to repair broken JSON: {broken_json_text}")
+    prompt = f"""The following text is a broken JSON object, likely due to unescaped quotes or other syntax errors. Please fix it and return ONLY the corrected, valid JSON object. Do not add any explanation or other text.
+    
+    BROKEN JSON:
+    ```json
+    {broken_json_text}
+    ```
+
+    CORRECTED JSON:
+    """
+    try:
+        # Use a simple generation config for the repair, no schema needed
+        repair_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = repair_model.generate_content(prompt)
+        # Clean up potential markdown code fences
+        repaired_text = response.text.strip().replace("```json", "").replace("```", "").strip()
+        return repaired_text
+    except Exception as e:
+        logging.error(f"Failed to repair JSON: {e}")
+        return None # Return None if repair fails
 
 def generate_story_node(topic: str, history: list, last_choice_leads_to: str, language: str = 'en'):
     """
@@ -106,15 +128,11 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
         f"--- YOUR CURRENT TASK ---\n"
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
-        f"**NOTE ON HISTORY:** The history may contain a 'SYSTEM_MESSAGE' which is a summary of the earlier part of the conversation. Use this summary for long-term context to avoid repeating topics.\n"
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
         f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
     )
-
+    
     try:
-        # **FIX:** Instantiate the GenerativeModel *before* calling generate_content.
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=STORY_NODE_SCHEMA)
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -123,22 +141,37 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         }
         
-        # Now, call the method on the 'gemini_model' object.
         response = gemini_model.generate_content(
             prompt_to_send,
             generation_config=generation_config,
             safety_settings=safety_settings
         )
+        response_text = response.text
 
         if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
              raise ValueError(f"Prompt blocked for safety reasons: {response.prompt_feedback.block_reason}")
+        
+        if not response_text.strip():
+            raise ValueError("AI returned an empty response.")
 
-        parsed_node = json.loads(response.text)
+        # First attempt to parse the JSON
+        parsed_node = json.loads(response_text)
         return parsed_node
 
-    except json.JSONDecodeError as e:
-        logging.error(f"JSONDecodeError in story_generator: Could not parse AI response. Error: {e}")
-        raise ValueError("AI returned unreadable JSON format.")
+    except json.JSONDecodeError:
+        logging.warning("Initial JSON parsing failed. Attempting to repair.")
+        repaired_json_text = repair_json(response_text)
+        if repaired_json_text:
+            try:
+                # Second attempt to parse the repaired JSON
+                parsed_node = json.loads(repaired_json_text)
+                return parsed_node
+            except json.JSONDecodeError as e:
+                logging.error(f"Failed to parse even the REPAIRED JSON. Error: {e}")
+                raise ValueError("AI returned unreadable JSON format, and repair failed.")
+        else:
+            raise ValueError("AI returned unreadable JSON format, and repair utility failed.")
+            
     except Exception as e:
         logging.error(f"A general error occurred in story_generator: {e}")
         raise

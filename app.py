@@ -31,10 +31,6 @@ from firestore_handler import (
     sanitize_word_for_id
 )
 
-import time # Ensure 'time' is imported
-from story_generator import generate_story_node # Ensure this is imported
-
-
 
 # --- Standard App Initialization ---
 load_dotenv()
@@ -127,33 +123,6 @@ def generate_explanation_route(current_user_id):
         app.logger.error(f"Error in /generate_explanation for user {current_user_id}: {e}")
         return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
 
-# --- ADD THIS NEW HELPER FUNCTION ---
-def summarize_history(history_to_summarize: list, language: str) -> str:
-    """Uses the AI to summarize a conversation history in the specified language."""
-    try:
-        app.logger.info("History is long, attempting to summarize...")
-        history_text = json.dumps(history_to_summarize)
-        
-        # A simple, specific prompt for the summarization task
-        prompt = f"""Concisely summarize the key topics and concepts that have already been discussed in the following conversation history.
-        The summary must be in the language with the code: '{language}'.
-        History:
-        {history_text}
-        
-        Summary:
-        """
-        
-        # This uses the same globally configured model
-        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        response = gemini_model.generate_content(prompt)
-        
-        summary_text = response.text.strip()
-        app.logger.info(f"Generated summary: {summary_text}")
-        return summary_text
-    except Exception as e:
-        app.logger.error(f"Could not summarize history: {e}")
-        return None # Return None if summarization fails
-
 @app.route('/generate_story_node', methods=['POST'])
 @token_required
 @limiter.limit("200/hour")
@@ -163,24 +132,12 @@ def generate_story_node_route(current_user_id):
     language = data.get('language', 'en')
     history = data.get('history', [])
     
-# --- REPLACE THE OLD TRUNCATION LOGIC WITH THIS NEW SUMMARIZATION LOGIC ---
-    MAX_HISTORY_FOR_SUMMARY = 10 # Start summarizing after 5 user/AI turns
-    RECENT_TURNS_TO_KEEP = 6     # Always keep the last 3 user/AI turns
-
-    if len(history) > MAX_HISTORY_FOR_SUMMARY:
-        history_to_summarize = history[:-RECENT_TURNS_TO_KEEP]
-        summary = summarize_history(history_to_summarize, language)
-        recent_history = history[-RECENT_TURNS_TO_KEEP:]
-        
-        # Build the new, "smart" history object
-        if summary:
-            # The summary becomes the new "long-term memory"
-            history = [{"type": "SYSTEM_MESSAGE", "text": f"Summary of prior conversation: {summary}"}] + recent_history
-        else:
-            # Fallback to simple truncation ONLY if summarization fails
-            history = recent_history
-    # --- END OF NEW LOGIC ---
-
+    # REVERTED: Using simple, efficient history pruning.
+    # We keep 12 items (6 user/AI turns) as a balance between context and performance.
+    MAX_HISTORY_ITEMS = 12
+    if len(history) > MAX_HISTORY_ITEMS:
+        history = history[-MAX_HISTORY_ITEMS:]
+    # --- END OF FIX ---
     
     # --- ADD THESE DEBUGGING LINES ---
     current_app.logger.warning(f"STORY MODE REQUEST: Language='{language}'")
@@ -189,7 +146,7 @@ def generate_story_node_route(current_user_id):
         # PASS 'language' TO THE GENERATOR
         parsed_node = generate_story_node(
             topic=data.get('topic', '').strip(),
-            history=history,
+            history=data.get('history', []),
             last_choice_leads_to=data.get('leads_to'),
             language=language
         )
