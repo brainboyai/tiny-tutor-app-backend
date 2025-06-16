@@ -81,6 +81,8 @@ STORY_NODE_SCHEMA = {
     "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]
 }
 
+gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+
 def repair_json(broken_json_text: str) -> str:
     """A helper function to ask the AI to repair a broken JSON string."""
     logging.warning(f"Attempting to repair broken JSON: {broken_json_text}")
