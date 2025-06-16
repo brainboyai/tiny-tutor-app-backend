@@ -149,7 +149,7 @@ def generate_story_node_route(current_user_id):
         # PASS 'language' TO THE GENERATOR
         parsed_node = generate_story_node(
             topic=data.get('topic', '').strip(),
-            history=data.get('history', []),
+            history=history,
             last_choice_leads_to=data.get('leads_to'),
             language=language
         )
