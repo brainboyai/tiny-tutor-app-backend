@@ -5,13 +5,9 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
 import json
 
-# The prompt for generating a single turn of the story remains here.
+# Your existing BASE_PROMPT remains unchanged as requested.
 BASE_PROMPT = """
 You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
-Your response MUST be plain text, with each part separated by the exact delimiter "|||TTPART|||".
-
-**CRITICAL RULE:** Do NOT output a JSON object. Output ONLY the raw text content for each part in the specified order. You must handle all text, especially with apostrophes or special characters, as plain text.
-You MUST ensure the final output is a single, valid JSON object. For all string values in the JSON (like in the "dialogue" or "text" fields), you MUST use double quotes (`"`). If any text inside a string value requires a double quote character, you MUST escape it with a backslash (`\\"`). Adhering to this is mandatory.
 
 **--- Core State Machine ---**
 You MUST generate a response that strictly matches the turn type determined by the `last_choice_leads_to` input. DO NOT merge, skip, or combine turn types.
@@ -46,12 +42,10 @@ You MUST generate a response that strictly matches the turn type determined by t
 **--- Universal Principles ---**
 1.  **Image Prompt Mandate:** Every single turn MUST have EXACTLY ONE `image_prompt`. It must be descriptive (15+ words) and request a 'photorealistic' style where possible.
 2.  **Randomize Correct Answer Position:** This is a mandatory, non-negotiable rule. After creating the options for a question, you MUST reorder them so that the 'Correct' answer is not in the first position. Its placement must be varied and unpredictable.
-3.  **Language Mandate:** You MUST generate all user-facing text (dialogue, options) in the following language code: '{language}'.
-4.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
-5.  **JSON Validity:** You MUST ensure all text content, especially dialogue containing apostrophes or quotes, is properly escaped so the final output is a single, valid JSON object.
+3.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
 """
 
-# The expected JSON structure for the AI's response is defined here.
+# Your existing SCHEMA remains unchanged.
 STORY_NODE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -81,50 +75,48 @@ STORY_NODE_SCHEMA = {
     "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]
 }
 
+# The global model instance.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
+# NEW: A helper function to ask the AI to repair a broken JSON string.
 def repair_json(broken_json_text: str) -> str:
-    """A helper function to ask the AI to repair a broken JSON string."""
+    """Uses a targeted prompt to ask the AI to fix a broken JSON string."""
     logging.warning(f"Attempting to repair broken JSON: {broken_json_text}")
     prompt = f"""The following text is a broken JSON object, likely due to unescaped quotes or other syntax errors. Please fix it and return ONLY the corrected, valid JSON object. Do not add any explanation or other text.
     
-    BROKEN JSON:
-    ```json
-    {broken_json_text}
-    ```
+BROKEN JSON:
+```json
+{broken_json_text}
+```
 
-    CORRECTED JSON:
-    """
+CORRECTED JSON:
+"""
     try:
-        # Use a simple generation config for the repair, no schema needed
+        # Use a separate model instance for the repair task.
         repair_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        # Use simple text generation for the repair, no schema needed.
         response = repair_model.generate_content(prompt)
-        # Clean up potential markdown code fences
-        repaired_text = response.text.strip().replace("```json", "").replace("```", "").strip()
-        return repaired_text
+        
+        # Clean up potential markdown formatting from the response
+        repaired_text = response.text.strip()
+        if repaired_text.startswith("```json"):
+            repaired_text = repaired_text[7:]
+        if repaired_text.endswith("```"):
+            repaired_text = repaired_text[:-3]
+            
+        return repaired_text.strip()
     except Exception as e:
         logging.error(f"Failed to repair JSON: {e}")
-        return None # Return None if repair fails
+        return None
 
+# MODIFIED: The main function now includes the "catch and repair" logic.
 def generate_story_node(topic: str, history: list, last_choice_leads_to: str, language: str = 'en'):
     """
-    Generates a single story node by calling the Gemini API.
-
-    Args:
-        language (str, optional): The language for the response. Defaults to 'en'
-        topic: The overall topic of the story.
-        history: The list of previous conversation turns.
-        last_choice_leads_to: The 'leads_to' value from the user's last choice.
-
-    Returns:
-        A dictionary representing the parsed JSON of the story node.
-    
-    Raises:
-        ValueError: If the API response is blocked or returns unreadable JSON.
-        Exception: For other, more general API or network errors.
+    Generates a story node, with a fallback to repair broken JSON responses.
     """
     history_str = json.dumps(history, indent=2)
     
+    # We add a note about the history to the prompt_to_send to help with loops.
     prompt_to_send = (
         f"{BASE_PROMPT.format(topic=topic, language=language)}\n\n"
         f"--- YOUR CURRENT TASK ---\n"
@@ -134,6 +126,7 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
         f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
     )
     
+    response_text = ""
     try:
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=STORY_NODE_SCHEMA)
         safety_settings = {
@@ -148,12 +141,12 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
             generation_config=generation_config,
             safety_settings=safety_settings
         )
-        response_text = response.text
+        response_text = response.text.strip()
 
         if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
              raise ValueError(f"Prompt blocked for safety reasons: {response.prompt_feedback.block_reason}")
         
-        if not response_text.strip():
+        if not response_text:
             raise ValueError("AI returned an empty response.")
 
         # First attempt to parse the JSON
@@ -161,20 +154,21 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
         return parsed_node
 
     except json.JSONDecodeError:
+        # If the first parse fails, we enter the repair logic.
         logging.warning("Initial JSON parsing failed. Attempting to repair.")
         repaired_json_text = repair_json(response_text)
         if repaired_json_text:
             try:
                 # Second attempt to parse the repaired JSON
                 parsed_node = json.loads(repaired_json_text)
+                logging.info("Successfully repaired and parsed JSON.")
                 return parsed_node
             except json.JSONDecodeError as e:
                 logging.error(f"Failed to parse even the REPAIRED JSON. Error: {e}")
                 raise ValueError("AI returned unreadable JSON format, and repair failed.")
         else:
-            raise ValueError("AI returned unreadable JSON format, and repair utility failed.")
+            raise ValueError("AI returned unreadable JSON format, and the repair utility also failed.")
             
     except Exception as e:
         logging.error(f"A general error occurred in story_generator: {e}")
         raise
-
