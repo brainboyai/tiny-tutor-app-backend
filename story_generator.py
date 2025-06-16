@@ -106,7 +106,6 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
         f"--- YOUR CURRENT TASK ---\n"
         f"**Topic:** {topic}\n"
         f"**Conversation History:**\n{history_str}\n"
-        f"**A NOTE ON HISTORY:** The history may contain a 'SYSTEM_MESSAGE' which is a summary of the earlier conversation. Use this summary for long-term context to avoid repeating topics.\n" # <-- ADD THIS LINE
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
         f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
     )
