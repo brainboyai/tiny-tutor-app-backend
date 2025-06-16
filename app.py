@@ -130,18 +130,7 @@ def generate_story_node_route(current_user_id):
     data = request.get_json()
     # ADD THIS LINE
     language = data.get('language', 'en')
-    history = data.get('history', [])
     
-    # --- THIS IS THE FIX ---
-    # Define a maximum number of history items to keep. 8 items = 4 user/AI turns.
-    MAX_HISTORY_ITEMS = 8 
-    
-    # If the history is longer than our max, slice it to keep only the most recent items.
-    if len(history) > MAX_HISTORY_ITEMS:
-        current_app.logger.warning(f"History truncated from {len(history)} to {MAX_HISTORY_ITEMS} items.")
-        history = history[-MAX_HISTORY_ITEMS:]
-        
-    # --- END OF FIX ---
     # --- ADD THESE DEBUGGING LINES ---
     current_app.logger.warning(f"STORY MODE REQUEST: Language='{language}'")
     current_app.logger.warning(f"STORY MODE HISTORY RECEIVED: {history}")
