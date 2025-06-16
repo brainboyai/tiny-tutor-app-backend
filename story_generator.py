@@ -5,15 +5,13 @@ from google.generativeai.types import HarmCategory, HarmBlockThreshold
 import logging
 import json
 
-# Your existing BASE_PROMPT remains unchanged as requested.
+# The prompt for generating a single turn of the story remains here.
 BASE_PROMPT = """
 You are 'Tiny Tutor,' an expert AI educator creating a JSON object for a single turn in a learning game. Your target audience is a 6th-grade science student. Your tone is exploratory and curious.
 Your response MUST be plain text, with each part separated by the exact delimiter "|||TTPART|||".
 
-**--- CRITICAL RULES ---**
-1.  **NO LOOPS / NO REPETITION:** This is the most important rule. You MUST analyze the entire `Conversation History` provided. Identify the sub-topics that have already been explained. In every **EXPLANATION** turn, you MUST introduce a new, un-discussed sub-topic. Do NOT repeat or re-explain a concept that is already in the history.
-2.  **STRICT STATE MACHINE:** You MUST strictly follow the state machine logic. Do NOT merge, skip, or combine turn types. For example, after explaining an answer, you MUST proceed to a new explanation or a summary.
-
+**CRITICAL RULE:** Do NOT output a JSON object. Output ONLY the raw text content for each part in the specified order. You must handle all text, especially with apostrophes or special characters, as plain text.
+You MUST ensure the final output is a single, valid JSON object. For all string values in the JSON (like in the "dialogue" or "text" fields), you MUST use double quotes (`"`). If any text inside a string value requires a double quote character, you MUST escape it with a backslash (`\\"`). Adhering to this is mandatory.
 
 **--- Core State Machine ---**
 You MUST generate a response that strictly matches the turn type determined by the `last_choice_leads_to` input. DO NOT merge, skip, or combine turn types.
@@ -53,7 +51,7 @@ You MUST generate a response that strictly matches the turn type determined by t
 5.  **JSON Validity:** You MUST ensure all text content, especially dialogue containing apostrophes or quotes, is properly escaped so the final output is a single, valid JSON object.
 """
 
-# Your existing SCHEMA remains unchanged.
+# The expected JSON structure for the AI's response is defined here.
 STORY_NODE_SCHEMA = {
     "type": "object",
     "properties": {
@@ -83,48 +81,26 @@ STORY_NODE_SCHEMA = {
     "required": ["feedback_on_previous_answer", "dialogue", "image_prompts", "interaction"]
 }
 
-# The global model instance.
-gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-# NEW: A helper function to ask the AI to repair a broken JSON string.
-def repair_json(broken_json_text: str) -> str:
-    """Uses a targeted prompt to ask the AI to fix a broken JSON string."""
-    logging.warning(f"Attempting to repair broken JSON: {broken_json_text}")
-    prompt = f"""The following text is a broken JSON object, likely due to unescaped quotes or other syntax errors. Please fix it and return ONLY the corrected, valid JSON object. Do not add any explanation or other text.
-    
-BROKEN JSON:
-```json
-{broken_json_text}
-```
-
-CORRECTED JSON:
-"""
-    try:
-        # Use a separate model instance for the repair task.
-        repair_model = genai.GenerativeModel('gemini-1.5-flash-latest')
-        # Use simple text generation for the repair, no schema needed.
-        response = repair_model.generate_content(prompt)
-        
-        # Clean up potential markdown formatting from the response
-        repaired_text = response.text.strip()
-        if repaired_text.startswith("```json"):
-            repaired_text = repaired_text[7:]
-        if repaired_text.endswith("```"):
-            repaired_text = repaired_text[:-3]
-            
-        return repaired_text.strip()
-    except Exception as e:
-        logging.error(f"Failed to repair JSON: {e}")
-        return None
-
-# MODIFIED: The main function now includes the "catch and repair" logic.
 def generate_story_node(topic: str, history: list, last_choice_leads_to: str, language: str = 'en'):
     """
-    Generates a story node, with a fallback to repair broken JSON responses.
+    Generates a single story node by calling the Gemini API.
+
+    Args:
+        language (str, optional): The language for the response. Defaults to 'en'
+        topic: The overall topic of the story.
+        history: The list of previous conversation turns.
+        last_choice_leads_to: The 'leads_to' value from the user's last choice.
+
+    Returns:
+        A dictionary representing the parsed JSON of the story node.
+    
+    Raises:
+        ValueError: If the API response is blocked or returns unreadable JSON.
+        Exception: For other, more general API or network errors.
     """
     history_str = json.dumps(history, indent=2)
     
-    # We add a note about the history to the prompt_to_send to help with loops.
     prompt_to_send = (
         f"{BASE_PROMPT.format(topic=topic, language=language)}\n\n"
         f"--- YOUR CURRENT TASK ---\n"
@@ -133,9 +109,11 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
         f"**User's Last Choice leads_to:** '{last_choice_leads_to}'\n\n"
         f"Strictly follow the State Machine rules and Universal Principles to generate the correct JSON object for this state."
     )
-    
-    response_text = ""
+
     try:
+        # **FIX:** Instantiate the GenerativeModel *before* calling generate_content.
+        gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        
         generation_config = genai.types.GenerationConfig(response_mime_type="application/json", response_schema=STORY_NODE_SCHEMA)
         safety_settings = {
             HarmCategory.HARM_CATEGORY_HARASSMENT: HarmBlockThreshold.BLOCK_NONE,
@@ -144,39 +122,23 @@ def generate_story_node(topic: str, history: list, last_choice_leads_to: str, la
             HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT: HarmBlockThreshold.BLOCK_NONE,
         }
         
+        # Now, call the method on the 'gemini_model' object.
         response = gemini_model.generate_content(
             prompt_to_send,
             generation_config=generation_config,
             safety_settings=safety_settings
         )
-        response_text = response.text.strip()
 
         if hasattr(response, 'prompt_feedback') and response.prompt_feedback.block_reason:
              raise ValueError(f"Prompt blocked for safety reasons: {response.prompt_feedback.block_reason}")
-        
-        if not response_text:
-            raise ValueError("AI returned an empty response.")
 
-        # First attempt to parse the JSON
-        parsed_node = json.loads(response_text)
+        parsed_node = json.loads(response.text)
         return parsed_node
 
-    except json.JSONDecodeError:
-        # If the first parse fails, we enter the repair logic.
-        logging.warning("Initial JSON parsing failed. Attempting to repair.")
-        repaired_json_text = repair_json(response_text)
-        if repaired_json_text:
-            try:
-                # Second attempt to parse the repaired JSON
-                parsed_node = json.loads(repaired_json_text)
-                logging.info("Successfully repaired and parsed JSON.")
-                return parsed_node
-            except json.JSONDecodeError as e:
-                logging.error(f"Failed to parse even the REPAIRED JSON. Error: {e}")
-                raise ValueError("AI returned unreadable JSON format, and repair failed.")
-        else:
-            raise ValueError("AI returned unreadable JSON format, and the repair utility also failed.")
-            
+    except json.JSONDecodeError as e:
+        logging.error(f"JSONDecodeError in story_generator: Could not parse AI response. Error: {e}")
+        raise ValueError("AI returned unreadable JSON format.")
     except Exception as e:
         logging.error(f"A general error occurred in story_generator: {e}")
         raise
+
