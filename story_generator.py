@@ -29,18 +29,46 @@ La lune;;;Incorrect;;;false
 La terre;;;Incorrect;;;false
 
 ---
-**Core State Machine (Follow this strictly based on `last_choice_leads_to`):**
-* If `last_choice_leads_to` is **null** -> Generate a **WELCOME** turn.
-* If `last_choice_leads_to` is **'begin_explanation'** -> Generate an **EXPLANATION** turn.
-* If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** or **GAME** turn.
-* If `last_choice_leads_to` is **'Correct'** or **'Incorrect'** -> Generate a **FEEDBACK** turn. The dialogue should contain the feedback (e.g., "Correct!").
-* If `last_choice_leads_to` is **'explain_answer'** -> Generate an **EXPLAIN_ANSWER** turn.
-* If `last_choice_leads_to` is **'request_summary'** -> Generate a **SUMMARY** turn.
+**--- Core State Machine ---**
+You MUST generate a response that strictly matches the turn type determined by the `last_choice_leads_to` input. DO NOT merge, skip, or combine turn types.
 
-**Universal Principles:**
-1.  **Language Mandate:** You MUST generate all user-facing text in the language code: '{language}'.
-2.  **No Loops or Repetition:** Review the history. Do not repeat content or get stuck in a loop. Always progress the conversation.
+* If `last_choice_leads_to` is **null** -> Generate a **WELCOME** turn.
+    * **Dialogue:** Welcome the user, introduce the `{topic}`, and explain its real-world importance.
+    * **Interaction:** ONE option with `leads_to: 'begin_explanation'`.
+
+* If `last_choice_leads_to` is **'begin_explanation'** -> Generate an **EXPLANATION** turn.
+    * **Dialogue:** Explain ONE new sub-concept. Crucially, your explanation MUST include a clear, relatable example or a fascinating fact to make the concept tangible and memorable.
+    * **Interaction:** ONE option with `leads_to: 'ask_question'`.
+
+* If `last_choice_leads_to` is **'ask_question'** -> Generate a **QUESTION** turn or a **GAME** turn.
+    * **QUESTION Turn:** Ask ONE multiple-choice question about the concept you JUST explained. ONE option must have `leads_to: 'Correct'`, all others must have `leads_to: 'Incorrect'`.
+    * **GAME Turn (`Multi-Select Image Game`):** After a few standard questions, you can use this. Provide a mix of options where some have `is_correct: true` and others `is_correct: false`.
+
+* If `last_choice_leads_to` is **'Correct'** or **'Incorrect'** -> Generate a **FEEDBACK** turn.
+    * **This is a dedicated feedback turn. It is the only thing you will do.**
+    * **`dialogue` field:** This field must ONLY contain the feedback words (e.g., "Correct!", "That's right!", "Not quite, but good try."). Do NOT add any explanation here.
+    * **`feedback_on_previous_answer` field:** This field is now deprecated, leave it as an empty string. The feedback is now in the main dialogue.
+    * **Interaction:** ONE option with the text "Explain why" or "Continue". The `leads_to` for this option MUST be `'explain_answer'`.
+
+* If `last_choice_leads_to` is **'explain_answer'** -> Generate an **EXPLAIN_ANSWER** turn.
+    * **This is a dedicated explanation turn for the previous question. DO NOT introduce a new topic here.**
+    * **`dialogue` field:** MUST ONLY contain the detailed explanation for why the answer to the last question was correct.
+    * **Interaction:** ONE option. If the lesson should continue, the `leads_to` must be `'begin_explanation'`. If the lesson is logically complete, the `leads_to` must be `'request_summary'`.
+
+* If `last_choice_leads_to` is **'request_summary'** -> Generate a **SUMMARY** turn.
+    * **Dialogue:** Briefly summarize the key concepts learned.
+    * **Interaction:** ONE option with `leads_to: 'end_story'`.
+
+**--- Universal Principles ---**
+1.  **Image Prompt Mandate:** Every single turn MUST have EXACTLY ONE `image_prompt`. It must be descriptive (15+ words) and request a 'photorealistic' style where possible.
+2.  **Randomize Correct Answer Position:** This is a mandatory, non-negotiable rule. After creating the options for a question, you MUST reorder them so that the 'Correct' answer is not in the first position. Its placement must be varied and unpredictable.
+3.  **Language Mandate:** You MUST generate all user-facing text (dialogue, options) in the following language code: '{language}'.
+4.  **No Repetition:** Use the conversation history to ensure you are always introducing a NEW concept.
+5.  **No Loops or Repetition:** Review the history. Do not repeat content or get stuck in a loop. Always progress the conversation.
+6. **JSON Validity:** You MUST ensure all text content, especially dialogue containing apostrophes or quotes, is properly escaped so the final output is a single, valid JSON object.
 """
+
+
 
 # This model instance is loaded once and reused, which is efficient.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
