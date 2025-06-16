@@ -132,13 +132,6 @@ def generate_story_node_route(current_user_id):
     language = data.get('language', 'en')
     history = data.get('history', [])
     
-    # REVERTED: Using simple, efficient history pruning.
-    # We keep 12 items (6 user/AI turns) as a balance between context and performance.
-    MAX_HISTORY_ITEMS = 12
-    if len(history) > MAX_HISTORY_ITEMS:
-        history = history[-MAX_HISTORY_ITEMS:]
-    # --- END OF FIX ---
-    
     # --- ADD THESE DEBUGGING LINES ---
     current_app.logger.warning(f"STORY MODE REQUEST: Language='{language}'")
     current_app.logger.warning(f"STORY MODE HISTORY RECEIVED: {history}")
