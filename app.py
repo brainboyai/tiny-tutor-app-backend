@@ -19,6 +19,8 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 
+# --- Import all modules ---
+# (No changes here)
 from game_generator import generate_game_for_topic
 from story_generator import generate_story_node
 from explore_generator import generate_explanation, generate_quiz_from_text
@@ -36,11 +38,11 @@ CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrend
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
-# --- Firebase and Gemini Initialization ---
+# --- Firebase Initialization ---
+# (No changes here)
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 db = None
 if service_account_key_base64:
-    # ... (Firebase initialization code remains the same)
     try:
         decoded_key_bytes = base64.b64decode(service_account_key_base64)
         service_account_info = json.loads(decoded_key_bytes.decode('utf-8'))
@@ -53,24 +55,19 @@ if service_account_key_base64:
         app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found.")
-# Note: We no longer configure Gemini globally, as it will be configured per-request
 
-# --- Rate Limiter with Dynamic Key ---
+# --- CORRECTED: Rate Limiter with Bypass ---
 def get_request_identifier():
-    # If a user-provided API key is used, we don't rate limit them
+    # If a user provides their own key, return None to EXEMPT them from rate limiting
     if request.headers.get('X-User-API-Key'):
-        return 'user_provided_key'
-    # Use user_id for logged-in users, or IP for guests
+        return None
+    
+    # Otherwise, key by user_id for logged-in users, or IP for guests
     return g.get("user_id", get_remote_address())
 
-limiter = Limiter(
-    key_func=get_request_identifier,
-    app=app,
-    default_limits=["200 per day", "60 per hour"],
-    storage_uri="memory://"
-)
+limiter = Limiter(key_func=get_request_identifier, app=app)
 
-# --- Token Decorators ---
+# --- Token Decorators (no changes) ---
 def _get_user_from_token(token):
     try:
         data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
@@ -99,21 +96,17 @@ def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = request.headers.get('Authorization', '').split(' ')[-1] if request.headers.get('Authorization', '').startswith('Bearer ') else None
-        if not token:
-            return jsonify({"error": "Token is missing"}), 401
+        if not token: return jsonify({"error": "Token is missing"}), 401
         user_id = _get_user_from_token(token)
-        if not user_id:
-            return jsonify({"error": "Token is invalid or expired"}), 401
+        if not user_id: return jsonify({"error": "Token is invalid or expired"}), 401
         return f(user_id, *args, **kwargs)
     return decorated
 
-# NEW: Dynamic limit function based on user tier
 def generation_limit():
     if g.get('user_tier') == 'pro':
-        return "200/day"  # High limit for Pro users
-    return "3/day" # Low limit for Free and Guest users
+        return "200/day"
+    return "3/day"
 
-# NEW: Helper to configure Gemini per-request
 def configure_gemini_for_request():
     user_api_key = request.headers.get('X-User-API-Key')
     api_key_to_use = user_api_key if user_api_key else os.getenv('GEMINI_API_KEY')
@@ -121,17 +114,26 @@ def configure_gemini_for_request():
         raise ValueError("API key is not available.")
     genai.configure(api_key=api_key_to_use)
 
+# NEW: Global handler for 429 Rate Limit errors
+@app.errorhandler(429)
+def ratelimit_handler(e):
+    # This ensures any rate-limited route returns a clean JSON error
+    # The frontend will provide the specific message text
+    return jsonify(error=f"Rate limit exceeded: {e.description}"), 429
+
+# --- All Routes ---
+# (The routes themselves do not need to change from the last version)
+# ... The rest of your app.py file ...
 # --- Core Feature Routes ---
 @app.route('/generate_explanation', methods=['POST'])
 @token_optional
 @limiter.limit(generation_limit)
 def generate_explanation_route(current_user_id):
     try:
-        configure_gemini_for_request() # Configure Gemini for this request
+        configure_gemini_for_request() 
         data = request.get_json()
         word = data.get('word', '').strip()
         mode = data.get('mode', 'explain').strip()
-        # ... (rest of the function is the same)
         language = data.get('language', 'en')
         if not word: return jsonify({"error": "Word/concept is required"}), 400
 
@@ -150,14 +152,12 @@ def generate_explanation_route(current_user_id):
         app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
 
-# Apply the same pattern to other generation routes...
 @app.route('/generate_story_node', methods=['POST'])
 @token_optional
 @limiter.limit(generation_limit)
 def generate_story_node_route(current_user_id):
     try:
         configure_gemini_for_request()
-        # ... (rest of the function is the same)
         data = request.get_json()
         language = data.get('language', 'en')
         parsed_node = generate_story_node(
@@ -176,7 +176,6 @@ def generate_story_node_route(current_user_id):
 def generate_game_route(current_user_id):
     try:
         configure_gemini_for_request()
-        # ... (rest of the function is the same)
         topic = request.json.get('topic', '').strip()
         if not topic: return jsonify({"error": "Topic is required"}), 400
         reasoning, game_html = generate_game_for_topic(topic)
@@ -184,8 +183,6 @@ def generate_game_route(current_user_id):
     except Exception as e:
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
-# --- User Data and Auth Routes (No major changes needed here) ---
-# ... (The rest of app.py remains the same: /profile, /toggle_favorite, /save_streak, /save_quiz_attempt, /signup, /login)
 @app.route('/profile', methods=['GET'])
 @token_required
 def get_user_profile(current_user_id):
