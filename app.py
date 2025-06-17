@@ -132,8 +132,8 @@ def generate_explanation_route(current_user_id): # current_user_id can be None
             explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
         elif mode == 'quiz':
-            if not current_user_id: # Quiz generation is for logged-in users only
-                return jsonify({"error": "You must be logged in to generate quizzes."}), 403
+            #if not current_user_id: # Quiz generation is for logged-in users only
+               # return jsonify({"error": "You must be logged in to generate quizzes."}), 403
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
             quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
