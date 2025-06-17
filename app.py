@@ -7,19 +7,18 @@ import re
 from datetime import datetime, timedelta, timezone
 from functools import wraps
 import time
+import jwt
 
 import firebase_admin
 import google.generativeai as genai
-import jwt
 from dotenv import load_dotenv
 from firebase_admin import credentials, firestore
-from flask import Flask, jsonify, request, current_app
+from flask import Flask, jsonify, request, g, current_app
 from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 
-# --- Importing all our new logic modules ---
 from game_generator import generate_game_for_topic
 from story_generator import generate_story_node
 from explore_generator import generate_explanation, generate_quiz_from_text
@@ -31,15 +30,13 @@ from firestore_handler import (
     sanitize_word_for_id
 )
 
-
-# --- Standard App Initialization ---
 load_dotenv()
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
-# Firebase initialization
+# --- Firebase and Gemini Initialization (No Change) ---
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 db = None
 if service_account_key_base64:
@@ -56,87 +53,106 @@ if service_account_key_base64:
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found.")
 
-# Gemini API configuration
 gemini_api_key = os.getenv('GEMINI_API_KEY')
 if gemini_api_key:
     genai.configure(api_key=gemini_api_key)
 else:
     app.logger.warning("GEMINI_API_KEY not found.")
 
-# Rate limiter setup
-limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "60 per hour"], storage_uri="memory://")
+# --- NEW: Rate Limiter with Dynamic Key ---
+def get_request_identifier():
+    # If we have a user_id in the Flask global context (g), use it.
+    # Otherwise, fall back to the user's IP address.
+    return g.get("user_id", get_remote_address())
 
+limiter = Limiter(
+    key_func=get_request_identifier,
+    app=app,
+    default_limits=["200 per day", "60 per hour"],
+    storage_uri="memory://"
+)
+
+# --- MODIFIED: token_required and NEW token_optional decorators ---
 def token_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
         token = None
-        if 'Authorization' in request.headers:
-            try:
-                token = request.headers['Authorization'].split(" ")[1]
-            except IndexError:
-                return jsonify({"error": "Bearer token malformed"}), 401
+        if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
+            token = request.headers['Authorization'].split(" ")[1]
+        
         if not token:
             return jsonify({"error": "Token is missing"}), 401
         try:
             data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
             current_user_id = data['user_id']
+            g.user_id = current_user_id  # Store user_id in Flask global context
         except Exception as e:
             return jsonify({"error": "Token is invalid or expired", "details": str(e)}), 401
         return f(current_user_id, *args, **kwargs)
     return decorated
 
-# --- Core Feature Routes ---
+def token_optional(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        g.user_id = None # Default to no user
+        current_user_id = None
+        if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
+            token = request.headers['Authorization'].split(" ")[1]
+            try:
+                data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+                current_user_id = data['user_id']
+                g.user_id = current_user_id # Set user_id in context if token is valid
+            except Exception:
+                pass # Token is invalid or expired, proceed as a guest
+        return f(current_user_id, *args, **kwargs)
+    return decorated
+
+# NEW: Dynamic limit function
+def generation_limit_key():
+    return "150/hour" if g.get("user_id") else "3/day"
+
+# --- Core Feature Routes (Now using token_optional and dynamic limits) ---
 
 @app.route('/generate_explanation', methods=['POST'])
-@token_required
-@limiter.limit("150/hour")
-def generate_explanation_route(current_user_id):
+@token_optional
+@limiter.limit(generation_limit_key)
+def generate_explanation_route(current_user_id): # current_user_id can be None
+    if not current_user_id: # Check if user is a guest
+        # This route is now accessible to guests, up to the rate limit.
+        pass
+    # The rest of the function remains the same...
     data = request.get_json()
     word = data.get('word', '').strip()
     mode = data.get('mode', 'explain').strip()
-    # ADD THIS LINE
-    language = data.get('language', 'en') 
-
-    # --- ADD THIS DEBUGGING LINE ---
-    # We are using the app's logger to be sure it appears.
-    current_app.logger.warning(f"LANGUAGE RECEIVED IN REQUEST: {language}")
-
+    language = data.get('language', 'en')
     if not word: return jsonify({"error": "Word/concept is required"}), 400
 
     try:
         if mode == 'explain':
-            # PASS 'language' TO THE GENERATOR
             explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
-        
         elif mode == 'quiz':
+            if not current_user_id: # Quiz generation is for logged-in users only
+                return jsonify({"error": "You must be logged in to generate quizzes."}), 403
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
-            # PASS 'language' TO THE GENERATOR
             quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
-
         else:
             return jsonify({"error": "Invalid mode specified"}), 400
-            
     except Exception as e:
-        app.logger.error(f"Error in /generate_explanation for user {current_user_id}: {e}")
+        app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
 
 @app.route('/generate_story_node', methods=['POST'])
-@token_required
-@limiter.limit("200/hour")
-def generate_story_node_route(current_user_id):
+@token_optional
+@limiter.limit(generation_limit_key)
+def generate_story_node_route(current_user_id): # current_user_id can be None
+    # This route is now accessible to guests, up to the rate limit.
+    # The rest of the function remains the same...
     data = request.get_json()
-    # ADD THIS LINE
     language = data.get('language', 'en')
-    history = data.get('history', [])
-    
-    # --- ADD THESE DEBUGGING LINES ---
-    current_app.logger.warning(f"STORY MODE REQUEST: Language='{language}'")
-    current_app.logger.warning(f"STORY MODE HISTORY RECEIVED: {history}")
     try:
-        # PASS 'language' TO THE GENERATOR
         parsed_node = generate_story_node(
             topic=data.get('topic', '').strip(),
             history=data.get('history', []),
@@ -145,29 +161,28 @@ def generate_story_node_route(current_user_id):
         )
         return jsonify(parsed_node), 200
     except ValueError as e:
-        app.logger.warning(f"ValueError in story generation for user {current_user_id}: {e}")
+        app.logger.warning(f"ValueError in story generation for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": str(e)}), 400
     except Exception as e:
-        app.logger.error(f"FATAL Exception in /generate_story_node for user {current_user_id}: {e}")
+        app.logger.error(f"FATAL Exception in /generate_story_node for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": "An unexpected server error occurred."}), 500
-    
 
 @app.route('/generate_game', methods=['POST'])
-@token_required
-@limiter.limit("50/hour")
-def generate_game_route(current_user_id):
+@token_optional
+@limiter.limit(generation_limit_key)
+def generate_game_route(current_user_id): # current_user_id can be None
+    # This route is now accessible to guests, up to the rate limit.
+    # The rest of the function remains the same...
     topic = request.json.get('topic', '').strip()
     if not topic: return jsonify({"error": "Topic is required"}), 400
     try:
-        # Simple delegation
         reasoning, game_html = generate_game_for_topic(topic)
-        # Here you could add caching logic if desired, similar to before
         return jsonify({"topic": topic, "game_html": game_html, "reasoning": reasoning}), 200
     except Exception as e:
-        app.logger.error(f"Error in /generate_game for user {current_user_id}: {e}")
+        app.logger.error(f"Error in /generate_game for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
-# --- User Data and Stats Routes ---
+# --- User Data and Stats Routes (These still require a token) ---
 
 @app.route('/profile', methods=['GET'])
 @token_required
@@ -221,9 +236,7 @@ def save_quiz_attempt_route(current_user_id):
         app.logger.error(f"Failed to save quiz stats for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save quiz attempt: {str(e)}"}), 500
 
-
-# --- Authentication Routes (largely unchanged) ---
-
+# --- Authentication Routes (No Change) ---
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
@@ -283,4 +296,3 @@ def login_user():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5001))
     app.run(host='0.0.0.0', port=port)
-
