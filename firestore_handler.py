@@ -16,61 +16,77 @@ def sanitize_word_for_id(word: str) -> str:
 
 def get_user_profile_data(db, user_id: str):
     """
-    Fetches and formats all profile data for a given user.
+    Fetches and formats all profile data for a given user, respecting their tier.
     """
     user_doc_ref = db.collection('users').document(user_id)
     user_doc = user_doc_ref.get()
     if not user_doc.exists:
         raise ValueError("User not found")
-    
+
     user_data = user_doc.to_dict()
+    # NEW: Get the user's tier, defaulting to 'free' if it's not set
+    user_tier = user_data.get("tier", "free")
 
-    word_history_list = []
-    favorite_words_list = []
-    
-    word_history_query = user_doc_ref.collection('word_history').order_by('last_explored_at', direction=firestore.Query.DESCENDING).stream()
-    for doc in word_history_query:
-        entry = doc.to_dict()
-        if not entry.get("word"): 
-            continue
-        
-        last_explored_at_val = entry.get("last_explored_at")
-        first_explored_at_val = entry.get("first_explored_at")
-
-        entry_data = {
-            "word": entry.get("word"),
-            "is_favorite": entry.get("is_favorite", False),
-            "last_explored_at": last_explored_at_val.isoformat() if isinstance(last_explored_at_val, datetime) else str(last_explored_at_val) if last_explored_at_val else None,
-            "first_explored_at": first_explored_at_val.isoformat() if isinstance(first_explored_at_val, datetime) else str(first_explored_at_val) if first_explored_at_val else None,
-        }
-        word_history_list.append(entry_data)
-        if entry_data["is_favorite"]:
-            favorite_words_list.append(entry_data)
-    
-    streak_history_list = []
-    streak_history_query = user_doc_ref.collection('streaks').order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
-    for doc in streak_history_query:
-        streak = doc.to_dict()
-        completed_at_val = streak.get("completed_at")
-        streak_history_list.append({
-            "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
-            "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val) if completed_at_val else None,
-        })
-    
+    # This is the base profile data that ALL users will receive
     created_at_val = user_data.get("created_at")
-    return {
-        "username": user_data.get("username"), 
-        "email": user_data.get("email"), 
-        "tier": user_data.get("tier"),
-        "totalWordsExplored": len(word_history_list),
-        "exploredWords": word_history_list, 
-        "favoriteWords": favorite_words_list, 
-        "streakHistory": streak_history_list, 
-        "created_at": created_at_val.isoformat() if isinstance(created_at_val, datetime) else str(created_at_val) if created_at_val else None,
+    profile_data = {
+        "username": user_data.get("username"),
+        "email": user_data.get("email"),
+        "tier": user_tier, # NEW: Include the tier in the response
+        "created_at": created_at_val.isoformat() if isinstance(created_at_val, datetime) else str(created_at_val),
         "quiz_points": user_data.get("quiz_points", 0),
         "total_quiz_questions_answered": user_data.get("total_quiz_questions_answered", 0),
-        "total_quiz_questions_correct": user_data.get("total_quiz_questions_correct", 0)
+        "total_quiz_questions_correct": user_data.get("total_quiz_questions_correct", 0),
+        # NEW: Initialize lists as empty for 'free' users
+        "totalWordsExplored": 0,
+        "exploredWords": [],
+        "favoriteWords": [],
+        "streakHistory": [],
     }
+
+    # NEW: Only fetch and add the detailed lists if the user is a 'pro' member
+    if user_tier == 'pro':
+        word_history_list = []
+        favorite_words_list = []
+
+        word_history_query = user_doc_ref.collection('word_history').order_by('last_explored_at', direction=firestore.Query.DESCENDING).stream()
+        for doc in word_history_query:
+            entry = doc.to_dict()
+            if not entry.get("word"):
+                continue
+
+            last_explored_at_val = entry.get("last_explored_at")
+            first_explored_at_val = entry.get("first_explored_at")
+
+            entry_data = {
+                "word": entry.get("word"),
+                "is_favorite": entry.get("is_favorite", False),
+                "last_explored_at": last_explored_at_val.isoformat() if isinstance(last_explored_at_val, datetime) else str(last_explored_at_val),
+                "first_explored_at": first_explored_at_val.isoformat() if isinstance(first_explored_at_val, datetime) else str(first_explored_at_val),
+            }
+            word_history_list.append(entry_data)
+            if entry_data["is_favorite"]:
+                favorite_words_list.append(entry_data)
+
+        streak_history_list = []
+        streak_history_query = user_doc_ref.collection('streaks').order_by('completed_at', direction=firestore.Query.DESCENDING).limit(50).stream()
+        for doc in streak_history_query:
+            streak = doc.to_dict()
+            completed_at_val = streak.get("completed_at")
+            streak_history_list.append({
+                "id": doc.id, "words": streak.get("words", []), "score": streak.get("score", 0),
+                "completed_at": completed_at_val.isoformat() if isinstance(completed_at_val, datetime) else str(completed_at_val),
+            })
+
+        # Update profile_data with the detailed lists for the 'pro' user
+        profile_data.update({
+            "totalWordsExplored": len(word_history_list),
+            "exploredWords": word_history_list,
+            "favoriteWords": favorite_words_list,
+            "streakHistory": streak_history_list,
+        })
+
+    return profile_data
 
 def toggle_favorite_status(db, user_id: str, word: str):
     """

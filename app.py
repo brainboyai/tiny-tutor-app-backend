@@ -242,7 +242,7 @@ def signup_user():
         
     users_ref.add({
         'username': username, 'username_lowercase': username.lower(), 'email': email,
-        'password_hash': generate_password_hash(password), 'tier': 'standard',
+        'password_hash': generate_password_hash(password), 'tier': 'free',
         'created_at': firestore.SERVER_TIMESTAMP, 'quiz_points': 0,
         'total_quiz_questions_answered': 0, 'total_quiz_questions_correct': 0
     })
