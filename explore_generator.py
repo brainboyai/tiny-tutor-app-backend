@@ -55,6 +55,8 @@ prompt += f"\\nNonce: {nonce}"
 
 # In explore_generator.py
 
+# In explore_generator.py, replace the existing function with this one:
+
 def generate_quiz_from_text(word: str, explanation_text: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
     Generates a multiple-choice quiz question based on provided text.
@@ -63,8 +65,7 @@ def generate_quiz_from_text(word: str, explanation_text: str, streak_context: li
     if streak_context:
         context_hint_for_quiz = f" The learning path so far included: {', '.join(streak_context)}."
 
-    # FIX: The entire prompt is now a single, triple-quoted f-string for clarity and to prevent syntax errors.
-    # The nonce is included at the end.
+    # UPDATED: The prompt now has a fallback instruction.
     prompt = f"""Based on the following explanation text for the term '{word}', generate a set of exactly 1 distinct multiple-choice quiz questions. The questions should test understanding of the key concepts presented in this specific text.{context_hint_for_quiz}
 
 Explanation Text:
@@ -80,17 +81,25 @@ C) [Option C Text]
 D) [Option D Text]
 Correct Answer: [Single Letter A, B, C, or D]
 Explanation: [Optional: A brief explanation for the correct answer or why other options are incorrect]
+
+CRITICAL: If the provided Explanation Text is too short, simple, or otherwise unsuitable for creating a meaningful, high-quality quiz question, you MUST respond with only the following exact text and nothing else:
+---NO_QUIZ_POSSIBLE---
+
 Ensure option keys are unique. Separate each complete question block with '---QUIZ_SEPARATOR---'.
 Nonce: {nonce}
 """
     
     try:
-        # --- CHANGE logging.info TO logging.warning ---
         logging.warning(f"QUIZ PROMPT SENT TO AI: {prompt}")
         
         response = gemini_model.generate_content(prompt)
         llm_output_text = response.text.strip()
         
+        # NEW: Check for the fallback response from the AI
+        if "---NO_QUIZ_POSSIBLE---" in llm_output_text:
+            logging.warning(f"AI determined no quiz was possible for word '{word}'.")
+            return [] # Return an empty list, which is a stable response
+
         quiz_questions_array = [q.strip() for q in llm_output_text.split('---QUIZ_SEPARATOR---') if q.strip()]
         if not quiz_questions_array and llm_output_text:
             quiz_questions_array = [llm_output_text]
