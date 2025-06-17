@@ -32,14 +32,15 @@ from firestore_handler import (
 
 load_dotenv()
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With"])
+CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-User-API-Key"])
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
-# --- Firebase and Gemini Initialization (No Change) ---
+# --- Firebase and Gemini Initialization ---
 service_account_key_base64 = os.getenv('FIREBASE_SERVICE_ACCOUNT_KEY_BASE64')
 db = None
 if service_account_key_base64:
+    # ... (Firebase initialization code remains the same)
     try:
         decoded_key_bytes = base64.b64decode(service_account_key_base64)
         service_account_info = json.loads(decoded_key_bytes.decode('utf-8'))
@@ -52,17 +53,14 @@ if service_account_key_base64:
         app.logger.error(f"Failed to initialize Firebase Admin SDK: {e}")
 else:
     app.logger.warning("FIREBASE_SERVICE_ACCOUNT_KEY_BASE64 not found.")
+# Note: We no longer configure Gemini globally, as it will be configured per-request
 
-gemini_api_key = os.getenv('GEMINI_API_KEY')
-if gemini_api_key:
-    genai.configure(api_key=gemini_api_key)
-else:
-    app.logger.warning("GEMINI_API_KEY not found.")
-
-# --- NEW: Rate Limiter with Dynamic Key ---
+# --- Rate Limiter with Dynamic Key ---
 def get_request_identifier():
-    # If we have a user_id in the Flask global context (g), use it.
-    # Otherwise, fall back to the user's IP address.
+    # If a user-provided API key is used, we don't rate limit them
+    if request.headers.get('X-User-API-Key'):
+        return 'user_provided_key'
+    # Use user_id for logged-in users, or IP for guests
     return g.get("user_id", get_remote_address())
 
 limiter = Limiter(
@@ -72,87 +70,96 @@ limiter = Limiter(
     storage_uri="memory://"
 )
 
-# --- MODIFIED: token_required and NEW token_optional decorators ---
-def token_required(f):
-    @wraps(f)
-    def decorated(*args, **kwargs):
-        token = None
-        if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
-            token = request.headers['Authorization'].split(" ")[1]
-        
-        if not token:
-            return jsonify({"error": "Token is missing"}), 401
-        try:
-            data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
-            current_user_id = data['user_id']
-            g.user_id = current_user_id  # Store user_id in Flask global context
-        except Exception as e:
-            return jsonify({"error": "Token is invalid or expired", "details": str(e)}), 401
-        return f(current_user_id, *args, **kwargs)
-    return decorated
+# --- Token Decorators ---
+def _get_user_from_token(token):
+    try:
+        data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
+        user_id = data['user_id']
+        user_doc = db.collection('users').document(user_id).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            g.user_id = user_id
+            g.user_tier = user_data.get('tier', 'free')
+            return user_id
+    except Exception:
+        return None
+    return None
 
 def token_optional(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        g.user_id = None # Default to no user
-        current_user_id = None
-        if 'Authorization' in request.headers and request.headers['Authorization'].startswith('Bearer '):
-            token = request.headers['Authorization'].split(" ")[1]
-            try:
-                data = jwt.decode(token, app.config['JWT_SECRET_KEY'], algorithms=["HS256"])
-                current_user_id = data['user_id']
-                g.user_id = current_user_id # Set user_id in context if token is valid
-            except Exception:
-                pass # Token is invalid or expired, proceed as a guest
-        return f(current_user_id, *args, **kwargs)
+        g.user_id = None
+        g.user_tier = 'guest'
+        token = request.headers.get('Authorization', '').split(' ')[-1] if request.headers.get('Authorization', '').startswith('Bearer ') else None
+        user_id = _get_user_from_token(token) if token else None
+        return f(user_id, *args, **kwargs)
     return decorated
 
-# NEW: Dynamic limit function
-def generation_limit_key():
-    return "150/hour" if g.get("user_id") else "3/day"
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization', '').split(' ')[-1] if request.headers.get('Authorization', '').startswith('Bearer ') else None
+        if not token:
+            return jsonify({"error": "Token is missing"}), 401
+        user_id = _get_user_from_token(token)
+        if not user_id:
+            return jsonify({"error": "Token is invalid or expired"}), 401
+        return f(user_id, *args, **kwargs)
+    return decorated
 
-# --- Core Feature Routes (Now using token_optional and dynamic limits) ---
+# NEW: Dynamic limit function based on user tier
+def generation_limit():
+    if g.get('user_tier') == 'pro':
+        return "200/day"  # High limit for Pro users
+    return "3/day" # Low limit for Free and Guest users
 
+# NEW: Helper to configure Gemini per-request
+def configure_gemini_for_request():
+    user_api_key = request.headers.get('X-User-API-Key')
+    api_key_to_use = user_api_key if user_api_key else os.getenv('GEMINI_API_KEY')
+    if not api_key_to_use:
+        raise ValueError("API key is not available.")
+    genai.configure(api_key=api_key_to_use)
+
+# --- Core Feature Routes ---
 @app.route('/generate_explanation', methods=['POST'])
 @token_optional
-@limiter.limit(generation_limit_key)
-def generate_explanation_route(current_user_id): # current_user_id can be None
-    if not current_user_id: # Check if user is a guest
-        # This route is now accessible to guests, up to the rate limit.
-        pass
-    # The rest of the function remains the same...
-    data = request.get_json()
-    word = data.get('word', '').strip()
-    mode = data.get('mode', 'explain').strip()
-    language = data.get('language', 'en')
-    if not word: return jsonify({"error": "Word/concept is required"}), 400
-
+@limiter.limit(generation_limit)
+def generate_explanation_route(current_user_id):
     try:
+        configure_gemini_for_request() # Configure Gemini for this request
+        data = request.get_json()
+        word = data.get('word', '').strip()
+        mode = data.get('mode', 'explain').strip()
+        # ... (rest of the function is the same)
+        language = data.get('language', 'en')
+        if not word: return jsonify({"error": "Word/concept is required"}), 400
+
         if mode == 'explain':
             explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
         elif mode == 'quiz':
-            #if not current_user_id: # Quiz generation is for logged-in users only
-               # return jsonify({"error": "You must be logged in to generate quizzes."}), 403
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
             quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
         else:
             return jsonify({"error": "Invalid mode specified"}), 400
+            
     except Exception as e:
         app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
 
+# Apply the same pattern to other generation routes...
 @app.route('/generate_story_node', methods=['POST'])
 @token_optional
-@limiter.limit(generation_limit_key)
-def generate_story_node_route(current_user_id): # current_user_id can be None
-    # This route is now accessible to guests, up to the rate limit.
-    # The rest of the function remains the same...
-    data = request.get_json()
-    language = data.get('language', 'en')
+@limiter.limit(generation_limit)
+def generate_story_node_route(current_user_id):
     try:
+        configure_gemini_for_request()
+        # ... (rest of the function is the same)
+        data = request.get_json()
+        language = data.get('language', 'en')
         parsed_node = generate_story_node(
             topic=data.get('topic', '').strip(),
             history=data.get('history', []),
@@ -160,30 +167,25 @@ def generate_story_node_route(current_user_id): # current_user_id can be None
             language=language
         )
         return jsonify(parsed_node), 200
-    except ValueError as e:
-        app.logger.warning(f"ValueError in story generation for user {current_user_id or 'Guest'}: {e}")
-        return jsonify({"error": str(e)}), 400
     except Exception as e:
-        app.logger.error(f"FATAL Exception in /generate_story_node for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": "An unexpected server error occurred."}), 500
 
 @app.route('/generate_game', methods=['POST'])
 @token_optional
-@limiter.limit(generation_limit_key)
-def generate_game_route(current_user_id): # current_user_id can be None
-    # This route is now accessible to guests, up to the rate limit.
-    # The rest of the function remains the same...
-    topic = request.json.get('topic', '').strip()
-    if not topic: return jsonify({"error": "Topic is required"}), 400
+@limiter.limit(generation_limit)
+def generate_game_route(current_user_id):
     try:
+        configure_gemini_for_request()
+        # ... (rest of the function is the same)
+        topic = request.json.get('topic', '').strip()
+        if not topic: return jsonify({"error": "Topic is required"}), 400
         reasoning, game_html = generate_game_for_topic(topic)
         return jsonify({"topic": topic, "game_html": game_html, "reasoning": reasoning}), 200
     except Exception as e:
-        app.logger.error(f"Error in /generate_game for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
-# --- User Data and Stats Routes (These still require a token) ---
-
+# --- User Data and Auth Routes (No major changes needed here) ---
+# ... (The rest of app.py remains the same: /profile, /toggle_favorite, /save_streak, /save_quiz_attempt, /signup, /login)
 @app.route('/profile', methods=['GET'])
 @token_required
 def get_user_profile(current_user_id):
@@ -236,7 +238,6 @@ def save_quiz_attempt_route(current_user_id):
         app.logger.error(f"Failed to save quiz stats for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save quiz attempt: {str(e)}"}), 500
 
-# --- Authentication Routes (No Change) ---
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
