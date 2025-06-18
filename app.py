@@ -19,6 +19,7 @@ from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.api_core import exceptions as google_exceptions
+from google.api_core import exceptions
 
 # --- Import all modules ---
 # (No changes here)
@@ -114,6 +115,24 @@ def configure_gemini_for_request():
     if not api_key_to_use:
         raise ValueError("API key is not available.")
     genai.configure(api_key=api_key_to_use)
+
+# ... (add this helper function somewhere in the file, e.g., before the routes)
+def delete_collection(coll_ref, batch_size):
+    """Recursively delete a collection in batches."""
+    docs = coll_ref.limit(batch_size).stream()
+    deleted = 0
+
+    for doc in docs:
+        print(f"Deleting doc: {doc.id}")
+        # Recursively delete subcollections
+        for sub_coll_ref in doc.reference.collections():
+            delete_collection(sub_coll_ref, batch_size)
+        doc.reference.delete()
+        deleted += 1
+
+    if deleted >= batch_size:
+        return delete_collection(coll_ref, batch_size)
+    
 
 # NEW: Global handler for 429 Rate Limit errors
 @app.errorhandler(429)
@@ -283,6 +302,32 @@ def validate_api_key():
         if original_key:
             genai.configure(api_key=original_key)
 # ... (the rest of the file remains the same)    
+
+# ... (add this new route before the /signup route)
+@app.route('/delete_account', methods=['POST'])
+@token_required
+def delete_account_route(current_user_id):
+    """
+    Handles the permanent deletion of a user's account and all associated data.
+    """
+    try:
+        user_ref = db.collection('users').document(current_user_id)
+        
+        # 1. Recursively delete subcollections
+        for collection_ref in user_ref.collections():
+            delete_collection(collection_ref, 50) # Batch size of 50
+            
+        # 2. Delete the main user document
+        user_ref.delete()
+        
+        app.logger.info(f"Successfully deleted account and all data for user_id: {current_user_id}")
+        return jsonify({"message": "Account successfully deleted."}), 200
+
+    except exceptions.NotFound:
+        return jsonify({"error": "User not found."}), 404
+    except Exception as e:
+        app.logger.error(f"Error deleting account for user {current_user_id}: {e}")
+        return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
