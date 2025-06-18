@@ -239,36 +239,49 @@ def save_quiz_attempt_route(current_user_id):
 # ... (place this after the existing /save_quiz_attempt route and before the /signup route)
 
 @app.route('/validate_api_key', methods=['POST'])
-@limiter.limit("10 per minute") # Prevent abuse of the validation endpoint
+@limiter.limit("10 per minute") # Prevent abuse
 def validate_api_key():
     """
-    Validates a user-provided Gemini API key.
+    Validates a user-provided Gemini API key by making a test call.
+    It safely restores the original environment key after the check.
     """
     data = request.get_json()
-    api_key = data.get('api_key')
+    api_key_to_test = data.get('api_key')
 
-    if not api_key:
-        return jsonify({"valid": False, "message": "No API key provided."}), 400
+    if not api_key_to_test:
+        return jsonify({"valid": False, "message": "No API key was provided."}), 400
 
+    # Store the application's default key to restore it later
+    original_key = os.getenv('GEMINI_API_KEY')
+    
     try:
-        # Temporarily configure a client with the user's key
-        temp_genai = genai
-        temp_genai.configure(api_key=api_key)
+        # --- The Validation Step ---
+        # 1. Configure the client to use the user's key for this specific test
+        genai.configure(api_key=api_key_to_test)
         
-        # Make a lightweight, free call to check if the key is functional
-        temp_genai.list_models()
+        # 2. Create a model instance with this configuration
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        # If the above call doesn't raise an exception, the key is valid.
-        return jsonify({"valid": True, "message": "API key is valid"}), 200
+        # 3. Make a very small, cheap, but definitive API call.
+        # An invalid key will raise a PermissionDenied error here.
+        model.generate_content("test", generation_config=genai.types.GenerationConfig(max_output_tokens=1))
+        
+        # 4. If the call succeeds, the key is valid.
+        return jsonify({"valid": True, "message": "API Key is valid!"}), 200
 
-    except google_exceptions.PermissionDenied as e:
-        # This catches invalid API keys
+    except google_exceptions.PermissionDenied:
+        # This is the specific error for an invalid or unauthorized key.
         return jsonify({"valid": False, "message": "API key is invalid or not enabled for the Gemini API."}), 400
     except Exception as e:
-        # Catch any other potential errors (e.g., network issues)
-        app.logger.error(f"API Key Validation Error: {e}")
-        return jsonify({"valid": False, "message": f"An unexpected error occurred during validation."}), 500
-
+        # Catch any other unexpected errors.
+        app.logger.error(f"API Key Validation - Unexpected Error: {e}")
+        return jsonify({"valid": False, "message": "An unexpected error occurred during validation."}), 500
+    finally:
+        # --- Restore Original State ---
+        # 5. CRITICAL: No matter the outcome, reconfigure the client back to the
+        #    original application key so that other user requests don't fail.
+        if original_key:
+            genai.configure(api_key=original_key)
 # ... (the rest of the file remains the same)    
 
 @app.route('/signup', methods=['POST'])
