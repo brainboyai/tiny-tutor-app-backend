@@ -18,6 +18,7 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
+from google.api_core import exceptions as google_exceptions
 
 # --- Import all modules ---
 # (No changes here)
@@ -234,6 +235,41 @@ def save_quiz_attempt_route(current_user_id):
     except Exception as e:
         app.logger.error(f"Failed to save quiz stats for user {current_user_id}: {e}")
         return jsonify({"error": f"Failed to save quiz attempt: {str(e)}"}), 500
+
+# ... (place this after the existing /save_quiz_attempt route and before the /signup route)
+
+@app.route('/validate_api_key', methods=['POST'])
+@limiter.limit("10 per minute") # Prevent abuse of the validation endpoint
+def validate_api_key():
+    """
+    Validates a user-provided Gemini API key.
+    """
+    data = request.get_json()
+    api_key = data.get('api_key')
+
+    if not api_key:
+        return jsonify({"valid": False, "message": "No API key provided."}), 400
+
+    try:
+        # Temporarily configure a client with the user's key
+        temp_genai = genai
+        temp_genai.configure(api_key=api_key)
+        
+        # Make a lightweight, free call to check if the key is functional
+        temp_genai.list_models()
+        
+        # If the above call doesn't raise an exception, the key is valid.
+        return jsonify({"valid": True, "message": "API key is valid"}), 200
+
+    except google_exceptions.PermissionDenied as e:
+        # This catches invalid API keys
+        return jsonify({"valid": False, "message": "API key is invalid or not enabled for the Gemini API."}), 400
+    except Exception as e:
+        # Catch any other potential errors (e.g., network issues)
+        app.logger.error(f"API Key Validation Error: {e}")
+        return jsonify({"valid": False, "message": f"An unexpected error occurred during validation."}), 500
+
+# ... (the rest of the file remains the same)    
 
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
