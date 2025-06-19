@@ -59,3 +59,5 @@ googlesearch-python
 # Add these two lines to your requirements.txt
 beautifulsoup4==4.12.3
 lxml==5.2.2
+selenium==4.22.0
+webdriver-manager==4.0.1

@@ -11,6 +11,10 @@ import jwt
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 import firebase_admin
 import google.generativeai as genai
@@ -137,7 +141,54 @@ def delete_collection(coll_ref, batch_size):
     if deleted >= batch_size:
         return delete_collection(coll_ref, batch_size)
     
+    #metadate fetch headless
+def fetch_metadata_enhanced(url_to_fetch):
+    """
+    Uses a headless Chrome browser to fetch and parse metadata,
+    allowing JavaScript-rendered content to be processed.
+    """
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+    
+    # Use webdriver-manager to automatically handle the browser driver
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+    
+    try:
+        driver.get(url_to_fetch)
+        # Wait a moment for JavaScript to potentially load
+        time.sleep(2)
+        
+        soup = BeautifulSoup(driver.page_source, 'lxml')
 
+        def get_meta_content(property_name, default=None):
+            tag = soup.find('meta', property=property_name)
+            return tag['content'].strip() if tag and tag.get('content') else default
+
+        def get_name_content(name, default=None):
+            tag = soup.find('meta', attrs={'name': name})
+            return tag['content'].strip() if tag and tag.get('content') else default
+        
+        def get_favicon_url():
+            icon_rel = ['apple-touch-icon', 'icon', 'shortcut icon']
+            for rel in icon_rel:
+                link_tag = soup.find('link', rel=rel)
+                if link_tag and link_tag.get('href'): return link_tag['href']
+            return None
+
+        title = get_meta_content('og:title', soup.title.string if soup.title else "No Title Found")
+        description = get_meta_content('og:description', get_name_content('description', "No description available."))
+        image_url = get_meta_content('og:image', get_favicon_url())
+
+        if image_url:
+            image_url = urljoin(url_to_fetch, image_url)
+
+        return { "title": title, "description": description, "image": image_url }
+
+    finally:
+        driver.quit()
+        
 # NEW: Global handler for 429 Rate Limit errors
 @app.errorhandler(429)
 def ratelimit_handler(e):
@@ -205,64 +256,22 @@ def fetch_web_context_route(current_user_id):
 
 # ... rest of app.py
 
-# Replace your existing /fetch_link_metadata route with this one
+# Replace your existing /fetch_link_metadata route with this simplified version
 @app.route('/fetch_link_metadata', methods=['GET'])
-@limiter.limit("30 per minute")
+@limiter.limit("20 per minute") # Adjusted rate limit
 def fetch_link_metadata_route():
     url_to_fetch = request.args.get('url')
     if not url_to_fetch:
         return jsonify({"error": "URL parameter is required"}), 400
 
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-        }
-        response = requests.get(url_to_fetch, headers=headers, timeout=5, allow_redirects=True)
-        response.raise_for_status()
-
-        soup = BeautifulSoup(response.content, 'lxml')
-        
-        # --- Improved Metadata Extraction ---
-        def get_meta_content(property_name, default=None):
-            tag = soup.find('meta', property=property_name)
-            return tag['content'].strip() if tag and tag.get('content') else default
-
-        def get_name_content(name, default=None):
-            tag = soup.find('meta', attrs={'name': name})
-            return tag['content'].strip() if tag and tag.get('content') else default
-        
-        def get_favicon_url():
-            # Look for various icon link types
-            icon_rel = ['apple-touch-icon', 'icon', 'shortcut icon']
-            for rel in icon_rel:
-                link_tag = soup.find('link', rel=rel)
-                if link_tag and link_tag.get('href'):
-                    return link_tag['href']
-            return None
-
-        # Extract with fallbacks
-        title = get_meta_content('og:title', soup.title.string if soup.title else "No Title Found")
-        description = get_meta_content('og:description', get_name_content('description', "No description available."))
-        image_url = get_meta_content('og:image', get_favicon_url())
-
-        # Ensure image URL is absolute
-        if image_url:
-            image_url = urljoin(response.url, image_url)
-
-        metadata = {
-            "title": title,
-            "description": description,
-            "image": image_url
-        }
-        
+        # Always use the enhanced fetcher for the best UX
+        metadata = fetch_metadata_enhanced(url_to_fetch)
         return jsonify(metadata)
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to fetch metadata for URL {url_to_fetch}: {e}")
-        return jsonify({"error": "Could not fetch URL content"}), 500
     except Exception as e:
-        logging.error(f"Error parsing metadata for URL {url_to_fetch}: {e}")
-        return jsonify({"error": "Could not parse website metadata"}), 500
+        logging.error(f"Enhanced metadata fetch failed for {url_to_fetch}: {e}")
+        # Provide a fallback empty response on failure
+        return jsonify({ "title": url_to_fetch, "description": "Could not load preview.", "image": None })
 
 
 @app.route('/generate_story_node', methods=['POST'])
