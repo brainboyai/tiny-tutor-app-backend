@@ -8,6 +8,8 @@ from datetime import datetime, timedelta, timezone
 from functools import wraps
 import time
 import jwt
+import requests
+from bs4 import BeautifulSoup
 
 import firebase_admin
 import google.generativeai as genai
@@ -201,6 +203,51 @@ def fetch_web_context_route(current_user_id):
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
 # ... rest of app.py
+
+# Add this new route, for example, after the /fetch_web_context route
+@app.route('/fetch_link_metadata', methods=['GET'])
+@limiter.limit("30 per minute") # Rate limit to prevent abuse
+def fetch_link_metadata_route():
+    """
+    Fetches a URL and extracts its Open Graph (OG) metadata for link previews.
+    """
+    url_to_fetch = request.args.get('url')
+    if not url_to_fetch:
+        return jsonify({"error": "URL parameter is required"}), 400
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        }
+        response = requests.get(url_to_fetch, headers=headers, timeout=5)
+        response.raise_for_status() # Raise an exception for bad status codes
+
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # Extract Open Graph (OG) tags for a rich preview
+        title = soup.find('meta', property='og:title')
+        description = soup.find('meta', property='og:description')
+        image = soup.find('meta', property='og:image')
+
+        # Fallback to standard tags if OG tags are not present
+        if not title:
+            title = soup.find('title')
+        
+        metadata = {
+            "title": title['content'] if title and title.get('content') else soup.title.string if soup.title else "No Title Found",
+            "description": description['content'] if description and description.get('content') else "No description available.",
+            "image": image['content'] if image and image.get('content') else None
+        }
+        
+        return jsonify(metadata)
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to fetch metadata for URL {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not fetch URL content"}), 500
+    except Exception as e:
+        logging.error(f"Error parsing metadata for URL {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not parse website metadata"}), 500
+
 
 @app.route('/generate_story_node', methods=['POST'])
 @token_optional
