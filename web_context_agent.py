@@ -1,70 +1,62 @@
 import google.generativeai as genai
+import json
+import logging
+from Google Search import search
 
 def get_web_context(topic: str, model: genai.GenerativeModel):
     """
-    Analyzes a topic, generates search queries, and returns a structured
-    list of the best web links for different categories.
-    """
-    # This prompt asks the AI to act as a search expert.
-    # It will analyze the user's topic and generate targeted search queries
-    # to find the most relevant articles, videos, and services.
-    prompt = f"""
-    You are a sophisticated search query generator. Your task is to analyze the user's topic, "{topic}", and generate a list of 3-5 optimal Google search queries to find the most relevant, high-quality content for them across different categories: informational articles, video content, and related services or products.
-
-    Return your answer as a JSON object with a single key "queries" which contains a list of these search strings.
-
-    Example for topic "Delhi":
-    {{
-      "queries": [
-        "best Delhi tourism blog",
-        "Delhi travel guide for first-timers",
-        "top sights in Delhi youtube vlog",
-        "book hotels in Delhi"
-      ]
-    }}
-
-    Example for topic "Protein Foods":
-    {{
-      "queries": [
-        "buy high protein foods online",
-        "high protein snack recipes",
-        "best sources of plant-based protein",
-        "youtube high protein meal prep"
-      ]
-    }}
+    Analyzes a topic, generates search queries, executes them, analyzes the results,
+    and returns a structured list of the best web links.
     """
     
-    # Generate the search queries using the Gemini model
-    response = model.generate_content(prompt)
+    # --- Step 1: Generate optimal search queries for the given topic ---
+    query_generation_prompt = f"""
+    You are an expert search query generator. Your task is to analyze the user's topic, "{topic}", and generate a list of 3 optimal Google search queries to find the most relevant content for a learner. The queries should cover these categories:
+    1. A primary informational or official source (e.g., official website, documentation).
+    2. A guide or tutorial for beginners.
+    3. An engaging video introduction (e.g., YouTube).
+
+    Return your answer as a single, raw, minified JSON object with a single key "queries" which contains a list of these three search strings. Do not use markdown formatting.
+    Example for topic "React.js": {{"queries":["what is react js","react js tutorial for beginners","react js crash course youtube"]}}
+    """
+    try:
+        # First LLM call to get the best search terms
+        query_response = model.generate_content(query_generation_prompt)
+        queries_dict = json.loads(query_response.text)
+        queries = queries_dict.get("queries", [])
+        if not queries:
+            raise ValueError("Query generation failed.")
+    except (json.JSONDecodeError, ValueError) as e:
+        logging.warning(f"Could not parse query generation response: {e}. Using fallback queries.")
+        queries = [f"what is {topic}", f"{topic} guide", f"{topic} youtube"]
+
+    # --- Step 2: Execute the search queries ---
+    try:
+        search_results_data = search(queries=queries)
+    except Exception as e:
+        logging.error(f"Google Search tool failed: {e}")
+        return [] # Return empty if the search tool itself fails
+
+    # --- Step 3: Analyze search results to select the best link for each category ---
+    analysis_prompt = f"""
+    You are an expert content curator. Based on the original topic "{topic}" and the following Google search results, your task is to select the single best link for each of these three categories: 'info', 'read', and 'watch'.
+
+    - 'info': The best official website, documentation, or encyclopedic page.
+    - 'read': The best article, guide, or in-depth tutorial.
+    - 'watch': The best introductory video.
+
+    Return your answer as a single, raw, minified JSON object which is a list of exactly three dictionaries. Each dictionary must have "type", "title", "snippet", and "url" keys.
+    Example: [{{"type":"info","title":"React","url":"https://react.dev/","snippet":"The official documentation for React..."}}, ...]
     
-    # The rest of this function would involve:
-    # 1. Parsing the JSON response to get the list of queries.
-    # 2. Executing these queries using a search tool.
-    # 3. Analyzing the search results to pick the best link for each category.
-    # 4. Returning the final structured list of links.
-    
-    # For now, to demonstrate the query generation, we will return a placeholder.
-    # In a real implementation, this would be replaced with the full logic.
-    if "stanford" in topic.lower():
-        return [
-            {
-              "type": "info",
-              "title": "Stanford University",
-              "url": "https://www.stanford.edu/",
-              "snippet": "The official website of Stanford University, a place of discovery, creativity, and innovation."
-            },
-            {
-              "type": "read",
-              "title": "Stanford University Online Courses",
-              "url": "https://www.coursera.org/partners/stanford",
-              "snippet": "Explore free online courses from Stanford, covering subjects from computer science to arts & humanities."
-            },
-            {
-              "type": "watch",
-              "title": "Stanford University | 4K Campus Tour",
-              "url": "https://www.youtube.com/watch?v=ststYQuE4hE",
-              "snippet": "A stunning 4K walking tour of the beautiful Stanford University campus, showcasing its architecture and vibrant student life."
-            }
-        ]
-    
-    return [] # Return empty list if no specific logic matches
+    SEARCH RESULTS:
+    {json.dumps(search_results_data)}
+    """
+    try:
+        # Second LLM call to analyze and select the best results
+        analysis_response = model.generate_content(analysis_prompt)
+        final_links = json.loads(analysis_response.text)
+    except (json.JSONDecodeError, ValueError) as e:
+        logging.error(f"Could not parse analysis response: {e}. Cannot provide web context.")
+        final_links = []
+        
+    return final_links
