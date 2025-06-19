@@ -208,50 +208,8 @@ def fetch_web_context_route(current_user_id):
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
 # ... rest of app.py
-#------------------------------------------------------------------------------------------
-# Keep the enhanced fetcher function as a helper
-def fetch_metadata_enhanced(url_to_fetch):
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    driver = None
-    try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
-        driver.get(url_to_fetch)
-        time.sleep(2)
-        soup = BeautifulSoup(driver.page_source, 'lxml')
-        
-        # ... (The metadata extraction logic remains the same)
-        title = (soup.find('meta', property='og:title') or soup.find('title')).get('content', '').strip() or soup.title.string
-        description = (soup.find('meta', property='og:description') or soup.find('meta', attrs={'name': 'description'})).get('content', '')
-        image_tag = soup.find('meta', property='og:image')
-        image_url = image_tag['content'] if image_tag and image_tag.get('content') else None
-        if image_url:
-            image_url = urljoin(url_to_fetch, image_url)
-        
-        return {"title": title, "description": description, "image": image_url}
-    finally:
-        if driver:
-            driver.quit()
 
-# This is the standard, requests-based fetcher to be used as a fallback
-def fetch_metadata_standard(url_to_fetch):
-    headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'}
-    response = requests.get(url_to_fetch, headers=headers, timeout=5, allow_redirects=True)
-    response.raise_for_status()
-    soup = BeautifulSoup(response.content, 'lxml')
-    
-    title = (soup.find('meta', property='og:title') or soup.find('title')).get('content', '').strip() or soup.title.string
-    description = (soup.find('meta', property='og:description') or soup.find('meta', attrs={'name': 'description'})).get('content', '')
-    image_tag = soup.find('meta', property='og:image')
-    image_url = image_tag['content'] if image_tag and image_tag.get('content') else None
-    if image_url:
-        image_url = urljoin(response.url, image_url)
-        
-    return {"title": title, "description": description, "image": image_url}
-
-# Replace your existing /fetch_link_metadata route with this new version
+# Replace your existing /fetch_link_metadata route with this one
 @app.route('/fetch_link_metadata', methods=['GET'])
 @limiter.limit("30 per minute")
 def fetch_link_metadata_route():
@@ -260,20 +218,56 @@ def fetch_link_metadata_route():
         return jsonify({"error": "URL parameter is required"}), 400
 
     try:
-        # --- PRIMARY ATTEMPT: Use the enhanced headless browser ---
-        logging.warning(f"METADATA: Attempting ENHANCED fetch for {url_to_fetch}")
-        metadata = fetch_metadata_enhanced(url_to_fetch)
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        }
+        response = requests.get(url_to_fetch, headers=headers, timeout=5, allow_redirects=True)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # --- Improved Metadata Extraction ---
+        def get_meta_content(property_name, default=None):
+            tag = soup.find('meta', property=property_name)
+            return tag['content'].strip() if tag and tag.get('content') else default
+
+        def get_name_content(name, default=None):
+            tag = soup.find('meta', attrs={'name': name})
+            return tag['content'].strip() if tag and tag.get('content') else default
+        
+        def get_favicon_url():
+            # Look for various icon link types
+            icon_rel = ['apple-touch-icon', 'icon', 'shortcut icon']
+            for rel in icon_rel:
+                link_tag = soup.find('link', rel=rel)
+                if link_tag and link_tag.get('href'):
+                    return link_tag['href']
+            return None
+
+        # Extract with fallbacks
+        title = get_meta_content('og:title', soup.title.string if soup.title else "No Title Found")
+        description = get_meta_content('og:description', get_name_content('description', "No description available."))
+        image_url = get_meta_content('og:image', get_favicon_url())
+
+        # Ensure image URL is absolute
+        if image_url:
+            image_url = urljoin(response.url, image_url)
+
+        metadata = {
+            "title": title,
+            "description": description,
+            "image": image_url
+        }
+        
         return jsonify(metadata)
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to fetch metadata for URL {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not fetch URL content"}), 500
     except Exception as e:
-        # --- FALLBACK: If enhanced fetcher fails, use the standard method ---
-        logging.error(f"ENHANCED fetch failed for {url_to_fetch}: {e}. Trying STANDARD fallback.")
-        try:
-            metadata = fetch_metadata_standard(url_to_fetch)
-            return jsonify(metadata)
-        except Exception as e2:
-            logging.error(f"STANDARD fetch also failed for {url_to_fetch}: {e2}")
-            return jsonify({"error": "Could not retrieve link preview."}), 500
-#------------------------------------------------------------------------------------------
+        logging.error(f"Error parsing metadata for URL {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not parse website metadata"}), 500
+
 
 @app.route('/generate_story_node', methods=['POST'])
 @token_optional
