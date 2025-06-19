@@ -31,20 +31,31 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
         logging.warning(f"Could not parse query generation response: {e}. Using fallback queries.")
         queries = [f"what is {topic}", f"{topic} guide", f"{topic} youtube"]
 
-    # --- Step 2: Execute each search query individually ---
+    # --- Step 2: Execute each search query individually and more cautiously ---
     search_results_urls = {}
+    # A common user agent to make requests look less like a script
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+    
     try:
-        # CORRECTED LOGIC: Loop through each query and call the search function
         for q in queries:
             logging.info(f"Executing search for query: {q}")
             # The search function returns a generator. We'll take the top 5 results.
-            # Adding a short sleep to avoid being blocked by Google.
-            search_results_urls[q] = [url for url in search(q, num_results=5, sleep_interval=1)]
+            # Increased sleep_interval to be less aggressive and added a user_agent.
+            search_results_urls[q] = [url for url in search(
+                query=q, 
+                num_results=5, 
+                sleep_interval=2, # Increased sleep time to 2 seconds
+                user_agent=user_agent
+            )]
     except Exception as e:
+        # This will now catch the "Too Many Requests" error
         logging.error(f"Googlesearch library failed: {e}")
         return []
 
     # --- Step 3: Analyze the URLs to select the best link for each category ---
+    if not search_results_urls:
+        return []
+
     analysis_prompt = f"""
     You are an expert content curator. Based on the original topic "{topic}" and the following list of URLs (grouped by search query), your task is to select the single best link for each of these three categories: 'info', 'read', and 'watch'.
 
