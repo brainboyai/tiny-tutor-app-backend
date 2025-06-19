@@ -1,6 +1,7 @@
 import google.generativeai as genai
 import json
 import logging
+import time # Import the standard time library
 # Use the public 'googlesearch-python' library
 from googlesearch import search
 
@@ -33,18 +34,18 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
 
     # --- Step 2: Execute each search query individually ---
     search_results_urls = {}
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     
     try:
         for q in queries:
             logging.info(f"Executing search for query: {q}")
-            # CORRECTED: The search term 'q' is passed as a positional argument.
-            search_results_urls[q] = [url for url in search(
-                q, # The query itself
-                num_results=5, 
-                sleep_interval=2,
-                user_agent=user_agent
-            )]
+            # CORRECTED: Using the most basic call to search()
+            # Taking the top 3 results for each query.
+            results = [url for url in search(q, num_results=3)]
+            search_results_urls[q] = results
+            
+            # Manually pause for 2 seconds to avoid rate-limiting.
+            time.sleep(2)
+
     except Exception as e:
         logging.error(f"Googlesearch library failed: {e}")
         return []
@@ -68,6 +69,7 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
     {json.dumps(search_results_urls)}
     """
     try:
+        # Second LLM call to analyze and select the best results
         analysis_response = model.generate_content(analysis_prompt)
         clean_analysis_response = analysis_response.text.strip().replace('```json', '').replace('```', '')
         final_links = json.loads(clean_analysis_response)
