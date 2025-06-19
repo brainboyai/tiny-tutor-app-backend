@@ -171,6 +171,51 @@ def generate_explanation_route(current_user_id):
     except Exception as e:
         app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
         return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
+    
+@app.route('/fetch_web_context', methods=['POST'])
+@token_optional
+@limiter.limit(generation_limit)
+def fetch_web_context_route(current_user_id):
+    """
+    Fetches relevant web links and snippets for a given topic.
+    """
+    try:
+        topic = request.json.get('topic', '').strip().lower()
+        if not topic:
+            return jsonify({"error": "Topic is required"}), 400
+
+        # This is where the logic to determine the best search queries goes.
+        # For a topic like "protein foods", we can search for shopping, recipes, and info.
+        # This is a simplified example based on the search results.
+        
+        web_context = []
+        if "protein" in topic and "food" in topic:
+             web_context = [
+                {
+                  "type": "service",
+                  "title": "High-Protein-Foods - BigBasket",
+                  "url": "https://www.bigbasket.com/ss/high-protein-foods/",
+                  "snippet": "A wide variety of high-protein foods including atta, quinoa, peanut butter, noodles, and more available for online purchase."
+                },
+                {
+                  "type": "read",
+                  "title": "30 High Protein Snacks That Are Healthy and Portable",
+                  "url": "https://www.healthline.com/nutrition/healthy-high-protein-snacks",
+                  "snippet": "A comprehensive list of healthy, high-protein snacks including jerky, trail mix, Greek yogurt, hard-boiled eggs, and tuna."
+                },
+                {
+                  "type": "watch",
+                  "title": "5 High-Protein Dinner Recipes You Need to Try",
+                  "url": "https://www.youtube.com/watch?v=841zkXFTvvQ&vl=en",
+                  "snippet": "Quick, protein-packed dinner ideas perfect for busy weeknights, from Thai Basil Chicken to Sheet Pan Shrimp Fajitas."
+                }
+             ]
+
+        return jsonify({"topic": topic, "web_context": web_context})
+
+    except Exception as e:
+        app.logger.error(f"Error in /fetch_web_context for topic '{topic}': {e}")
+        return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
 @app.route('/generate_story_node', methods=['POST'])
 @token_optional
