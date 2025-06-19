@@ -6,8 +6,8 @@ from googlesearch import search
 
 def get_web_context(topic: str, model: genai.GenerativeModel):
     """
-    Analyzes a topic, generates search queries, executes them, analyzes the results,
-    and returns a structured list of the best web links.
+    Analyzes a topic, generates search queries, executes them using the googlesearch library,
+    and then analyzes the resulting URLs to return a structured list of the best links.
     """
     
     # --- Step 1: Generate optimal search queries for the given topic ---
@@ -21,9 +21,9 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
     Example for topic "React.js": {{"queries":["what is react js","react js tutorial for beginners","react js crash course youtube"]}}
     """
     try:
-        # First LLM call to get the best search terms
         query_response = model.generate_content(query_generation_prompt)
-        queries_dict = json.loads(query_response.text)
+        clean_response = query_response.text.strip().replace('```json', '').replace('```', '')
+        queries_dict = json.loads(clean_response)
         queries = queries_dict.get("queries", [])
         if not queries:
             raise ValueError("Query generation failed.")
@@ -31,31 +31,39 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
         logging.warning(f"Could not parse query generation response: {e}. Using fallback queries.")
         queries = [f"what is {topic}", f"{topic} guide", f"{topic} youtube"]
 
-    # --- Step 2: Execute the search queries ---
+    # --- Step 2: Execute each search query individually ---
+    search_results_urls = {}
     try:
-        search_results_data = search(queries=queries)
+        # CORRECTED LOGIC: Loop through each query and call the search function
+        for q in queries:
+            logging.info(f"Executing search for query: {q}")
+            # The search function returns a generator. We'll take the top 5 results.
+            # Adding a short sleep to avoid being blocked by Google.
+            search_results_urls[q] = [url for url in search(q, num_results=5, sleep_interval=1)]
     except Exception as e:
-        logging.error(f"Google Search tool failed: {e}")
-        return [] # Return empty if the search tool itself fails
+        logging.error(f"Googlesearch library failed: {e}")
+        return []
 
-    # --- Step 3: Analyze search results to select the best link for each category ---
+    # --- Step 3: Analyze the URLs to select the best link for each category ---
     analysis_prompt = f"""
-    You are an expert content curator. Based on the original topic "{topic}" and the following Google search results, your task is to select the single best link for each of these three categories: 'info', 'read', and 'watch'.
+    You are an expert content curator. Based on the original topic "{topic}" and the following list of URLs (grouped by search query), your task is to select the single best link for each of these three categories: 'info', 'read', and 'watch'.
 
     - 'info': The best official website, documentation, or encyclopedic page.
     - 'read': The best article, guide, or in-depth tutorial.
-    - 'watch': The best introductory video.
+    - 'watch': The best introductory video (must be a YouTube link).
 
-    Return your answer as a single, raw, minified JSON object which is a list of exactly three dictionaries. Each dictionary must have "type", "title", "snippet", and "url" keys.
-    Example: [{{"type":"info","title":"React","url":"https://react.dev/","snippet":"The official documentation for React..."}}, ...]
+    Infer the best link for each category from the URLs provided. Return your answer as a single, raw, minified JSON object which is a list of exactly three dictionaries. Each dictionary must have "type", "title", "snippet", and "url" keys. Create a concise title and a helpful one-sentence snippet for each selected URL.
     
-    SEARCH RESULTS:
-    {json.dumps(search_results_data)}
+    Example response format: [{{"type":"info","title":"React Official Site","url":"https://react.dev/","snippet":"The official documentation and homepage for React."}}, ...]
+    
+    SEARCH RESULT URLs:
+    {json.dumps(search_results_urls)}
     """
     try:
         # Second LLM call to analyze and select the best results
         analysis_response = model.generate_content(analysis_prompt)
-        final_links = json.loads(analysis_response.text)
+        clean_analysis_response = analysis_response.text.strip().replace('```json', '').replace('```', '')
+        final_links = json.loads(clean_analysis_response)
     except (json.JSONDecodeError, ValueError) as e:
         logging.error(f"Could not parse analysis response: {e}. Cannot provide web context.")
         final_links = []
