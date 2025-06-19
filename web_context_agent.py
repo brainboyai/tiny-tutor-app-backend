@@ -31,24 +31,21 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
         logging.warning(f"Could not parse query generation response: {e}. Using fallback queries.")
         queries = [f"what is {topic}", f"{topic} guide", f"{topic} youtube"]
 
-    # --- Step 2: Execute each search query individually and more cautiously ---
+    # --- Step 2: Execute each search query individually ---
     search_results_urls = {}
-    # A common user agent to make requests look less like a script
     user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
     
     try:
         for q in queries:
             logging.info(f"Executing search for query: {q}")
-            # The search function returns a generator. We'll take the top 5 results.
-            # Increased sleep_interval to be less aggressive and added a user_agent.
+            # CORRECTED: The search term 'q' is passed as a positional argument.
             search_results_urls[q] = [url for url in search(
-                query=q, 
+                q, # The query itself
                 num_results=5, 
-                sleep_interval=2, # Increased sleep time to 2 seconds
+                sleep_interval=2,
                 user_agent=user_agent
             )]
     except Exception as e:
-        # This will now catch the "Too Many Requests" error
         logging.error(f"Googlesearch library failed: {e}")
         return []
 
@@ -71,7 +68,6 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
     {json.dumps(search_results_urls)}
     """
     try:
-        # Second LLM call to analyze and select the best results
         analysis_response = model.generate_content(analysis_prompt)
         clean_analysis_response = analysis_response.text.strip().replace('```json', '').replace('```', '')
         final_links = json.loads(clean_analysis_response)
