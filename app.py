@@ -11,10 +11,8 @@ import jwt
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+import logging
+from urllib.parse import quote
 
 import firebase_admin
 import google.generativeai as genai
@@ -209,64 +207,37 @@ def fetch_web_context_route(current_user_id):
 
 # ... rest of app.py
 
-# Replace your existing /fetch_link_metadata route with this one
+# ENTIRELY REPLACE the old /fetch_link_metadata route and its helpers with this:
 @app.route('/fetch_link_metadata', methods=['GET'])
-@limiter.limit("30 per minute")
+@limiter.limit("60 per minute") # We can allow more requests now as it's faster
 def fetch_link_metadata_route():
     url_to_fetch = request.args.get('url')
     if not url_to_fetch:
         return jsonify({"error": "URL parameter is required"}), 400
 
+    # Construct the URL for the Microlink API
+    # The free tier does not require an API key.
+    microlink_api_url = f"https://api.microlink.io/?url={quote(url_to_fetch)}"
+    
     try:
-        headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
-        }
-        response = requests.get(url_to_fetch, headers=headers, timeout=5, allow_redirects=True)
+        logging.warning(f"Fetching metadata via Microlink for: {url_to_fetch}")
+        response = requests.get(microlink_api_url, timeout=10)
         response.raise_for_status()
-
-        soup = BeautifulSoup(response.content, 'lxml')
         
-        # --- Improved Metadata Extraction ---
-        def get_meta_content(property_name, default=None):
-            tag = soup.find('meta', property=property_name)
-            return tag['content'].strip() if tag and tag.get('content') else default
-
-        def get_name_content(name, default=None):
-            tag = soup.find('meta', attrs={'name': name})
-            return tag['content'].strip() if tag and tag.get('content') else default
+        data = response.json().get('data', {})
         
-        def get_favicon_url():
-            # Look for various icon link types
-            icon_rel = ['apple-touch-icon', 'icon', 'shortcut icon']
-            for rel in icon_rel:
-                link_tag = soup.find('link', rel=rel)
-                if link_tag and link_tag.get('href'):
-                    return link_tag['href']
-            return None
-
-        # Extract with fallbacks
-        title = get_meta_content('og:title', soup.title.string if soup.title else "No Title Found")
-        description = get_meta_content('og:description', get_name_content('description', "No description available."))
-        image_url = get_meta_content('og:image', get_favicon_url())
-
-        # Ensure image URL is absolute
-        if image_url:
-            image_url = urljoin(response.url, image_url)
-
+        # Format the response to match what our frontend expects
         metadata = {
-            "title": title,
-            "description": description,
-            "image": image_url
+            "title": data.get('title'),
+            "description": data.get('description'),
+            "image": data.get('image', {}).get('url') if data.get('image') else None
         }
         
         return jsonify(metadata)
-
+        
     except requests.exceptions.RequestException as e:
-        logging.error(f"Failed to fetch metadata for URL {url_to_fetch}: {e}")
-        return jsonify({"error": "Could not fetch URL content"}), 500
-    except Exception as e:
-        logging.error(f"Error parsing metadata for URL {url_to_fetch}: {e}")
-        return jsonify({"error": "Could not parse website metadata"}), 500
+        logging.error(f"Microlink API fetch failed for {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not fetch link preview"}), 500
 
 
 @app.route('/generate_story_node', methods=['POST'])
