@@ -1,7 +1,7 @@
 import google.generativeai as genai
 import json
 import logging
-from Google Search import search
+from google_search import search
 
 def get_web_context(topic: str, model: genai.GenerativeModel):
     """
