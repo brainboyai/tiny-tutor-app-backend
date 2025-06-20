@@ -3,45 +3,41 @@
 import google.generativeai as genai
 import logging
 import re
+import requests # Add requests import
 from googlesearch import search # Make sure this import is here
 
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
-# In explore_generator.py, replace the old image search function with this one
-
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
     """
-    Performs a Google search to find relevant image URLs for a topic.
-    This corrected version removes the faulty filter.
+    Performs a Google Image Search using the official API.
     """
-    image_urls = []
-    # Use a query that's more likely to return pages with high-quality images.
-    query = f'"{topic}" high-quality photo landmark wallpaper'
+    api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
+    search_engine_id = os.getenv("SEARCH_ENGINE_ID")
     
+    if not api_key or not search_engine_id:
+        logging.error("GOOGLE_SEARCH_API_KEY or SEARCH_ENGINE_ID not set for image search.")
+        return []
+
+    url = "https://www.googleapis.com/customsearch/v1"
+    params = {
+        'key': api_key,
+        'cx': search_engine_id,
+        'q': f'"{topic}" high-quality photo',
+        'searchType': 'image', # Specify image search
+        'num': num_images
+    }
     try:
-        # Search for a few results to increase our chances.
-        search_results = search(query, num_results=5, lang="en")
-        
-        # --- FIX: The overly aggressive filter has been REMOVED. ---
-        # We will now correctly process the search result URLs.
-        
-        count = 0
-        for url in search_results:
-            # We will still skip the generic placeholder youtube links
-            if "youtube.com" in url:
-                continue
-            
-            image_urls.append(url)
-            count += 1
-            if count >= num_images:
-                break # Stop once we have enough images
-                    
-        logging.warning(f"Found {len(image_urls)} potential image URLs for topic '{topic}': {image_urls}")
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        search_results = response.json()
+        # Directly get the link to the image file
+        image_urls = [item['link'] for item in search_results.get('items', [])]
+        logging.warning(f"Found {len(image_urls)} image URLs for topic '{topic}': {image_urls}")
         return image_urls
-        
-    except Exception as e:
-        logging.error(f"Error while searching for images for topic '{topic}': {e}")
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Google Image Search API request failed for topic '{topic}': {e}")
         return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
