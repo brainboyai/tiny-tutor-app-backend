@@ -11,7 +11,8 @@ import jwt
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
-
+import logging
+from logging.handlers import RotatingFileHandler
 
 import firebase_admin
 import google.generativeai as genai
@@ -22,13 +23,10 @@ from flask_cors import CORS
 from flask_limiter import Limiter
 from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
-from google.api_core import exceptions as google_exceptions
 from google.api_core import exceptions
-from web_context_agent import get_web_context # Import the new agent
 
-
-# --- Import all modules ---
-# (No changes here)
+# --- Module Imports from your project ---
+from web_context_agent import get_web_context
 from game_generator import generate_game_for_topic
 from story_generator import generate_story_node
 from explore_generator import generate_explanation, generate_quiz_from_text
@@ -40,24 +38,17 @@ from firestore_handler import (
     sanitize_word_for_id
 )
 
-# === ADD THIS NEW LOGGING CONFIGURATION BLOCK ===
-import logging
-from logging.handlers import RotatingFileHandler
-
-
 load_dotenv()
-app = Flask(__name__)
+app = Flask(__name__) # The app is created HERE
 
-# === CORRECTED: Logging configuration now comes AFTER app creation ===
-# Replace 'your-username' with 'aditya071'
+# === Logging configuration now comes AFTER app creation ===
 log_file_path = '/home/aditya071/tiny-tutor-app-backend/app.log'
 handler = RotatingFileHandler(log_file_path, maxBytes=100000, backupCount=3)
-handler.setLevel(logging.WARNING)
+handler.setLevel(logging.WARNING) # Set to WARNING to capture important logs
 formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 handler.setFormatter(formatter)
 app.logger.addHandler(handler)
-# === END OF LOGGING CONFIGURATION BLOCK ===
-
+# === End of Logging Block ===
 CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.netlify.app", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-User-API-Key"])
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
