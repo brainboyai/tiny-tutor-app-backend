@@ -12,34 +12,40 @@ gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
     """
-    Performs a Google Image Search using the official API.
+    Performs a reliable image search using Google's Safe Image Search endpoint.
+    This method is more direct and avoids the need for API keys for images.
     """
-    api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
-    search_engine_id = os.getenv("SEARCH_ENGINE_ID")
+    # URL-encode the topic for the query
+    query = quote_plus(f'"{topic}" high-quality photo')
+    # Use Google's public, free, safe image search endpoint
+    url = f"https://www.google.com/search?q={query}&tbm=isch&safe=active"
     
-    if not api_key or not search_engine_id:
-        logging.error("GOOGLE_SEARCH_API_KEY or SEARCH_ENGINE_ID not set for image search.")
+    headers = {
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
+    }
+
+    try:
+        response = requests.get(url, headers=headers)
+        response.raise_for_status()
+
+        # This is a simple but effective way to find image URLs in the HTML response
+        # It looks for the 'src=' attribute on image tags.
+        image_urls = [item.split('src="')[1].split('"')[0] for item in response.text.split('<img') if 'src="' in item]
+        
+        # Filter out small or irrelevant images like data URIs or Google logos
+        valid_images = [
+            u for u in image_urls 
+            if u.startswith('https://') and not 'google.com' in u and not u.startswith('data:image')
+        ]
+        
+        final_images = valid_images[:num_images]
+        logging.warning(f"Found {len(final_images)} valid image URLs for topic '{topic}': {final_images}")
+        return final_images
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Image search request failed for topic '{topic}': {e}")
         return []
 
-    url = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        'key': api_key,
-        'cx': search_engine_id,
-        'q': f'"{topic}" high-quality photo',
-        'searchType': 'image', # Specify image search
-        'num': num_images
-    }
-    try:
-        response = requests.get(url, params=params)
-        response.raise_for_status()
-        search_results = response.json()
-        # Directly get the link to the image file
-        image_urls = [item['link'] for item in search_results.get('items', [])]
-        logging.warning(f"Found {len(image_urls)} image URLs for topic '{topic}': {image_urls}")
-        return image_urls
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Google Image Search API request failed for topic '{topic}': {e}")
-        return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
