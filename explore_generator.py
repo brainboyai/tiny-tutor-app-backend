@@ -2,9 +2,10 @@
 
 import google.generativeai as genai
 import logging
-import re
-import requests # Add requests import
-from googlesearch import search # Make sure this import is here
+import os
+import requests
+import json
+import time
 
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
