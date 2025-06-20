@@ -14,6 +14,7 @@ from urllib.parse import urlparse, urljoin
 import logging
 from urllib.parse import quote
 
+
 import firebase_admin
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -140,30 +141,6 @@ def delete_collection(coll_ref, batch_size):
     if deleted >= batch_size:
         return delete_collection(coll_ref, batch_size)
     
-
-def find_topic_image(topic: str):
-    """
-    Performs a dedicated Google Image search to find a single,
-    high-quality, relevant image URL for a given topic.
-    """
-    try:
-        # Use a targeted query for better results
-        image_query = f"{topic} high quality photo"
-        logging.warning(f"Searching for image with query: {image_query}")
-        
-        # The 'images' parameter in the search tool can be used for this
-        # For this example, we'll simulate fetching the first result from a standard search
-        # Note: A dedicated image search tool or API would be even better in a production system.
-        results = [url for url in search(image_query, num_results=1, sleep_interval=1)]
-        
-        if results:
-            logging.warning(f"Found image for '{topic}': {results[0]}")
-            return results[0]
-            
-    except Exception as e:
-        logging.error(f"Image search failed for topic '{topic}': {e}")
-    
-    return None
 
 # NEW: Global handler for 429 Rate Limit errors
 @app.errorhandler(429)
