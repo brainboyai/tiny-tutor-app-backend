@@ -40,16 +40,7 @@ from firestore_handler import (
 
 load_dotenv()
 app = Flask(__name__) # The app is created HERE
-
-# === Logging configuration now comes AFTER app creation ===
-log_file_path = '/home/aditya071/tiny-tutor-app-backend/app.log'
-handler = RotatingFileHandler(log_file_path, maxBytes=100000, backupCount=3)
-handler.setLevel(logging.WARNING) # Set to WARNING to capture important logs
-formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-handler.setFormatter(formatter)
-app.logger.addHandler(handler)
-# === End of Logging Block ===
-CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.netlify.app", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-User-API-Key"])
+CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend1.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-User-API-Key"])
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
