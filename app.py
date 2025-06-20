@@ -217,37 +217,6 @@ def fetch_web_context_route(current_user_id):
 
 # ... rest of app.py
 
-# ENTIRELY REPLACE the old /fetch_link_metadata route and its helpers with this:
-@app.route('/fetch_link_metadata', methods=['GET'])
-@limiter.limit("60 per minute") # We can allow more requests now as it's faster
-def fetch_link_metadata_route():
-    url_to_fetch = request.args.get('url')
-    if not url_to_fetch:
-        return jsonify({"error": "URL parameter is required"}), 400
-
-    # Construct the URL for the Microlink API
-    # The free tier does not require an API key.
-    microlink_api_url = f"https://api.microlink.io/?url={quote(url_to_fetch)}"
-    
-    try:
-        logging.warning(f"Fetching metadata via Microlink for: {url_to_fetch}")
-        response = requests.get(microlink_api_url, timeout=10)
-        response.raise_for_status()
-        
-        data = response.json().get('data', {})
-        
-        # Format the response to match what our frontend expects
-        metadata = {
-            "title": data.get('title'),
-            "description": data.get('description'),
-            "image": data.get('image', {}).get('url') if data.get('image') else None
-        }
-        
-        return jsonify(metadata)
-        
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Microlink API fetch failed for {url_to_fetch}: {e}")
-        return jsonify({"error": "Could not fetch link preview"}), 500
 
 
 @app.route('/generate_story_node', methods=['POST'])
