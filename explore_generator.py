@@ -14,11 +14,12 @@ gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
     """
-    Performs a reliable image search by parsing the HTML with BeautifulSoup
-    to find high-quality, relevant images.
+    Performs an advanced image search by extracting hidden data from the 
+    Google Images HTML response, mimicking how modern AI services work.
     """
-    logging.warning(f"--- Starting image search for topic: '{topic}' ---")
-    query = quote_plus(f'"{topic}" high-quality photo')
+    logging.warning(f"--- Starting ADVANCED image search for topic: '{topic}' ---")
+    
+    query = quote_plus(f'"{topic}" photo')
     url = f"https://www.google.com/search?q={query}&tbm=isch&safe=active"
     
     headers = {
@@ -30,33 +31,25 @@ def get_image_urls_for_topic(topic: str, num_images: int = 2):
         response.raise_for_status()
         logging.warning("Successfully fetched HTML content from Google Image Search.")
 
-        # --- Use BeautifulSoup to parse the HTML ---
-        soup = BeautifulSoup(response.content, 'lxml')
+        # This powerful regular expression finds the high-resolution thumbnail URLs
+        # hidden inside the page's script tags. This is the key to getting good images.
+        all_image_urls = re.findall(r'\["https://(encrypted-tbn0\.gstatic\.com/images\?q=tbn:.*?)"', response.text)
         
-        image_tags = soup.find_all('img')
-        image_urls = []
-        for img in image_tags:
-            # Get the source URL from the 'src' attribute
-            if 'src' in img.attrs:
-                image_urls.append(img['src'])
+        if not all_image_urls:
+            logging.error("Could not find image data using advanced parsing. The page structure may have changed.")
+            return []
+            
+        # Reconstruct the full, valid URLs
+        valid_images = ["https://" + url for url in all_image_urls]
         
-        logging.warning(f"Found {len(image_urls)} potential image sources with BeautifulSoup.")
-        
-        # --- Improved Filtering ---
-        # Filter out small data URIs and irrelevant Google/Gstatic icons.
-        valid_images = [
-            u for u in image_urls 
-            if u.startswith('https://') and 'gstatic' not in u
-        ]
-        
-        logging.warning(f"Filtered down to {len(valid_images)} valid https images.")
+        logging.warning(f"Found {len(valid_images)} valid images using advanced parsing.")
         
         final_images = valid_images[:num_images]
         logging.warning(f"--- Final selected images for '{topic}': {final_images} ---")
         return final_images
 
     except Exception as e:
-        logging.error(f"An UNEXPECTED error occurred during image search for topic '{topic}': {e}")
+        logging.error(f"An UNEXPECTED error occurred during advanced image search for topic '{topic}': {e}")
         return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
