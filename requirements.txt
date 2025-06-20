@@ -1,18 +1,18 @@
-# Flask and Web Server
-Flask==3.1.1
-gunicorn==23.0.0
-flask-cors==6.0.0
-Flask-Limiter==3.0.0
+Flask and Web Server
+Flask==3.0.3
+gunicorn==22.0.0
+flask-cors==4.0.1
+Flask-Limiter==3.7.0
 
-# Google & Firebase
-firebase-admin==6.8.0
-google-generativeai==0.8.5
-google-api-python-client==2.169.0
+Google & Firebase
+firebase-admin==6.5.0
+google-generativeai==0.8.0
+google-api-python-client==2.136.0
 google-auth-httplib2==0.2.0
-
-# Utilities
-python-dotenv==1.1.0
-PyJWT==2.10.1
 requests==2.32.3
+
+Utilities
+python-dotenv==1.0.1
+PyJWT==2.8.0
 beautifulsoup4==4.12.3
 lxml==5.2.2
