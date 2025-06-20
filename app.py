@@ -58,7 +58,7 @@ handler.setFormatter(formatter)
 app.logger.addHandler(handler)
 # === END OF LOGGING CONFIGURATION BLOCK ===
 
-CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.onrender.com", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-User-API-Key"])
+CORS(app, resources={r"/*": {"origins": ["https://tiny-tutor-app-frontend.netlify.app", "http://localhost:5173", "http://127.0.0.1:5173"]}}, supports_credentials=True, expose_headers=["Content-Type", "Authorization"], allow_headers=["Content-Type", "Authorization", "X-Requested-With", "X-User-API-Key"])
 app.config['JWT_SECRET_KEY'] = os.getenv('JWT_SECRET_KEY', 'fallback_secret_key_for_dev_only_change_me')
 app.config['JWT_ACCESS_TOKEN_EXPIRES'] = timedelta(hours=24)
 
