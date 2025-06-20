@@ -11,10 +11,7 @@ import jwt
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
-from selenium import webdriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
+
 
 import firebase_admin
 import google.generativeai as genai
@@ -29,6 +26,7 @@ from google.api_core import exceptions as google_exceptions
 from google.api_core import exceptions
 from web_context_agent import get_web_context # Import the new agent
 
+
 # --- Import all modules ---
 # (No changes here)
 from game_generator import generate_game_for_topic
@@ -41,6 +39,21 @@ from firestore_handler import (
     save_quiz_attempt_to_db,
     sanitize_word_for_id
 )
+
+# === ADD THIS NEW LOGGING CONFIGURATION BLOCK ===
+import logging
+from logging.handlers import RotatingFileHandler
+
+# Configure logging to write to a file
+# Replace 'your-username' with your actual PythonAnywhere username
+log_file_path = '/home/aditya071/tiny-tutor-app-backend/app.log'
+handler = RotatingFileHandler(log_file_path, maxBytes=100000, backupCount=3)
+# The logging level 'WARNING' will capture our "AGENT LOG" and "Found image" messages
+handler.setLevel(logging.WARNING)
+formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+handler.setFormatter(formatter)
+app.logger.addHandler(handler)
+# === END OF LOGGING CONFIGURATION BLOCK ===
 
 load_dotenv()
 app = Flask(__name__)
