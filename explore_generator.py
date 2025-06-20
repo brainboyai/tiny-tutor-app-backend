@@ -1,56 +1,47 @@
-# explore_generator.py
-
 import google.generativeai as genai
 import logging
-import os
 import requests
 import json
-import re  # <--- THIS IS THE FIX
+import os
 import time
 from urllib.parse import quote_plus
-from bs4 import BeautifulSoup # <-- Add BeautifulSoup import
 
-# FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
+
 
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
     """
-    Performs an advanced image search by extracting hidden data from the 
-    Google Images HTML response, mimicking how modern AI services work.
+    Performs a reliable image search using the official Pexels API.
+    This is the definitive, stable method for getting images.
     """
-    logging.warning(f"--- Starting ADVANCED image search for topic: '{topic}' ---")
+    logging.warning(f"--- Starting Pexels API image search for topic: '{topic}' ---")
     
-    query = quote_plus(f'"{topic}" photo')
-    url = f"https://www.google.com/search?q={query}&tbm=isch&safe=active"
-    
-    headers = {
-        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
-    }
+    api_key = os.getenv("PEXELS_API_KEY")
+    if not api_key:
+        logging.error("PEXELS_API_KEY is not set. Cannot search for images.")
+        return []
 
     try:
+        headers = {"Authorization": api_key}
+        query = quote_plus(topic)
+        url = f"https://api.pexels.com/v1/search?query={query}&per_page={num_images}"
+        
         response = requests.get(url, headers=headers)
         response.raise_for_status()
-        logging.warning("Successfully fetched HTML content from Google Image Search.")
+        
+        data = response.json()
+        
+        # Extract the 'large' image URL from each photo result
+        image_urls = [photo['src']['large'] for photo in data.get('photos', [])]
+        
+        logging.warning(f"--- Found {len(image_urls)} images from Pexels for '{topic}': {image_urls} ---")
+        return image_urls
 
-        # This powerful regular expression finds the high-resolution thumbnail URLs
-        # hidden inside the page's script tags. This is the key to getting good images.
-        all_image_urls = re.findall(r'\["https://(encrypted-tbn0\.gstatic\.com/images\?q=tbn:.*?)"', response.text)
-        
-        if not all_image_urls:
-            logging.error("Could not find image data using advanced parsing. The page structure may have changed.")
-            return []
-            
-        # Reconstruct the full, valid URLs
-        valid_images = ["https://" + url for url in all_image_urls]
-        
-        logging.warning(f"Found {len(valid_images)} valid images using advanced parsing.")
-        
-        final_images = valid_images[:num_images]
-        logging.warning(f"--- Final selected images for '{topic}': {final_images} ---")
-        return final_images
-
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Pexels API request FAILED for topic '{topic}': {e}")
+        return []
     except Exception as e:
-        logging.error(f"An UNEXPECTED error occurred during advanced image search for topic '{topic}': {e}")
+        logging.error(f"An UNEXPECTED error occurred during Pexels search for topic '{topic}': {e}")
         return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
