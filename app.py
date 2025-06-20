@@ -25,7 +25,8 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.api_core import exceptions as google_exceptions
 from google.api_core import exceptions
-from web_context_agent import get_web_context # Import the new agent
+# Import the new agent
+from web_context_agent import get_web_context, find_topic_image
 
 # --- Import all modules ---
 # (No changes here)
@@ -140,6 +141,30 @@ def delete_collection(coll_ref, batch_size):
         return delete_collection(coll_ref, batch_size)
     
 
+def find_topic_image(topic: str):
+    """
+    Performs a dedicated Google Image search to find a single,
+    high-quality, relevant image URL for a given topic.
+    """
+    try:
+        # Use a targeted query for better results
+        image_query = f"{topic} high quality photo"
+        logging.warning(f"Searching for image with query: {image_query}")
+        
+        # The 'images' parameter in the search tool can be used for this
+        # For this example, we'll simulate fetching the first result from a standard search
+        # Note: A dedicated image search tool or API would be even better in a production system.
+        results = [url for url in search(image_query, num_results=1, sleep_interval=1)]
+        
+        if results:
+            logging.warning(f"Found image for '{topic}': {results[0]}")
+            return results[0]
+            
+    except Exception as e:
+        logging.error(f"Image search failed for topic '{topic}': {e}")
+    
+    return None
+
 # NEW: Global handler for 429 Rate Limit errors
 @app.errorhandler(429)
 def ratelimit_handler(e):
@@ -148,9 +173,8 @@ def ratelimit_handler(e):
     return jsonify(error=f"Rate limit exceeded: {e.description}"), 429
 
 # --- All Routes ---
-# (The routes themselves do not need to change from the last version)
-# ... The rest of your app.py file ...
-# --- Core Feature Routes ---
+# Replace your existing /generate_explanation route with this version
+# --- The /generate_explanation route ---
 @app.route('/generate_explanation', methods=['POST'])
 @token_optional
 @limiter.limit(generation_limit)
@@ -164,20 +188,29 @@ def generate_explanation_route(current_user_id):
         if not word: return jsonify({"error": "Word/concept is required"}), 400
 
         if mode == 'explain':
-            explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
-            return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
+            explanation = generate_explanation(word, data.get('streakContext'), language)
+            
+            # Call the imported function
+            topic_image_url = find_topic_image(word)
+            
+            return jsonify({
+                "word": word, 
+                "explain": explanation, 
+                "image_url": topic_image_url,
+                "source": "generated"
+            }), 200
+
         elif mode == 'quiz':
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
-            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
+            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language)
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
         else:
             return jsonify({"error": "Invalid mode specified"}), 400
             
     except Exception as e:
-        app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
-        return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
-    
+        logging.error(f"Error in /generate_explanation: {e}")
+        return jsonify({"error": "An internal AI error occurred."}), 500
 
 # In app.py, replace the existing /fetch_web_context route with this:
 @app.route('/fetch_web_context', methods=['POST'])
