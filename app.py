@@ -440,6 +440,11 @@ def delete_account_route(current_user_id):
         app.logger.error(f"Error deleting account for user {current_user_id}: {e}")
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
+@app.route('/')
+def index():
+    """A simple route to confirm the API is running."""
+    return jsonify({"status": "ok", "message": "Tiny Tutor AI backend is running."})
+
 @app.route('/signup', methods=['POST'])
 @limiter.limit("5 per hour")
 def signup_user():
