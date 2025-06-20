@@ -4,13 +4,13 @@ import logging
 import os
 import requests
 
-def _perform_Google Search(query: str):
+def _perform_google_search(query: str):
     """Helper function to call the Google Custom Search API."""
-    api_key = os.getenv("Google Search_API_KEY")
+    api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
     search_engine_id = os.getenv("SEARCH_ENGINE_ID")
     
     if not api_key or not search_engine_id:
-        logging.error("Google Search_API_KEY or SEARCH_ENGINE_ID are not set in the environment.")
+        logging.error("GOOGLE_SEARCH_API_KEY or SEARCH_ENGINE_ID are not set in the environment.")
         return []
 
     url = "https://www.googleapis.com/customsearch/v1"
@@ -41,15 +41,15 @@ def get_web_context(topic: str, model: genai.GenerativeModel):
     """
     try:
         query_response = model.generate_content(query_generation_prompt)
-        # Use .get with a fallback to prevent errors if the key doesn't exist
         queries_dict = json.loads(query_response.text.strip().replace('```json', '').replace('```', ''))
         query = queries_dict.get("query", f"{topic} official site and youtube guide")
     except (json.JSONDecodeError, ValueError, AttributeError):
-        # Fallback if AI response is not valid JSON
         query = f"{topic} official site and youtube guide"
     
     logging.warning(f"AGENT LOG: Using query for '{topic}': '{query}'")
-    search_results_urls = _perform_Google Search(query)
+    
+    # This now correctly calls our helper function that uses the official API
+    search_results_urls = _perform_google_search(query)
     
     if not search_results_urls:
         return []
