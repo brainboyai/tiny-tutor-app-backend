@@ -4,28 +4,6 @@ import logging
 import time
 from googlesearch import search
 
-def find_topic_image(topic: str):
-    """
-    Performs a dedicated Google Image search to find a single,
-    high-quality, relevant image URL for a given topic.
-    """
-    try:
-        # A targeted query for a high-quality, relevant image
-        image_query = f"{topic} high resolution photo"
-        logging.warning(f"AGENT: Searching for image with query: '{image_query}'")
-        
-        # We'll take the first result from the search
-        results = [url for url in search(image_query, num_results=1, sleep_interval=1)]
-        
-        if results:
-            logging.warning(f"AGENT: Found image for '{topic}': {results[0]}")
-            return results[0]
-            
-    except Exception as e:
-        logging.error(f"AGENT: Image search failed for topic '{topic}': {e}")
-    
-    return None
-
 def get_web_context(topic: str, model: genai.GenerativeModel):
     """
     Analyzes a topic, generates search queries, executes them, and returns a structured

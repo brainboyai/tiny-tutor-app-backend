@@ -11,9 +11,10 @@ import jwt
 import requests
 from bs4 import BeautifulSoup
 from urllib.parse import urlparse, urljoin
-import logging
-from urllib.parse import quote
-
+from selenium import webdriver
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.chrome.options import Options
+from webdriver_manager.chrome import ChromeDriverManager
 
 import firebase_admin
 import google.generativeai as genai
@@ -26,8 +27,7 @@ from flask_limiter.util import get_remote_address
 from werkzeug.security import generate_password_hash, check_password_hash
 from google.api_core import exceptions as google_exceptions
 from google.api_core import exceptions
-# Import the new agent
-from web_context_agent import get_web_context, find_topic_image
+from web_context_agent import get_web_context # Import the new agent
 
 # --- Import all modules ---
 # (No changes here)
@@ -150,8 +150,9 @@ def ratelimit_handler(e):
     return jsonify(error=f"Rate limit exceeded: {e.description}"), 429
 
 # --- All Routes ---
-# Replace your existing /generate_explanation route with this version
-# --- The /generate_explanation route ---
+# (The routes themselves do not need to change from the last version)
+# ... The rest of your app.py file ...
+# --- Core Feature Routes ---
 @app.route('/generate_explanation', methods=['POST'])
 @token_optional
 @limiter.limit(generation_limit)
@@ -165,29 +166,20 @@ def generate_explanation_route(current_user_id):
         if not word: return jsonify({"error": "Word/concept is required"}), 400
 
         if mode == 'explain':
-            explanation = generate_explanation(word, data.get('streakContext'), language)
-            
-            # Call the imported function
-            topic_image_url = find_topic_image(word)
-            
-            return jsonify({
-                "word": word, 
-                "explain": explanation, 
-                "image_url": topic_image_url,
-                "source": "generated"
-            }), 200
-
+            explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
+            return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
         elif mode == 'quiz':
             explanation_text = data.get('explanation_text')
             if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
-            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language)
+            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
         else:
             return jsonify({"error": "Invalid mode specified"}), 400
             
     except Exception as e:
-        logging.error(f"Error in /generate_explanation: {e}")
-        return jsonify({"error": "An internal AI error occurred."}), 500
+        app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
+        return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
+    
 
 # In app.py, replace the existing /fetch_web_context route with this:
 @app.route('/fetch_web_context', methods=['POST'])
@@ -217,6 +209,64 @@ def fetch_web_context_route(current_user_id):
 
 # ... rest of app.py
 
+# Replace your existing /fetch_link_metadata route with this one
+@app.route('/fetch_link_metadata', methods=['GET'])
+@limiter.limit("30 per minute")
+def fetch_link_metadata_route():
+    url_to_fetch = request.args.get('url')
+    if not url_to_fetch:
+        return jsonify({"error": "URL parameter is required"}), 400
+
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36'
+        }
+        response = requests.get(url_to_fetch, headers=headers, timeout=5, allow_redirects=True)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, 'lxml')
+        
+        # --- Improved Metadata Extraction ---
+        def get_meta_content(property_name, default=None):
+            tag = soup.find('meta', property=property_name)
+            return tag['content'].strip() if tag and tag.get('content') else default
+
+        def get_name_content(name, default=None):
+            tag = soup.find('meta', attrs={'name': name})
+            return tag['content'].strip() if tag and tag.get('content') else default
+        
+        def get_favicon_url():
+            # Look for various icon link types
+            icon_rel = ['apple-touch-icon', 'icon', 'shortcut icon']
+            for rel in icon_rel:
+                link_tag = soup.find('link', rel=rel)
+                if link_tag and link_tag.get('href'):
+                    return link_tag['href']
+            return None
+
+        # Extract with fallbacks
+        title = get_meta_content('og:title', soup.title.string if soup.title else "No Title Found")
+        description = get_meta_content('og:description', get_name_content('description', "No description available."))
+        image_url = get_meta_content('og:image', get_favicon_url())
+
+        # Ensure image URL is absolute
+        if image_url:
+            image_url = urljoin(response.url, image_url)
+
+        metadata = {
+            "title": title,
+            "description": description,
+            "image": image_url
+        }
+        
+        return jsonify(metadata)
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Failed to fetch metadata for URL {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not fetch URL content"}), 500
+    except Exception as e:
+        logging.error(f"Error parsing metadata for URL {url_to_fetch}: {e}")
+        return jsonify({"error": "Could not parse website metadata"}), 500
 
 
 @app.route('/generate_story_node', methods=['POST'])
