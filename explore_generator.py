@@ -5,6 +5,7 @@ import logging
 import os
 import requests
 import json
+import re  # <--- THIS IS THE FIX
 import time
 from urllib.parse import quote_plus
 from bs4 import BeautifulSoup # <-- Add BeautifulSoup import
