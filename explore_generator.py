@@ -6,11 +6,15 @@ import os
 import requests
 import json
 import time
+from urllib.parse import quote_plus
 
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
+    """
+    Performs a reliable image search using Google's Safe Image Search endpoint.
+    """
     logging.warning(f"--- Starting image search for topic: '{topic}' ---")
     query = quote_plus(f'"{topic}" high-quality photo')
     url = f"https://www.google.com/search?q={query}&tbm=isch&safe=active"
