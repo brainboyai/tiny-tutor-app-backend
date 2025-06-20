@@ -8,32 +8,42 @@ from googlesearch import search # Make sure this import is here
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
+# In explore_generator.py, replace the old image search function with this one.
+
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
     """
     Performs a Google search to find relevant image URLs for a topic.
+    This new version is more resilient and doesn't rely on strict file extensions.
     """
     image_urls = []
-    # Use a query that's more likely to return pages with direct image links
-    query = f'"{topic}" high-quality illustration diagram photo'
+    # A more targeted query to find pages that are likely to contain good images.
+    query = f'"{topic}" high-quality photo wallpaper landmark'
     
     try:
-        # We search for more results to increase the chance of finding usable images
-        search_results = search(query, num_results=10, lang="en")
+        # Search for a few results.
+        search_results = search(query, num_results=5, lang="en")
         
+        # --- REMOVED THE STRICT REGEX FILTER ---
+        # We now take the top results directly. The frontend's onError handler 
+        # will gracefully hide any links that aren't actual images.
+        
+        count = 0
         for url in search_results:
-            # A simple regex to check if the URL looks like a direct image link
-            if re.search(r'\.(jpg|jpeg|png|webp|gif)$', url):
-                image_urls.append(url)
-                if len(image_urls) >= num_images:
-                    break # Stop once we have enough images
+            # We will perform a very basic check to avoid obvious non-image links
+            if "google.com" in url or "youtube.com" in url:
+                continue
+            
+            image_urls.append(url)
+            count += 1
+            if count >= num_images:
+                break
                     
-        logging.warning(f"Found {len(image_urls)} image URLs for topic '{topic}': {image_urls}")
+        logging.warning(f"Found {len(image_urls)} potential image URLs for topic '{topic}': {image_urls}")
         return image_urls
         
     except Exception as e:
         logging.error(f"Error while searching for images for topic '{topic}': {e}")
         return []
-
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
     Generates an explanation, finds related images, and returns them together.
