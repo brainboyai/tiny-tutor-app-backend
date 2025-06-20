@@ -7,18 +7,19 @@ import requests
 import json
 import time
 from urllib.parse import quote_plus
+from bs4 import BeautifulSoup # <-- Add BeautifulSoup import
 
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
 def get_image_urls_for_topic(topic: str, num_images: int = 2):
     """
-    Performs a reliable image search using Google's Safe Image Search endpoint.
+    Performs a reliable image search by parsing the HTML with BeautifulSoup
+    to find high-quality, relevant images.
     """
     logging.warning(f"--- Starting image search for topic: '{topic}' ---")
     query = quote_plus(f'"{topic}" high-quality photo')
     url = f"https://www.google.com/search?q={query}&tbm=isch&safe=active"
-    logging.warning(f"Constructed search URL: {url}")
     
     headers = {
         "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36"
@@ -29,24 +30,33 @@ def get_image_urls_for_topic(topic: str, num_images: int = 2):
         response.raise_for_status()
         logging.warning("Successfully fetched HTML content from Google Image Search.")
 
-        image_urls = [item.split('src="')[1].split('"')[0] for item in response.text.split('<img') if 'src="' in item]
-        logging.warning(f"Found {len(image_urls)} potential image sources in raw HTML.")
+        # --- Use BeautifulSoup to parse the HTML ---
+        soup = BeautifulSoup(response.content, 'lxml')
         
+        image_tags = soup.find_all('img')
+        image_urls = []
+        for img in image_tags:
+            # Get the source URL from the 'src' attribute
+            if 'src' in img.attrs:
+                image_urls.append(img['src'])
+        
+        logging.warning(f"Found {len(image_urls)} potential image sources with BeautifulSoup.")
+        
+        # --- Improved Filtering ---
+        # Filter out small data URIs and irrelevant Google/Gstatic icons.
         valid_images = [
             u for u in image_urls 
-            if u.startswith('https://') and not 'google.com' in u and not u.startswith('data:image')
+            if u.startswith('https://') and 'gstatic' not in u
         ]
+        
         logging.warning(f"Filtered down to {len(valid_images)} valid https images.")
         
         final_images = valid_images[:num_images]
         logging.warning(f"--- Final selected images for '{topic}': {final_images} ---")
         return final_images
 
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Image search request FAILED for topic '{topic}': {e}")
-        return []
     except Exception as e:
-        logging.error(f"An UNEXPECTED error occurred during image parsing for topic '{topic}': {e}")
+        logging.error(f"An UNEXPECTED error occurred during image search for topic '{topic}': {e}")
         return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
