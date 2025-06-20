@@ -3,6 +3,38 @@
 import google.generativeai as genai
 import logging
 
+# Add this new function at the top of explore_generator.py
+from googlesearch import search
+import re
+
+def get_image_urls_for_topic(topic: str, num_images: int = 2):
+    """
+    Performs a Google search to find relevant image URLs for a topic.
+    Note: This is a best-effort search and may not always find direct image links.
+    """
+    image_urls = []
+    # Use a query that's more likely to return pages with images
+    query = f'"{topic}" high-quality illustration diagram photo'
+    
+    try:
+        # We search for more results to increase the chance of finding usable images
+        search_results = search(query, num_results=10, lang="en")
+        
+        for url in search_results:
+            # A simple regex to check if the URL looks like a direct image link
+            if re.search(r'\.(jpg|jpeg|png|webp|gif)$', url):
+                image_urls.append(url)
+                if len(image_urls) >= num_images:
+                    break # Stop once we have enough images
+                    
+        logging.warning(f"Found {len(image_urls)} image URLs for topic '{topic}': {image_urls}")
+        return image_urls
+        
+    except Exception as e:
+        logging.error(f"Error while searching for images for topic '{topic}': {e}")
+        return []
+
+
 # FIX: Load the model once when the module is first imported.
 gemini_model = genai.GenerativeModel('gemini-1.5-flash-latest')
 
@@ -46,12 +78,25 @@ prompt += f"\\nNonce: {nonce}"
 """
 
     try:
-    # Use the global model instance
+    # --- Step 1: Generate the text explanation (same as before) ---
         response = gemini_model.generate_content(prompt)
-        return response.text.strip()
+        explanation_text = response.text
+        
+        # --- Step 2: Get image URLs for the topic ---
+        image_urls = get_image_urls_for_topic(word)
+
+        # --- Step 3: Return a dictionary containing both parts ---
+        return {
+            "explanation": explanation_text,
+            "image_urls": image_urls
+        }
     except Exception as e:
         logging.error(f"Error in generate_explanation for word '{word}': {e}")
-        raise
+        # Return a valid structure even on error
+        return {
+            "explanation": "Sorry, I couldn't generate an explanation for this topic.",
+            "image_urls": []
+        }
 
 # In explore_generator.py
 

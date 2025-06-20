@@ -149,36 +149,50 @@ def ratelimit_handler(e):
     # The frontend will provide the specific message text
     return jsonify(error=f"Rate limit exceeded: {e.description}"), 429
 
-# --- All Routes ---
-# (The routes themselves do not need to change from the last version)
-# ... The rest of your app.py file ...
-# --- Core Feature Routes ---
 @app.route('/generate_explanation', methods=['POST'])
 @token_optional
 @limiter.limit(generation_limit)
 def generate_explanation_route(current_user_id):
     try:
+        # 1. Configure Gemini for the request (handles user-provided keys)
         configure_gemini_for_request() 
+        
+        # 2. Get data from the frontend request
         data = request.get_json()
         word = data.get('word', '').strip()
         mode = data.get('mode', 'explain').strip()
         language = data.get('language', 'en')
-        if not word: return jsonify({"error": "Word/concept is required"}), 400
+        streak_context = data.get('streakContext', []) # Get streak context
 
+        if not word: 
+            return jsonify({"error": "Word/concept is required"}), 400
+
+        # 3. Handle different modes ('explain' or 'quiz')
         if mode == 'explain':
-            explanation = generate_explanation(word, data.get('streakContext'), language, nonce=time.time())
-            return jsonify({"word": word, "explain": explanation, "source": "generated"}), 200
+            # This now calls the updated generator which returns a dictionary
+            # containing both the explanation text and the image URLs.
+            # The structure is: {'explanation': '...', 'image_urls': ['url1', 'url2']}
+            generated_data = generate_explanation(word, streak_context, language, nonce=time.time())
+            
+            # 4. Return the entire dictionary as a JSON response
+            # The frontend will receive both 'explanation' and 'image_urls' keys.
+            return jsonify(generated_data), 200
+        
         elif mode == 'quiz':
             explanation_text = data.get('explanation_text')
-            if not explanation_text: return jsonify({"error": "Explanation text is required"}), 400
-            quiz_questions = generate_quiz_from_text(word, explanation_text, data.get('streakContext'), language, nonce=time.time())
+            if not explanation_text: 
+                return jsonify({"error": "Explanation text is required for quiz mode"}), 400
+            
+            quiz_questions = generate_quiz_from_text(word, explanation_text, streak_context, language, nonce=time.time())
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
+        
         else:
             return jsonify({"error": "Invalid mode specified"}), 400
             
     except Exception as e:
-        app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'}: {e}")
+        app.logger.error(f"Error in /generate_explanation for user {current_user_id or 'Guest'} on word '{word}': {e}")
         return jsonify({"error": f"An internal AI error occurred: {str(e)}"}), 500
+
     
 
 # In app.py, replace the existing /fetch_web_context route with this:
