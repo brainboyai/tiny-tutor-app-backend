@@ -309,7 +309,7 @@ def generate_game_route(current_user_id):
     except Exception as e:
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
-@app.route('/api/profile', methods=['GET'])
+@app.route('/profile', methods=['GET'])
 @token_required
 def get_user_profile(current_user_id):
     try:
@@ -464,7 +464,7 @@ def signup_user():
     })
     return jsonify({"message": "User created successfully"}), 201
 
-@app.route('/api/login', methods=['POST'])
+@app.route('/login', methods=['POST'])
 @limiter.limit("30 per minute")
 def login_user():
     data = request.json
