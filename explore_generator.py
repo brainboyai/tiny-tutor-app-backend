@@ -76,33 +76,67 @@ def generate_agentic_suggestions(topic: str, language: str = 'en'):
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
-    Generates an explanation, finds related images, and returns them together.
+    Generates a meaningful, concise explanation designed for learning and action, 
+    and finds related images and agentic suggestions.
     """
     prompt = ""
-    # This is the prompt for a new word or the first word in a streak.
+    # This is the prompt for a new topic or the first in a streak.
     if not streak_context:
-        prompt = f"""Your task is to define '{word}', acting as a knowledgeable guide introducing a foundational concept to a curious beginner.
-Instructions: Define '{word}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner with no prior knowledge; focus on its core, fundamental aspects. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas) that are crucial not only for grasping '{word}' but also for sparking further inquiry and naturally leading towards a deeper exploration—think of these as initial pathways into a fascinating subject. These sub-topics must not be mere synonyms or rephrasing of '{word}'. If '{word}' involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>energy conversion</click>, <click>$A=\pi r^2$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO_2+6H_2O+textLightrightarrowC_6H_12O_6+6O_2</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
-Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
-Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-prompt += f"\\nNonce: {nonce}"
+        prompt = f"""You are an Expert Explainer. Your audience is a curious, everyday global user who wants to understand the world better. Your goal is to provide a clear, concise, and practical understanding of '{word}' that makes them feel smart and empowered. This explanation will also be used by another AI to suggest real-world activities, so it must be grounded in practical reality.
+
+Instructions:
+1.  **Craft a Two-Sentence Explanation:**
+    * **Sentence 1: What is it?** Define '{word}' in simple, direct terms. Use a relatable analogy if it helps clarify the core concept (e.g., "Think of it as...").
+    * **Sentence 2: Why does it matter?** Explain its primary importance or what it enables in the real world. This should provide a clear hook for why someone should care.
+2.  **Select "Deeper Dive" Sub-topics:**
+    * Within your two sentences, embed a few (3-5) highly-focused sub-topics that are the *essential building blocks* or *core components* of '{word}'.
+    * These sub-topics must be the absolute next logical step for someone wanting to go deeper. They are not just related terms; they are what you would need to understand next to truly grasp '{word}'. Think decomposition (what it's made of) or process (how it works).
+    * Wrap all sub-topics in <click>tags</click>. If a fundamental formula is the best explanation, use LaTeX (e.g., <click>$E=mc^2$</click>).
+
+**Example for 'API':**
+An API (Application Programming Interface) is like a menu in a restaurant that allows different software programs to <click>request information</click> from each other. This is fundamentally how your weather app gets <click>forecast data</col> from a weather service, or how a travel site displays flights from various <click>airline systems</click>.
+
+**Rules:**
+- Your entire response MUST be only the two sentences. No headers, no greetings, no explanations of your instructions.
+- Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
+
+Nonce: {nonce}
 """
     else:
-        # This is the prompt for a subsequent word in an existing streak, requiring context.
+        # This is the prompt for a subsequent topic in an existing learning path.
         context_string = ", ".join(streak_context)
+        # The last topic is the most immediate context.
+        previous_topic = streak_context[-1]
         all_relevant_words_for_reiteration_check = [word] + streak_context
         reiteration_check_string = ", ".join(all_relevant_words_for_reiteration_check)
-        prompt = f"""Your task is to define '{word}', acting as a teacher guiding a student step-by-step down a 'rabbit hole' of knowledge. The student has already learned about the following concepts in this order: '{context_string}'.
-Instructions: Define '{word}' in exactly two sentences using the simplest, most basic, and direct language suitable for a complete beginner. Your explanation must clearly show how '{word}' relates to, builds upon, or offers a new dimension to the established learning path of '{context_string}'. Focus on its core aspects as they specifically connect to this narrative of exploration. Within these sentences, embed the maximum number of distinct, foundational sub-topics (key terms, core concepts, related ideas). These sub-topics should be crucial for understanding '{word}' within this specific learning sequence and should themselves be chosen to intelligently suggest further avenues of exploration, continuing the streak of discovery. Crucially, these embedded sub-topics must not be a simple reiteration of any words found in '{reiteration_check_string}'. If '{word}' (when considered in the context of '{context_string}') involves mathematics, physics, chemistry, or similar fields, embed any critical fundamental formulas or equations (using LaTeX, e.g., $E=mc^2$) as sub-topics. Wrap all sub-topics (textual, formulas, equations) in <click>tags</click> (e.g., <click>relevant concept</click>, <click>$y=mx+c$</click>). Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-Example of the expected output format: Photosynthesis is a <click>biological process</click> in <click>plants</click> and other organisms converting <click>light energy</click> into <click>chemical energy</click>, often represented by <click>6CO2​+6H2​O+Light→C6​H12​O6​+6O2​</click>. This process uses <click>carbon dioxide</click> and <click>water</click> to produce <click>glucose</click> (a <click>sugar</click>) and <click>oxygen</click>.
-Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
-Your response must consist strictly of the two definition sentences containing the embedded clickable sub-topics. Do not include any headers, introductory phrases, or these instructions in your output.
-prompt += f"\\nNonce: {nonce}"
+        
+        prompt = f"""You are a Learning Navigator. Your user is on a journey of discovery and has just learned about '{previous_topic}' after starting with '{context_string}'. Now they want to understand '{word}'. Your task is to seamlessly connect the new topic to the old one.
+
+Instructions:
+1.  **Craft a Two-Sentence Explanation:**
+    * **Sentence 1: How does this connect?** Explain what '{word}' is by explicitly showing how it builds upon, is a part of, or is the next logical concept after '{previous_topic}'.
+    * **Sentence 2: What new understanding does this unlock?** Describe the new capability or the deeper layer of understanding that learning '{word}' now provides in their journey.
+2.  **Select "Deeper Dive" Sub-topics:**
+    * Within your explanation, embed a few (2-4) sub-topics that are the *next logical questions* or *deeper components* raised by your explanation.
+    * These sub-topics must continue the learning path. They cannot be a reiteration of any term in '{reiteration_check_string}'.
+    * Wrap all sub-topics in <click>tags</click>. Use LaTeX for essential formulas (e.g., <click>$y=mx+c$</click>).
+
+**Example Context:** The user just learned about 'API' and now clicked on 'request information'.
+**Your Task:** Define 'request information'.
+
+**Example Output:**
+In the context of an API, a <click>data request</click> is a structured message sent to a server, often using a protocol like <click>HTTP</click>. This is the action that actually 'asks the question', allowing an application to retrieve specific details like current temperature or available flight times, which are then delivered in a <click>formatted response</click> like JSON.
+
+**Rules:**
+- Your entire response MUST be only the two sentences. No headers, no greetings, no explanations of your instructions.
+- Language Mandate: You MUST generate all user-facing text in the following language code: '{language}'. Do not use English unless the code is 'en'.
+
+Nonce: {nonce}
 """
 
     try:
         # Step 1: Generate the text explanation
+        # Assuming gemini_model is your generative model client
         response = gemini_model.generate_content(prompt)
         explanation_text = response.text.strip()
         
@@ -110,9 +144,10 @@ prompt += f"\\nNonce: {nonce}"
         image_urls = get_image_urls_for_topic(word)
 
         # --- Step 3: Get the new Agentic Suggestions ---
-        suggestions = generate_agentic_suggestions(word, language)
+        # This function can now be more effective because the explanation is more practical
+        suggestions = generate_agentic_suggestions(word, language, explanation_text)
 
-        # Step 4: Return a dictionary containing both parts
+        # Step 4: Return a dictionary containing all parts
         return {
             "explanation": explanation_text,
             "image_urls": image_urls,
