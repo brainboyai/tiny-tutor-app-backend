@@ -4,15 +4,16 @@ import logging
 import os
 import requests
 from urllib.parse import quote_plus
+from datetime import datetime, timedelta
 
-# This is our new primary function that will be called from app.py
+# In web_context_agent.py, replace your get_routed_web_context function
+
 def get_routed_web_context(query: str, model: genai.GenerativeModel):
     """
     Acts as an Intent-Based Router. It analyzes the user's query, determines the best API to call,
     fetches the data, and returns it in a standardized format.
     """
     
-    # 1. First, recognize the intent from the user's query
     try:
         intent, entity = _get_intent_from_query(query, model)
         logging.warning(f"AGENT LOG: Intent recognized for query '{query}' -> INTENT: {intent}, ENTITY: {entity}")
@@ -20,28 +21,36 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
         intent, entity = "FALLBACK_SEARCH", query
 
-    # 2. Route to the correct API based on the recognized intent
+    # NEW: Add specific logging for each route
     if intent == "NEWS":
+        logging.warning(f"--- Routing to NEWS API for entity: {entity} ---")
         return _call_news_api(entity)
     elif intent == "VIDEO":
+        logging.warning(f"--- Routing to YOUTUBE API for entity: {entity} ---")
         return _call_youtube_api(entity)
     elif intent == "KNOWLEDGE":
+        logging.warning(f"--- Routing to WIKIPEDIA API for entity: {entity} ---")
         return _call_wikipedia_api(entity)
     elif intent == "EVENTS":
+        logging.warning(f"--- Routing to TICKETMASTER API for entity: {entity} ---")
         return _call_ticketmaster_api(entity)
     elif intent == "FINANCE":
+        logging.warning(f"--- Routing to ALPHA VANTAGE API for entity: {entity} ---")
         return _call_alphavantage_api(entity)
+    elif intent == "RESTAURANTS":
+        # We need a function for this, for now, we can use the fallback
+        logging.warning(f"--- Routing to RESTAURANTS (using fallback search for now) for entity: {entity} ---")
+        return _perform_google_search(f"best restaurants in {entity}")
     elif intent == "TRAVEL_HOTELS":
+        logging.warning(f"--- Routing to HOTELS API for entity: {entity} ---")
         return _call_hotels_api(entity)
-    # --- FLIGHTS LOGIC IS SKIPPED FOR NOW ---
-    #elif intent == "TRAVEL_FLIGHTS":
-    #    return _call_flights_api(entity)
     elif intent == "SHOPPING":
+        logging.warning(f"--- Routing to SHOPPING (using fallback search) for entity: {entity} ---")
         shopping_query = f"{entity} buy online price"
         return _perform_google_search(shopping_query)
-    else: # Fallback for generic queries
+    else: 
+        logging.warning(f"--- No specific tool found. Routing to FALLBACK GOOGLE SEARCH for query: {query} ---")
         return _perform_google_search(query)
-
 
 def _get_intent_from_query(query: str, model: genai.GenerativeModel):
     """
@@ -49,39 +58,35 @@ def _get_intent_from_query(query: str, model: genai.GenerativeModel):
     and extract the key entity for searching.
     """
     prompt = f"""
-    You are an expert query analysis engine. Your task is to analyze the user's search query and classify it into one of the predefined categories. You must also extract the core search entity.
+    You are an expert query analysis engine. Your task is to analyze the user's search query and classify it into one of the STRICT predefined categories. You must also extract the core search entity.
 
     Available Categories:
-    - NEWS (for queries about current events, news)
-    - VIDEO (for queries requesting videos, vlogs, visual explanations)
-    - KNOWLEDGE (for queries asking for definitions, history, information)
+    - NEWS (for queries about current events and news)
+    - VIDEO (for queries requesting videos, vlogs, visual media)
+    - KNOWLEDGE (for queries asking for definitions, history, guides, information)
     - EVENTS (for queries about tickets, concerts, festivals, sports)
     - FINANCE (for queries about stock prices, crypto, financial markets)
-    - TRAVEL_HOTELS (for queries about hotels, stays, accommodations in a city)
+    - RESTAURANTS (for queries about finding places to eat, food, dining)
+    - TRAVEL_HOTELS (for queries specifically about hotels, stays, accommodations)
     - SHOPPING (for queries about buying products, e-commerce)
-    - FALLBACK_SEARCH (for anything else)
+    - FALLBACK_SEARCH (for anything else or ambiguous queries)
 
     Analyze the following user query: "{query}"
 
     Return your response as a single, raw, minified JSON object with two keys: "intent" and "entity".
 
     Example 1:
-    Query: "concerts in London"
-    Output: {{"intent": "EVENTS", "entity": "London"}}
+    Query: "restaurants in Hyderabad"
+    Output: {{"intent": "RESTAURANTS", "entity": "Hyderabad"}}
 
     Example 2:
-    Query: "stock price for TSLA"
-    Output: {{"intent": "FINANCE", "entity": "TSLA"}}
-
-    Example 3:
-    Query: "Travel to Delhi"
-    Output: {{"intent": "TRAVEL_FLIGHTS", "entity": "Delhi"}}
+    Query: "Delhi travel guide"
+    Output: {{"intent": "KNOWLEDGE", "entity": "Delhi"}}
     """
     
     response = model.generate_content(prompt)
     analysis = json.loads(response.text.strip())
     return analysis.get("intent"), analysis.get("entity")
-
 
 # --- API Helper Functions ---
 
@@ -182,50 +187,91 @@ def _call_alphavantage_api(entity: str):
         logging.error(f"Alpha Vantage API request failed for '{entity}': {e}")
         return []
 
-# ADD THIS NEW FUNCTION to your web_context_agent.py file
+# In web_context_agent.py, replace the entire _call_hotels_api function
+
 def _call_hotels_api(entity: str):
     """
-    Calls a hotel API from RapidAPI to find places to stay in a city.
+    Calls the Booking.com API using a 2-step process:
+    1. Gets a destination ID from the city name using the auto-complete endpoint.
+    2. Searches for hotels using that destination ID.
     """
-    # You will get this key from RapidAPI after subscribing to a hotel API
-    api_key = os.getenv("RAPIDAPI_KEY") 
+    api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
         logging.error("RAPIDAPI_KEY is not set.")
         return []
 
-    # This example uses the "Hotel Booking" API by API-Ninjas on RapidAPI
-    # The URL and parameters might be different depending on which API you choose
-    url = "https://hotel-booking.p.rapidapi.com/v1/hotels/search-by-city"
-    params = {"city_name": entity, "country_name": "India"} # You might need to make 'country_name' dynamic
     headers = {
         "X-RapidAPI-Key": api_key,
-        "X-RapidAPI-Host": "hotel-booking.p.rapidapi.com"
+        "X-RapidAPI-Host": "booking-com18.p.rapidapi.com"
     }
 
+    # --- STEP 1: Get Destination ID from city name ---
     try:
-        response = requests.get(url, headers=headers, params=params)
-        response.raise_for_status()
-        hotels = response.json().get("results", [])
+        autocomplete_url = "https://booking-com18.p.rapidapi.com/web/stays/auto-complete"
+        autocomplete_params = {"query": entity}
+        
+        logging.warning(f"--- Calling Hotels Auto-Complete for entity: {entity} ---")
+        ac_response = requests.get(autocomplete_url, headers=headers, params=autocomplete_params)
+        ac_response.raise_for_status()
+        
+        # Extract the dest_id from the first result
+        # Note: The response structure might vary slightly.
+        # This assumes the first result is the most relevant.
+        ac_data = ac_response.json().get("data", [])
+        if not ac_data or "dest_id" not in ac_data[0]:
+            logging.error(f"Could not find a destination ID for '{entity}' in auto-complete response.")
+            return []
+            
+        dest_id = ac_data[0]["dest_id"]
+        dest_type = ac_data[0]["dest_type"]
+        logging.warning(f"--- Found dest_id: {dest_id} for entity: {entity} ---")
 
+    except Exception as e:
+        logging.error(f"Hotel auto-complete request failed for '{entity}': {e}")
+        return []
+
+    # --- STEP 2: Search for hotels using the Destination ID ---
+    try:
+        search_url = "https://booking-com18.p.rapidapi.com/web/stays/search"
+        
+        # Generate default check-in/check-out dates for 3 months from now
+        checkin_date = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+        checkout_date = (datetime.now() + timedelta(days=91)).strftime('%Y-%m-%d')
+
+        search_params = {
+            "destId": dest_id,
+            "destType": dest_type,
+            "checkin": checkin_date,
+            "checkout": checkout_date
+        }
+        
+        logging.warning(f"--- Calling Hotels Search with dest_id: {dest_id} ---")
+        search_response = requests.get(search_url, headers=headers, params=search_params)
+        search_response.raise_for_status()
+
+        hotels = search_response.json().get("results", [])
+        if not hotels:
+            logging.warning(f"No hotel results found for dest_id: {dest_id}")
+            return []
+
+        # Normalize the data from the search results
         normalized_results = []
         for hotel in hotels:
-            # The field names ('hotel_name', 'photo_url', etc.) will depend on the API you choose
-            snippet = f"Rating: {hotel.get('rating', 'N/A')} Stars | Price: {hotel.get('price', 'N/A')}"
+            snippet = f"Review Score: {hotel.get('reviewScore', 'N/A')} / 10"
+            image_url = hotel.get('photoUrls', [{}])[0].get('s') if hotel.get('photoUrls') else None
             normalized_results.append(
                 _normalize_data(
-                    item_type="Hotel",
-                    title=hotel.get('hotel_name'),
-                    url=hotel.get('url'), # Many APIs provide a booking URL
-                    snippet=snippet,
-                    image=hotel.get('photo_url')
+                    "Hotel",
+                    hotel.get('name'),
+                    hotel.get('url'),
+                    snippet,
+                    image_url
                 )
             )
         return normalized_results
-    except requests.exceptions.RequestException as e:
-        logging.error(f"RapidAPI Hotel search failed: {e}")
-        return []
+
     except Exception as e:
-        logging.error(f"An unexpected error occurred in _call_hotels_api: {e}")
+        logging.error(f"Hotel search request failed for dest_id '{dest_id}': {e}")
         return []
 
         
