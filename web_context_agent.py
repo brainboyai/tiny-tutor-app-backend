@@ -189,11 +189,10 @@ def _call_alphavantage_api(entity: str):
 
 # In web_context_agent.py, replace the entire _call_hotels_api function
 
+
 def _call_hotels_api(entity: str):
     """
-    Calls the Booking.com API using a 2-step process:
-    1. Gets a destination ID from the city name using the auto-complete endpoint.
-    2. Searches for hotels using that destination ID.
+    Calls the Booking.com API using a 2-step process.
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
@@ -208,15 +207,14 @@ def _call_hotels_api(entity: str):
     # --- STEP 1: Get Destination ID from city name ---
     try:
         autocomplete_url = "https://booking-com18.p.rapidapi.com/web/stays/auto-complete"
-        autocomplete_params = {"query": entity}
         
-        logging.warning(f"--- Calling Hotels Auto-Complete for entity: {entity} ---")
+        # We include 'language' here, as it can resolve 400 errors even if marked 'optional'.
+        autocomplete_params = {"query": entity, "language": "en-us"} 
+        
+        logging.warning(f"--- Calling Hotels Auto-Complete with params: {autocomplete_params} ---")
         ac_response = requests.get(autocomplete_url, headers=headers, params=autocomplete_params)
-        ac_response.raise_for_status()
+        ac_response.raise_for_status() # This is where the 400 error was happening
         
-        # Extract the dest_id from the first result
-        # Note: The response structure might vary slightly.
-        # This assumes the first result is the most relevant.
         ac_data = ac_response.json().get("data", [])
         if not ac_data or "dest_id" not in ac_data[0]:
             logging.error(f"Could not find a destination ID for '{entity}' in auto-complete response.")
@@ -230,46 +228,28 @@ def _call_hotels_api(entity: str):
         logging.error(f"Hotel auto-complete request failed for '{entity}': {e}")
         return []
 
-    # --- STEP 2: Search for hotels using the Destination ID ---
+    # --- STEP 2: Search for hotels (this part remains the same) ---
     try:
         search_url = "https://booking-com18.p.rapidapi.com/web/stays/search"
-        
-        # Generate default check-in/check-out dates for 3 months from now
         checkin_date = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
         checkout_date = (datetime.now() + timedelta(days=91)).strftime('%Y-%m-%d')
-
-        search_params = {
-            "destId": dest_id,
-            "destType": dest_type,
-            "checkin": checkin_date,
-            "checkout": checkout_date
-        }
+        search_params = {"destId": dest_id, "destType": dest_type, "checkin": checkin_date, "checkout": checkout_date}
         
         logging.warning(f"--- Calling Hotels Search with dest_id: {dest_id} ---")
         search_response = requests.get(search_url, headers=headers, params=search_params)
         search_response.raise_for_status()
-
         hotels = search_response.json().get("results", [])
-        if not hotels:
-            logging.warning(f"No hotel results found for dest_id: {dest_id}")
-            return []
 
-        # Normalize the data from the search results
+        # ... (rest of the normalization code is the same) ...
         normalized_results = []
         for hotel in hotels:
             snippet = f"Review Score: {hotel.get('reviewScore', 'N/A')} / 10"
             image_url = hotel.get('photoUrls', [{}])[0].get('s') if hotel.get('photoUrls') else None
             normalized_results.append(
-                _normalize_data(
-                    "Hotel",
-                    hotel.get('name'),
-                    hotel.get('url'),
-                    snippet,
-                    image_url
-                )
+                _normalize_data("Hotel", hotel.get('name'), hotel.get('url'), snippet, image_url)
             )
         return normalized_results
-
+        
     except Exception as e:
         logging.error(f"Hotel search request failed for dest_id '{dest_id}': {e}")
         return []
