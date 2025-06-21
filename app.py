@@ -165,15 +165,13 @@ def generate_explanation_route(current_user_id):
 
         # 3. Handle different modes ('explain' or 'quiz')
         if mode == 'explain':
-            # This now calls the updated generator which returns a dictionary
-            # containing both the explanation text and the image URLs.
-            # The structure is: {'explanation': '...', 'image_urls': ['url1', 'url2']}
-            generated_data = generate_explanation(word, streak_context, language, nonce=time.time())
+            # This function returns a dictionary with explanation, image_urls, AND suggestions.
+            content_data = generate_explanation(word, streak_context, language, time.time())
             
-            # 4. Return the entire dictionary as a JSON response
-            # The frontend will receive both 'explanation' and 'image_urls' keys.
-            return jsonify(generated_data), 200
-        
+            # We return the entire dictionary to the frontend.
+            return jsonify(content_data)
+            
+       # 4. Handle 'quiz' mode (This is the second call from the frontend) 
         elif mode == 'quiz':
             explanation_text = data.get('explanation_text')
             if not explanation_text: 
@@ -181,7 +179,8 @@ def generate_explanation_route(current_user_id):
             
             quiz_questions = generate_quiz_from_text(word, explanation_text, streak_context, language, nonce=time.time())
             return jsonify({"word": word, "quiz": quiz_questions, "source": "generated"}), 200
-        
+       
+        # 5. Handle any other invalid mode
         else:
             return jsonify({"error": "Invalid mode specified"}), 400
             
