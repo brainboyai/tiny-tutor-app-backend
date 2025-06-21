@@ -26,7 +26,7 @@ from werkzeug.security import generate_password_hash, check_password_hash
 from google.api_core import exceptions
 
 # --- Module Imports from your project ---
-from web_context_agent import get_web_context
+from web_context_agent import get_routed_web_context 
 from game_generator import generate_game_for_topic
 from story_generator import generate_story_node
 from explore_generator import generate_explanation, generate_quiz_from_text
@@ -196,24 +196,24 @@ def generate_explanation_route(current_user_id):
 @limiter.limit(generation_limit)
 def fetch_web_context_route(current_user_id):
     """
-    Fetches relevant web links and snippets for a given topic using the web agent.
+    Fetches relevant web links by routing the query to the best data source.
     """
     try:
         configure_gemini_for_request()
-        topic = request.json.get('topic', '').strip()
-        if not topic:
-            return jsonify({"error": "Topic is required"}), 400
+        # The 'topic' from the frontend is now the full query, e.g., "news about adidas"
+        query = request.json.get('topic', '').strip() 
+        if not query:
+            return jsonify({"error": "Query is required"}), 400
 
-        # Create a model instance to pass to the agent
         model = genai.GenerativeModel('gemini-1.5-flash-latest')
         
-        # Call the agent to get the dynamic web context
-        web_context = get_web_context(topic, model)
+        # Call the new router function instead of the old one
+        web_context = get_routed_web_context(query, model)
 
-        return jsonify({"topic": topic, "web_context": web_context})
+        return jsonify({"topic": query, "web_context": web_context})
 
     except Exception as e:
-        app.logger.error(f"Error in /fetch_web_context for topic '{topic}': {e}")
+        app.logger.error(f"Error in /fetch_web_context for query '{query}': {e}")
         return jsonify({"error": f"An internal error occurred: {str(e)}"}), 500
 
 # ... rest of app.py
