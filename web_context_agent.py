@@ -190,12 +190,11 @@ def _call_alphavantage_api(entity: str):
 # In web_context_agent.py, replace the entire _call_hotels_api function
 
 
-# In web_context_agent.py, replace your _call_hotels_api function with this
+# In web_context_agent.py, replace your _call_hotels_api function one last time
 
 def _call_hotels_api(entity: str):
     """
     Calls the Booking.com API using a 2-step process.
-    [DEBUGGING VERSION]
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
@@ -207,20 +206,24 @@ def _call_hotels_api(entity: str):
         "X-RapidAPI-Host": "booking-com18.p.rapidapi.com"
     }
 
-    # --- STEP 1: Get Destination ID (This part is working) ---
+    # --- STEP 1: Get Destination ID (This part is working perfectly) ---
     try:
         autocomplete_url = "https://booking-com18.p.rapidapi.com/web/stays/auto-complete"
         autocomplete_params = {"query": entity, "language": "en-us"}
-        logging.warning(f"--- Calling Hotels Auto-Complete with params: {autocomplete_params} ---")
+        
+        logging.warning(f"--- Calling Hotels Auto-Complete for entity: {entity} ---")
         ac_response = requests.get(autocomplete_url, headers=headers, params=autocomplete_params)
         ac_response.raise_for_status()
+        
         ac_data = ac_response.json().get("data", [])
         if not ac_data or "dest_id" not in ac_data[0]:
             logging.error(f"Could not find a destination ID for '{entity}' in auto-complete response.")
             return []
+            
         dest_id = ac_data[0]["dest_id"]
         dest_type = ac_data[0]["dest_type"]
         logging.warning(f"--- Found dest_id: {dest_id} for entity: {entity} ---")
+
     except Exception as e:
         logging.error(f"Hotel auto-complete request failed for '{entity}': {e}")
         return []
@@ -230,26 +233,26 @@ def _call_hotels_api(entity: str):
         search_url = "https://booking-com18.p.rapidapi.com/web/stays/search"
         checkin_date = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
         checkout_date = (datetime.now() + timedelta(days=91)).strftime('%Y-%m-%d')
-        search_params = {"destId": dest_id, "destType": dest_type, "checkin": checkin_date, "checkout": checkout_date}
+
+        # --- FINAL FIX IS HERE: Corrected the casing for 'checkIn' and 'checkOut' ---
+        search_params = {
+            "destId": dest_id,
+            "destType": dest_type,
+            "checkIn": checkin_date,
+            "checkOut": checkout_date
+        }
         
         logging.warning(f"--- Calling Hotels Search with dest_id: {dest_id} ---")
         search_response = requests.get(search_url, headers=headers, params=search_params)
         search_response.raise_for_status()
-
-        # --- NEW DEBUGGING LOG ---
-        # This will print the entire response to your logs so we can inspect it.
-        raw_json_response = search_response.json()
-        logging.warning(f"--- RAW HOTEL SEARCH RESPONSE: {raw_json_response} ---")
         
-        hotels = raw_json_response.get("results", [])
-        
-        # --- NEW DEBUGGING LOG ---
-        logging.warning(f"--- Found {len(hotels)} hotel(s) in the 'results' key. ---")
+        hotels = search_response.json().get("results", [])
         
         if not hotels:
+            logging.warning(f"No hotel results were returned from the API for dest_id: {dest_id}")
             return []
 
-        # ... (Normalization code remains the same for now) ...
+        logging.warning(f"--- Success! Normalizing {len(hotels)} hotel results. ---")
         normalized_results = []
         for hotel in hotels:
             snippet = f"Review Score: {hotel.get('reviewScore', 'N/A')} / 10"
