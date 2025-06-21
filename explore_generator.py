@@ -44,35 +44,50 @@ def get_image_urls_for_topic(topic: str, num_images: int = 2):
         logging.error(f"An UNEXPECTED error occurred during Pexels search for topic '{topic}': {e}")
         return []
     
-def generate_agentic_suggestions(topic: str, language: str = 'en'):
+def generate_agentic_suggestions(topic: str, language: str = 'en', explanation_text: str = ''):
     """
-    Generates a list of actionable, task-oriented follow-up suggestions for a given topic.
+    Generates actionable, real-world "things to do" based on a topic and its specific explanation.
     """
-    logging.warning(f"--- Generating agentic suggestions for topic: '{topic}' ---")
+    logging.warning(f"--- Generating contextual agentic suggestions for topic: '{topic}' ---")
     
-    # This prompt is designed to elicit short, actionable phrases.
+    # This new prompt uses the explanation_text to generate more meaningful, activity-based suggestions
+    # instead of just simple follow-up search queries.
     prompt = f"""
-    You are a helpful assistant. A user is learning about "{topic}". 
-    Generate a JSON-formatted list of 5 to 7 diverse, actionable, and short (2-4 word) follow-up queries that a curious person might ask next.
-    These queries should cover different intents like travel, food, history, news, activities, and media.
+    You are a creative and practical guide. Your goal is to give a user real-world, actionable things to do related to a topic they are learning about.
+
+    Topic: "{topic}"
+    Explanation they just read: "{explanation_text}"
+
+    Based on the provided topic and its specific explanation, generate a JSON-formatted list of 3 to 4 short, inspiring, and practical suggestions. These suggestions should be things the user can actually **do** (e.g., explore, visit, create, try, find), not just read more about.
+
     The response MUST be a raw JSON object with a single key "suggestions" containing a list of strings.
-    Example for "Hyderabad": {{"suggestions": ["Hyderabad history", "Biryani in Hyderabad", "Travel to Hyderabad", "Hyderabad vlogs", "Charminar details", "Hyderabad news"]}}
+
+    Example for topic 'API' with its explanation:
+    {{"suggestions": ["Find a public weather API online and see what data it offers.", "Try a simple tutorial to make an API call with a tool like Postman.", "Look at an app you use and guess how it uses APIs to function."]}}
+
     Language Mandate: All suggestions MUST be in the following language code: '{language}'.
     """
     
     try:
         response = gemini_model.generate_content(prompt)
-        # Add robust parsing to handle potential markdown in the response
-        clean_response = response.text.strip().replace('```json', '').replace('```', '')
+        
+        # Clean up the response to ensure it's valid JSON, removing potential markdown.
+        clean_response = response.text.strip()
+        if clean_response.startswith("```json"):
+            clean_response = clean_response[7:-3].strip()
+        elif clean_response.startswith("```"):
+             clean_response = clean_response[3:-3].strip()
+
         suggestions_dict = json.loads(clean_response)
         suggestions = suggestions_dict.get("suggestions", [])
-        logging.warning(f"--- Found suggestions for '{topic}': {suggestions} ---")
-        return suggestions
-    except Exception as e:
-        logging.error(f"Could not generate or parse agentic suggestions for '{topic}': {e}")
-        # Return a default list on error
-        return [f"Learn more about {topic}", f"{topic} news"]
 
+        logging.warning(f"--- Found contextual suggestions for '{topic}': {suggestions} ---")
+        return suggestions
+
+    except Exception as e:
+        logging.error(f"Could not generate or parse contextual agentic suggestions for '{topic}': {e}")
+        # Return an empty list if there's an error so the frontend doesn't crash.
+        return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
     """
