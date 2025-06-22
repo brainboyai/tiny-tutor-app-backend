@@ -52,42 +52,52 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.warning(f"--- No specific tool found. Routing to FALLBACK GOOGLE SEARCH for query: {query} ---")
         return _perform_google_search(query)
 
+# In web_context_agent.py
+
 def _get_intent_from_query(query: str, model: genai.GenerativeModel):
     """
     Uses the LLM to classify the user's query into a specific intent category
-    and extract the key entity for searching.
+    and extract the key entity for searching. [IMPROVED VERSION]
     """
     prompt = f"""
-    You are an expert query analysis engine. Your task is to analyze the user's search query and classify it into one of the STRICT predefined categories. You must also extract the core search entity.
+    You are a precise query analysis engine. Your task is to analyze the user's search query and classify it into one of the STRICT predefined categories. You must also extract the core search entity.
 
-    Available Categories:
-    - NEWS (for queries about current events and news)
-    - VIDEO (for queries requesting videos, vlogs, visual media)
-    - KNOWLEDGE (for queries asking for definitions, history, guides, information)
-    - EVENTS (for queries about tickets, concerts, festivals, sports)
-    - FINANCE (for queries about stock prices, crypto, financial markets)
-    - RESTAURANTS (for queries about finding places to eat, food, dining)
-    - TRAVEL_HOTELS (for queries specifically about hotels, stays, accommodations)
-    - SHOPPING (for queries about buying products, e-commerce)
-    - FALLBACK_SEARCH (for anything else or ambiguous queries)
+    **Instructions:**
+    - Be very specific. If a query explicitly mentions 'hotels', 'stays', or 'accommodations', use 'TRAVEL_HOTELS'.
+    - If a query uses broader travel terms like 'tourism packages', 'tours', or 'things to do', it is a general search and you MUST use 'FALLBACK_SEARCH'.
+    - If using 'FALLBACK_SEARCH', the 'entity' should be the entire original query.
 
-    Analyze the following user query: "{query}"
+    **Available Categories:**
+    - NEWS, VIDEO, KNOWLEDGE, EVENTS, FINANCE, RESTAURANTS, TRAVEL_HOTELS, SHOPPING, FALLBACK_SEARCH
 
-    Return your response as a single, raw, minified JSON object with two keys: "intent" and "entity".
+    **Analyze the following user query:** "{query}"
 
-    Example 1:
-    Query: "restaurants in Hyderabad"
-    Output: {{"intent": "RESTAURANTS", "entity": "Hyderabad"}}
+    --- EXAMPLES OF NUANCE ---
+    Query: "Hyderabad tourism packages"
+    Output: {{"intent": "FALLBACK_SEARCH", "entity": "Hyderabad tourism packages"}}
 
-    Example 2:
-    Query: "Delhi travel guide"
-    Output: {{"intent": "KNOWLEDGE", "entity": "Delhi"}}
+    Query: "best hotels in Hyderabad"
+    Output: {{"intent": "TRAVEL_HOTELS", "entity": "Hyderabad"}}
+
+    Query: "things to do in Paris this weekend"
+    Output: {{"intent": "FALLBACK_SEARCH", "entity": "things to do in Paris this weekend"}}
+
+    Query: "concerts in Paris this weekend"
+    Output: {{"intent": "EVENTS", "entity": "Paris this weekend"}}
+    ---
+
+    Return your response as a single, raw, minified JSON object with two keys: "intent" and "entity". Your response MUST be ONLY the JSON object and nothing else.
     """
     
     response = model.generate_content(prompt)
-    analysis = json.loads(response.text.strip())
-    return analysis.get("intent"), analysis.get("entity")
-
+    # Adding a defensive check in case the model still returns a non-JSON response
+    try:
+        analysis = json.loads(response.text.strip())
+        return analysis.get("intent"), analysis.get("entity")
+    except json.JSONDecodeError:
+        logging.error(f"Failed to decode JSON from intent recognition for query: '{query}'. Defaulting to fallback.")
+        return "FALLBACK_SEARCH", query
+    
 # --- API Helper Functions ---
 
 def _normalize_data(item_type, title, url, snippet, image=None):

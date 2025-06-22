@@ -46,45 +46,36 @@ def get_image_urls_for_topic(topic: str, num_images: int = 2):
     
 def generate_agentic_suggestions(topic: str, language: str = 'en', explanation_text: str = ''):
     """
-    Analyzes a topic's type and generates a list of actionable search intents that serve as both
-    user-facing suggestions and machine-readable queries for a web context agent.
+    Analyzes a topic's type and generates a list of clear, actionable search intents
+    that map closely to available tools. [IMPROVED VERSION]
     """
-    logging.warning(f"--- Generating actionable search intents for topic: '{topic}' ---")
+    logging.warning(f"--- Generating clear, actionable search intents for topic: '{topic}' ---")
     
-    # This new, advanced prompt instructs the AI to categorize the topic first,
-    # then generate specific, actionable search queries based on that category.
     prompt = f"""
-    You are an expert Search Intent Generator. Your task is to bridge human curiosity with web search by creating a list of actionable search queries. These queries will be displayed to a user as clickable suggestions and then used directly by a web search agent.
+    You are a creative and practical guide. Your goal is to give a user real-world, actionable things to do related to a topic they are learning about.
 
-    First, analyze the user's topic and its explanation to determine its category. Is it a place, a brand/company, a scientific concept, a historical event, a person, etc.?
+    **CRITICAL INSTRUCTION:** The suggestions you generate MUST be clear and map as closely as possible to a specific action or tool. The available tools are for finding: News, Videos, Knowledge (facts, history), Events (concerts, tickets), Finance (stock prices), Hotels, Restaurants, or Shopping.
 
-    Based on that category, generate a JSON-formatted list of 3 to 5 diverse, actionable search queries. Each query should combine the topic with a clear user intent (like shopping, travel, learning, watching videos, or finding news).
-
-    The response MUST be a raw JSON object with a single key "suggestions" containing a list of strings.
+    - **GOOD:** "Hotels in Delhi", "News about Tesla", "History of the Roman Empire"
+    - **AVOID:** Vague terms like "Delhi Tourism", "Tesla Guide", "Roman Empire Info". These are too broad.
 
     **Topic:** "{topic}"
     **Explanation they just read:** "{explanation_text}"
 
+    Based on the topic and its explanation, generate a JSON-formatted list of 3 to 5 clear, practical, and diverse suggestions.
+    The response MUST be a raw JSON object with a single key "suggestions" containing a list of strings.
+
     --- EXAMPLES ---
+    Topic 'Delhi': {{"suggestions": ["Hotels in Delhi", "Restaurants in Delhi", "History of Delhi", "Flights to Delhi", "News about Delhi"]}}
+    Topic 'Tesla': {{"suggestions": ["Tesla stock price", "News about Tesla", "Shop for Tesla accessories", "Videos about Tesla Gigafactory"]}}
+    ---
 
-    1.  **If the topic is a place (e.g., "Delhi"):** The intents should be about travel, culture, food, and local information.
-        {{"suggestions": ["news about Delhi", "shopping in Delhi", "Delhi culture", "hotels in Delhi", "travel to Delhi"]}}
-
-    2.  **If the topic is a brand or product (e.g., "Adidas"):** The intents should be about shopping, news, official resources, and media.
-        {{"suggestions": ["news about adidas", "videos about adidas", "shop for adidas products", "official adidas website"]}}
-
-    3.  **If the topic is a scientific or abstract concept (e.g., "Aerodynamics"):** The intents should be about learning, reading, and visual explanations.
-        {{"suggestions": ["what is aerodynamics", "books about aerodynamics", "videos explaining aerodynamics", "aerodynamics tutorials"]}}
-
-    Now, generate the appropriate suggestions for the given topic: "{topic}".
-
-    **Language Mandate:** All suggestions MUST be in the following language code: '{language}'.
+    Language Mandate: All suggestions MUST be in the following language code: '{language}'.
     """
     
     try:
         response = gemini_model.generate_content(prompt)
         
-        # Clean up the response to ensure it's valid JSON, removing potential markdown.
         clean_response = response.text.strip()
         if clean_response.startswith("```json"):
             clean_response = clean_response[7:-3].strip()
@@ -94,12 +85,11 @@ def generate_agentic_suggestions(topic: str, language: str = 'en', explanation_t
         suggestions_dict = json.loads(clean_response)
         suggestions = suggestions_dict.get("suggestions", [])
 
-        logging.warning(f"--- Found actionable search intents for '{topic}': {suggestions} ---")
+        logging.warning(f"--- Found clear suggestions for '{topic}': {suggestions} ---")
         return suggestions
 
     except Exception as e:
-        logging.error(f"Could not generate or parse actionable search intents for '{topic}': {e}")
-        # Return an empty list if there's an error so the app doesn't crash.
+        logging.error(f"Could not generate or parse clear agentic suggestions for '{topic}': {e}")
         return []
     
 def generate_explanation(word: str, streak_context: list = None, language: str = 'en', nonce: float = 0.0):
