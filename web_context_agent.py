@@ -194,76 +194,65 @@ def _call_alphavantage_api(entity: str):
 
 def _call_hotels_api(entity: str):
     """
-    Calls the Booking.com API using a 2-step process.
+    Calls the fast, single-step Tripadvisor Scraper API.
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
         logging.error("RAPIDAPI_KEY is not set.")
         return []
 
+    # Details from the Tripadvisor Scraper API you found
+    url = "https://tripadvisor-scraper.p.rapidapi.com/hotels/search"
+    params = {"query": entity}
     headers = {
         "X-RapidAPI-Key": api_key,
-        "X-RapidAPI-Host": "booking-com18.p.rapidapi.com"
+        "X-RapidAPI-Host": "tripadvisor-scraper.p.rapidapi.com"
     }
 
-    # --- STEP 1: Get Destination ID (This part is working perfectly) ---
     try:
-        autocomplete_url = "https://booking-com18.p.rapidapi.com/web/stays/auto-complete"
-        autocomplete_params = {"query": entity, "language": "en-us"}
+        logging.warning(f"--- Calling Tripadvisor Scraper Hotel API for entity: {entity} ---")
         
-        logging.warning(f"--- Calling Hotels Auto-Complete for entity: {entity} ---")
-        ac_response = requests.get(autocomplete_url, headers=headers, params=autocomplete_params)
-        ac_response.raise_for_status()
+        # Give it a generous 25-second timeout
+        response = requests.get(url, headers=headers, params=params, timeout=25)
+        response.raise_for_status()
         
-        ac_data = ac_response.json().get("data", [])
-        if not ac_data or "dest_id" not in ac_data[0]:
-            logging.error(f"Could not find a destination ID for '{entity}' in auto-complete response.")
-            return []
-            
-        dest_id = ac_data[0]["dest_id"]
-        dest_type = ac_data[0]["dest_type"]
-        logging.warning(f"--- Found dest_id: {dest_id} for entity: {entity} ---")
+        raw_response = response.json()
+        logging.warning(f"--- RAW TRIPADVISOR RESPONSE: {raw_response} ---") # For debugging the first time
 
-    except Exception as e:
-        logging.error(f"Hotel auto-complete request failed for '{entity}': {e}")
-        return []
+        # The response from this API has a 'data' key which contains the list of hotels
+        hotels = raw_response.get("data", [])
 
-    # --- STEP 2: Search for hotels ---
-    try:
-        search_url = "https://booking-com18.p.rapidapi.com/web/stays/search"
-        checkin_date = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
-        checkout_date = (datetime.now() + timedelta(days=91)).strftime('%Y-%m-%d')
-
-        # --- FINAL FIX IS HERE: Corrected the casing for 'checkIn' and 'checkOut' ---
-        search_params = {
-            "destId": dest_id,
-            "destType": dest_type,
-            "checkIn": checkin_date,
-            "checkOut": checkout_date
-        }
-        
-        logging.warning(f"--- Calling Hotels Search with dest_id: {dest_id} ---")
-        search_response = requests.get(search_url, headers=headers, params=search_params)
-        search_response.raise_for_status()
-        
-        hotels = search_response.json().get("results", [])
-        
         if not hotels:
-            logging.warning(f"No hotel results were returned from the API for dest_id: {dest_id}")
+            logging.warning(f"No hotel results found for city: {entity}")
             return []
 
-        logging.warning(f"--- Success! Normalizing {len(hotels)} hotel results. ---")
+        logging.warning(f"--- Success! Normalizing {len(hotels)} hotel results from Tripadvisor Scraper. ---")
         normalized_results = []
-        for hotel in hotels:
-            snippet = f"Review Score: {hotel.get('reviewScore', 'N/A')} / 10"
-            image_url = hotel.get('photoUrls', [{}])[0].get('s') if hotel.get('photoUrls') else None
+        for hotel in hotels[:5]: # Take the first 5 results
+            title = hotel.get('title')
+            # Create a snippet from available data
+            snippet = f"Rating: {hotel.get('rating')} | Reviews: {hotel.get('reviewsCount')}"
+            # This scraper provides a direct URL to the TripAdvisor page
+            hotel_url = hotel.get('url')
+            # It also provides an image URL
+            image_url = hotel.get('image')
+            
             normalized_results.append(
-                _normalize_data("Hotel", hotel.get('name'), hotel.get('url'), snippet, image_url)
+                _normalize_data(
+                    "Hotel",
+                    title,
+                    hotel_url,
+                    snippet,
+                    image_url
+                )
             )
         return normalized_results
-        
+
+    except requests.exceptions.RequestException as e:
+        logging.error(f"Tripadvisor Scraper Hotel search failed: {e}")
+        return []
     except Exception as e:
-        logging.error(f"Hotel search request failed for dest_id '{dest_id}': {e}")
+        logging.error(f"An unexpected error occurred in _call_hotels_api: {e}")
         return []
         
 #def _call_flights_api(entity: str):
