@@ -190,18 +190,18 @@ def _call_alphavantage_api(entity: str):
 # In web_context_agent.py, replace the entire _call_hotels_api function
 
 
-# In web_context_agent.py, replace your _call_hotels_api function one last time
+# In web_context_agent.py, this is the final, working version
 
 def _call_hotels_api(entity: str):
     """
-    Calls the fast, single-step Tripadvisor Scraper API.
+    Calls the fast, single-step Tripadvisor Scraper API and correctly
+    parses and filters the results.
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
         logging.error("RAPIDAPI_KEY is not set.")
         return []
 
-    # Details from the Tripadvisor Scraper API you found
     url = "https://tripadvisor-scraper.p.rapidapi.com/hotels/search"
     params = {"query": entity}
     headers = {
@@ -211,30 +211,29 @@ def _call_hotels_api(entity: str):
 
     try:
         logging.warning(f"--- Calling Tripadvisor Scraper Hotel API for entity: {entity} ---")
-        
-        # Give it a generous 25-second timeout
         response = requests.get(url, headers=headers, params=params, timeout=25)
         response.raise_for_status()
         
-        raw_response = response.json()
-        logging.warning(f"--- RAW TRIPADVISOR RESPONSE: {raw_response} ---") # For debugging the first time
+        # FIX 1: The API returns a list directly. Assign it to a temporary variable.
+        all_results = response.json()
 
-        # The response from this API has a 'data' key which contains the list of hotels
-        hotels = raw_response.get("data", [])
+        if not all_results:
+            logging.warning(f"API returned an empty list for city: {entity}")
+            return []
 
+        # FIX 2: Filter the list to only include actual hotels ('accommodation').
+        hotels = [item for item in all_results if item.get('type') == 'accommodation']
+        
         if not hotels:
-            logging.warning(f"No hotel results found for city: {entity}")
+            logging.warning(f"No hotel results found after filtering for city: {entity}")
             return []
 
         logging.warning(f"--- Success! Normalizing {len(hotels)} hotel results from Tripadvisor Scraper. ---")
         normalized_results = []
         for hotel in hotels[:5]: # Take the first 5 results
             title = hotel.get('title')
-            # Create a snippet from available data
             snippet = f"Rating: {hotel.get('rating')} | Reviews: {hotel.get('reviewsCount')}"
-            # This scraper provides a direct URL to the TripAdvisor page
             hotel_url = hotel.get('url')
-            # It also provides an image URL
             image_url = hotel.get('image')
             
             normalized_results.append(
