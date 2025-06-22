@@ -21,7 +21,19 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
         intent, entity = "FALLBACK_SEARCH", query
 
-    # NEW: Add specific logging for each route
+   # In web_context_agent.py
+
+def get_routed_web_context(query: str, model: genai.GenerativeModel):
+    """
+    Acts as an Intent-Based Router. [CORRECTED VERSION]
+    """
+    try:
+        intent, entity = _get_intent_from_query(query, model)
+        logging.warning(f"AGENT LOG: Intent recognized for query '{query}' -> INTENT: {intent}, ENTITY: {entity}")
+    except Exception as e:
+        logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
+        intent, entity = "FALLBACK_SEARCH", query
+
     if intent == "NEWS":
         logging.warning(f"--- Routing to NEWS API for entity: {entity} ---")
         return _call_news_api(entity)
@@ -38,21 +50,18 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.warning(f"--- Routing to ALPHA VANTAGE API for entity: {entity} ---")
         return _call_alphavantage_api(entity)
     elif intent == "RESTAURANTS":
-        # We need a function for this, for now, we can use the fallback
-        logging.warning(f"--- Routing to RESTAURANTS (using fallback search for now) for entity: {entity} ---")
-        return _perform_google_search(f"best restaurants in {query, intent, entity}")
+        logging.warning(f"--- Routing to RESTAURANTS (using intelligent fallback search) for entity: {entity} ---")
+        # This is the corrected line
+        return _perform_google_search(query, intent, entity)
     elif intent == "TRAVEL_HOTELS":
         logging.warning(f"--- Routing to HOTELS API for entity: {entity} ---")
         return _call_hotels_api(entity)
     elif intent == "SHOPPING":
-        logging.warning(f"--- Routing to SHOPPING (using fallback search) for entity: {entity} ---")
-        shopping_query = f"{entity} buy online price"
-        return _perform_google_search(shopping_query)
+        logging.warning(f"--- Routing to SHOPPING (using intelligent fallback search) for entity: {entity} ---")
+        return _perform_google_search(query, "SHOPPING", entity)
     else: 
         logging.warning(f"--- No specific tool found. Routing to INTELLIGENT FALLBACK for query: {query} ---")
-        # UPDATED: Pass intent and entity
         return _perform_google_search(query, intent, entity)
-
 # In web_context_agent.py
 
 def _get_intent_from_query(query: str, model: genai.GenerativeModel):
