@@ -235,7 +235,7 @@ def _call_hotels_api(entity: str):
             # This API doesn't provide rating/reviews, so these will correctly show "N/A"
             rating = hotel.get('rating') or "N/A"
             reviews = hotel.get('reviewsCount') or "0"
-            snippet = f"Rating: {rating} | Reviews: {reviews}"
+            snippet = "View on TripAdvisor"
             
             normalized_results.append(
                 _normalize_data(
