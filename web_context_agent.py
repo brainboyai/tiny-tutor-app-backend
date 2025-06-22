@@ -165,14 +165,35 @@ def _call_wikipedia_api(entity: str):
         logging.error(f"Wikipedia API request failed for '{entity}': {e}")
         return []
 
+# In web_context_agent.py, replace the existing function with this one
+
 def _call_ticketmaster_api(entity: str):
+    """
+    Calls the Ticketmaster API.
+    [DEBUGGING VERSION]
+    """
     api_key = os.getenv("TICKETMASTER_API_KEY")
-    if not api_key: return []
+    if not api_key: 
+        logging.error("TICKETMASTER_API_KEY is not set.")
+        return []
+
     url = f"https://app.ticketmaster.com/discovery/v2/events.json?apikey={api_key}&keyword={quote_plus(entity)}&size=5"
     try:
-        response = requests.get(url)
+        logging.warning(f"--- Calling Ticketmaster API for entity: {entity} ---")
+        response = requests.get(url, timeout=25)
         response.raise_for_status()
-        events = response.json().get('_embedded', {}).get('events', [])
+
+        # --- NEW DEBUGGING LOG ---
+        raw_response = response.json()
+        logging.warning(f"--- RAW TICKETMASTER RESPONSE: {raw_response} ---")
+
+        events = raw_response.get('_embedded', {}).get('events', [])
+        
+        logging.warning(f"--- Found {len(events)} events in Ticketmaster response. ---")
+
+        if not events:
+            return []
+
         normalized_results = []
         for event in events:
             image_url = next((img['url'] for img in event.get('images', []) if img.get('ratio') == '16_9'), None)
@@ -184,7 +205,7 @@ def _call_ticketmaster_api(entity: str):
     except Exception as e:
         logging.error(f"Ticketmaster API request failed for '{entity}': {e}")
         return []
-
+    
 def _call_alphavantage_api(entity: str):
     api_key = os.getenv("ALPHAVANTAGE_API_KEY")
     if not api_key: return []
