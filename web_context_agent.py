@@ -21,11 +21,11 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
         intent, entity = "FALLBACK_SEARCH", query
 
-   # In web_context_agent.py
-
+  # Replace your router function with this new version
 def get_routed_web_context(query: str, model: genai.GenerativeModel):
     """
-    Acts as an Intent-Based Router. [CORRECTED VERSION]
+    Acts as an Intent-Based Router.
+    [FINAL VERSION with Event Fallback]
     """
     try:
         intent, entity = _get_intent_from_query(query, model)
@@ -34,7 +34,19 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
         intent, entity = "FALLBACK_SEARCH", query
 
-    if intent == "NEWS":
+    if intent == "EVENTS":
+        logging.warning(f"--- Routing to TICKETMASTER API for entity: {entity} ---")
+        event_results = _call_ticketmaster_api(entity)
+        # If the specific tool (Ticketmaster) returns results, use them.
+        if event_results:
+            return event_results
+        # Otherwise, use the intelligent fallback search.
+        else:
+            logging.warning(f"--- Ticketmaster had no results. Using intelligent fallback search for events in {entity}. ---")
+            return _perform_google_search(query, intent, entity)
+
+    # --- The rest of the router logic remains the same ---
+    elif intent == "NEWS":
         logging.warning(f"--- Routing to NEWS API for entity: {entity} ---")
         return _call_news_api(entity)
     elif intent == "VIDEO":
@@ -43,15 +55,11 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
     elif intent == "KNOWLEDGE":
         logging.warning(f"--- Routing to WIKIPEDIA API for entity: {entity} ---")
         return _call_wikipedia_api(entity)
-    elif intent == "EVENTS":
-        logging.warning(f"--- Routing to TICKETMASTER API for entity: {entity} ---")
-        return _call_ticketmaster_api(entity)
     elif intent == "FINANCE":
         logging.warning(f"--- Routing to ALPHA VANTAGE API for entity: {entity} ---")
         return _call_alphavantage_api(entity)
     elif intent == "RESTAURANTS":
         logging.warning(f"--- Routing to RESTAURANTS (using intelligent fallback search) for entity: {entity} ---")
-        # This is the corrected line
         return _perform_google_search(query, intent, entity)
     elif intent == "TRAVEL_HOTELS":
         logging.warning(f"--- Routing to HOTELS API for entity: {entity} ---")
@@ -62,7 +70,6 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
     else: 
         logging.warning(f"--- No specific tool found. Routing to INTELLIGENT FALLBACK for query: {query} ---")
         return _perform_google_search(query, intent, entity)
-# In web_context_agent.py
 
 def _get_intent_from_query(query: str, model: genai.GenerativeModel):
     """
@@ -167,10 +174,11 @@ def _call_wikipedia_api(entity: str):
 
 # In web_context_agent.py, replace the existing function with this one
 
+# Replace your Ticketmaster function with this cleaned-up version
 def _call_ticketmaster_api(entity: str):
     """
     Calls the Ticketmaster API.
-    [DEBUGGING VERSION]
+    [PRODUCTION VERSION]
     """
     api_key = os.getenv("TICKETMASTER_API_KEY")
     if not api_key: 
@@ -183,14 +191,10 @@ def _call_ticketmaster_api(entity: str):
         response = requests.get(url, timeout=25)
         response.raise_for_status()
 
-        # --- NEW DEBUGGING LOG ---
-        raw_response = response.json()
-        logging.warning(f"--- RAW TICKETMASTER RESPONSE: {raw_response} ---")
-
-        events = raw_response.get('_embedded', {}).get('events', [])
+        # The raw response has been removed now that we know the issue
+        events = response.json().get('_embedded', {}).get('events', [])
         
         logging.warning(f"--- Found {len(events)} events in Ticketmaster response. ---")
-
         if not events:
             return []
 
@@ -364,6 +368,15 @@ def _perform_google_search(original_query: str, intent: str, entity: str):
         response = requests.get(url, params=params)
         response.raise_for_status()
         search_results = response.json().get('items', [])
+        # --- NEW: Retry Logic ---
+        # If the optimized query returned no results, try again with the simple query.
+        if not search_results:
+            logging.warning(f"--- Optimized query returned no results. Retrying with simple query: '{original_query}' ---")
+            params['q'] = original_query # Switch to the original query
+            response = requests.get(url, params=params)
+            response.raise_for_status()
+            search_results = response.json().get('items', [])
+
         # ... (The normalization part of the function remains the same)
         normalized_results = []
         for item in search_results:
