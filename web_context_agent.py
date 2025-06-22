@@ -190,12 +190,12 @@ def _call_alphavantage_api(entity: str):
 # In web_context_agent.py, replace the entire _call_hotels_api function
 
 
-# In web_context_agent.py, this is the final, working version
+# In web_context_agent.py, this is the final, hardened version
 
 def _call_hotels_api(entity: str):
     """
-    Calls the fast, single-step Tripadvisor Scraper API and correctly
-    parses and filters the results.
+    Calls the fast, single-step Tripadvisor Scraper API and defensively
+    normalizes the results to prevent frontend crashes.
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
@@ -214,27 +214,29 @@ def _call_hotels_api(entity: str):
         response = requests.get(url, headers=headers, params=params, timeout=25)
         response.raise_for_status()
         
-        # FIX 1: The API returns a list directly. Assign it to a temporary variable.
         all_results = response.json()
-
         if not all_results:
             logging.warning(f"API returned an empty list for city: {entity}")
             return []
 
-        # FIX 2: Filter the list to only include actual hotels ('accommodation').
         hotels = [item for item in all_results if item.get('type') == 'accommodation']
-        
         if not hotels:
             logging.warning(f"No hotel results found after filtering for city: {entity}")
             return []
 
         logging.warning(f"--- Success! Normalizing {len(hotels)} hotel results from Tripadvisor Scraper. ---")
         normalized_results = []
-        for hotel in hotels[:5]: # Take the first 5 results
-            title = hotel.get('title')
-            snippet = f"Rating: {hotel.get('rating')} | Reviews: {hotel.get('reviewsCount')}"
-            hotel_url = hotel.get('url')
-            image_url = hotel.get('image')
+        for hotel in hotels[:5]:
+            # --- Defensive Normalization ---
+            # Provide a default value if the API data is missing to prevent frontend crashes.
+            
+            title = hotel.get('title') or "Title Not Available"
+            hotel_url = hotel.get('url') or "#" # Use a safe placeholder if no URL
+            image_url = hotel.get('image') # It's okay for the image to be None, frontend should handle it
+
+            rating = hotel.get('rating') or "N/A"
+            reviews = hotel.get('reviewsCount') or "0"
+            snippet = f"Rating: {rating} | Reviews: {reviews}"
             
             normalized_results.append(
                 _normalize_data(
