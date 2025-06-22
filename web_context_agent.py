@@ -163,9 +163,12 @@ def _call_wikipedia_api(entity: str):
 # In web_context_agent.py, replace the existing function with this one
 
 # Replace your Ticketmaster function with this cleaned-up version
+# In web_context_agent.py
+
 def _call_ticketmaster_api(entity: str):
     """
-    Calls the Ticketmaster API.
+    Calls the Ticketmaster API and defensively normalizes the results
+    to prevent frontend crashes from incomplete data.
     [PRODUCTION VERSION]
     """
     api_key = os.getenv("TICKETMASTER_API_KEY")
@@ -179,7 +182,6 @@ def _call_ticketmaster_api(entity: str):
         response = requests.get(url, timeout=25)
         response.raise_for_status()
 
-        # The raw response has been removed now that we know the issue
         events = response.json().get('_embedded', {}).get('events', [])
         
         logging.warning(f"--- Found {len(events)} events in Ticketmaster response. ---")
@@ -188,12 +190,29 @@ def _call_ticketmaster_api(entity: str):
 
         normalized_results = []
         for event in events:
-            image_url = next((img['url'] for img in event.get('images', []) if img.get('ratio') == '16_9'), None)
-            snippet = f"Date: {event.get('dates', {}).get('start', {}).get('localDate', 'N/A')}"
+            # --- Defensive Normalization Logic ---
+            # Provide a default value for each piece of data to ensure the frontend never crashes.
+            
+            title = event.get('name') or "Event Title Not Available"
+            event_url = event.get('url') or "#"
+            
+            # Safely find the best available image
+            image_url = None
+            if event.get('images') and isinstance(event.get('images'), list):
+                image_url = next((img.get('url') for img in event['images'] if img.get('ratio') == '16_9'), None)
+
+            # Safely get the date
+            date = "Date N/A"
+            if event.get('dates', {}).get('start', {}).get('localDate'):
+                date = event['dates']['start']['localDate']
+            
+            snippet = f"Date: {date}"
+
             normalized_results.append(
-                _normalize_data('Event', event.get('name'), event.get('url'), snippet, image_url)
+                _normalize_data('Event', title, event_url, snippet, image_url)
             )
         return normalized_results
+        
     except Exception as e:
         logging.error(f"Ticketmaster API request failed for '{entity}': {e}")
         return []
