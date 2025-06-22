@@ -49,8 +49,9 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         shopping_query = f"{entity} buy online price"
         return _perform_google_search(shopping_query)
     else: 
-        logging.warning(f"--- No specific tool found. Routing to FALLBACK GOOGLE SEARCH for query: {query} ---")
-        return _perform_google_search(query)
+        logging.warning(f"--- No specific tool found. Routing to INTELLIGENT FALLBACK for query: {query} ---")
+        # UPDATED: Pass intent and entity
+        return _perform_google_search(query, intent, entity)
 
 # In web_context_agent.py
 
@@ -269,24 +270,63 @@ def _call_hotels_api(entity: str):
 #    logging.warning(f"--- Flights API function called for '{entity}', but it is not implemented yet. ---")
 #    return []
 
-def _perform_google_search(query: str):
+
+# In web_context_agent.py
+
+def _perform_google_search(original_query: str, intent: str, entity: str):
     """
-    This is the fallback search function. It uses the exact names you specified.
-    - Function name: _perform_google_search
-    - API Key variable: Google Search_API_KEY
+    An intelligent fallback search function that first uses an LLM to generate an
+    optimized, precise Google Search query based on the user's intent, then executes it.
     """
+    # --- 1. Generate the Optimized Query using AI ---
+    try:
+        # This prompt turns the LLM into a Google Search expert
+        query_optimizer_prompt = f"""
+        You are a Google Search query optimization expert. Your task is to take a user's original query, their inferred 'intent', and the key 'entity', and generate a single, highly precise Google search query string that will yield the best possible results.
+
+        **Instructions:**
+        - Use advanced search operators like "" for exact phrases, OR for alternatives, and site: for specific high-quality domains.
+        - Tailor the query to the intent. For KNOWLEDGE, prioritize encyclopedic sites. For technical topics, prioritize official documentation or tutorials.
+        - The goal is precision, not just keyword matching.
+
+        **User's Original Query:** "{original_query}"
+        **Inferred Intent:** "{intent}"
+        **Key Entity:** "{entity}"
+
+        --- EXAMPLES ---
+        1. Intent: KNOWLEDGE, Entity: "History of Delhi"
+           Optimized Query: "history of Delhi" OR "Delhi Sultanate timeline" site:en.wikipedia.org OR site:britannica.com
+
+        2. Intent: SHOPPING, Entity: "Tesla Model 3"
+           Optimized Query: "buy Tesla Model 3" official price OR "Model 3 reviews 2025"
+
+        3. Intent: RESTAURANTS, Entity: "Hyderabad"
+           Optimized Query: "best restaurants in Hyderabad" site:zomato.com OR "top 10 places to eat Hyderabad"
+
+        Based on the user's request, what is the single best, optimized search query string?
+        """
+        # Note: We are using the main 'genai' instance configured in app.py
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+        response = model.generate_content(query_optimizer_prompt)
+        optimized_query = response.text.strip()
+        logging.warning(f"--- Optimized Google Search query: '{optimized_query}' ---")
+    except Exception as e:
+        logging.error(f"Failed to generate optimized query: {e}. Using original query as fallback.")
+        optimized_query = original_query
+
+    # --- 2. Execute the Search with the Optimized Query ---
     api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
     search_engine_id = os.getenv("SEARCH_ENGINE_ID")
     
     if not api_key or not search_engine_id:
-        logging.error("GOOGLE_SEARCH_API_KEY or SEARCH_ENGINE_ID are not set in the environment.")
+        logging.error("Google Search_API_KEY or SEARCH_ENGINE_ID are not set in the environment.")
         return []
 
     url = "https://www.googleapis.com/customsearch/v1"
     params = {
         'key': api_key,
         'cx': search_engine_id,
-        'q': query,
+        'q': optimized_query, # Use the new, smarter query
         'num': 8
     }
     
@@ -294,13 +334,12 @@ def _perform_google_search(query: str):
         response = requests.get(url, params=params)
         response.raise_for_status()
         search_results = response.json().get('items', [])
-
+        # ... (The normalization part of the function remains the same)
         normalized_results = []
         for item in search_results:
             pagemap = item.get('pagemap', {})
             cse_image = pagemap.get('cse_image', [{}])
             image_url = cse_image[0].get('src') if cse_image and isinstance(cse_image, list) else None
-
             normalized_results.append({
                 "type": "Web Link",
                 "title": item.get('title'),
@@ -308,12 +347,7 @@ def _perform_google_search(query: str):
                 "snippet": item.get('snippet'),
                 "image": image_url
             })
-            
         return normalized_results
-
-    except requests.exceptions.RequestException as e:
-        logging.error(f"Google Search API request failed: {e}")
-        return []
     except Exception as e:
-        logging.error(f"An unexpected error occurred in _perform_google_search: {e}")
+        logging.error(f"An unexpected error occurred in  _perform_google_search: {e}")
         return []
