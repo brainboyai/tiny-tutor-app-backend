@@ -187,15 +187,12 @@ def _call_alphavantage_api(entity: str):
         logging.error(f"Alpha Vantage API request failed for '{entity}': {e}")
         return []
 
-# In web_context_agent.py, replace the entire _call_hotels_api function
-
-
-# In web_context_agent.py, this is the final, hardened version
+# In web_context_agent.py, this is the final, production-ready version.
 
 def _call_hotels_api(entity: str):
     """
-    Calls the fast, single-step Tripadvisor Scraper API and defensively
-    normalizes the results to prevent frontend crashes.
+    Calls the fast, single-step Tripadvisor Scraper API and correctly
+    parses and filters the results using the final, correct key names.
     """
     api_key = os.getenv("RAPIDAPI_KEY")
     if not api_key:
@@ -219,6 +216,7 @@ def _call_hotels_api(entity: str):
             logging.warning(f"API returned an empty list for city: {entity}")
             return []
 
+        # Filter the list to only include actual hotels ('accommodation').
         hotels = [item for item in all_results if item.get('type') == 'accommodation']
         if not hotels:
             logging.warning(f"No hotel results found after filtering for city: {entity}")
@@ -226,14 +224,15 @@ def _call_hotels_api(entity: str):
 
         logging.warning(f"--- Success! Normalizing {len(hotels)} hotel results from Tripadvisor Scraper. ---")
         normalized_results = []
-        for hotel in hotels[:5]:
-            # --- Defensive Normalization ---
-            # Provide a default value if the API data is missing to prevent frontend crashes.
+        for hotel in hotels[:5]: # Take the first 5 results
             
-            title = hotel.get('title') or "Title Not Available"
-            hotel_url = hotel.get('url') or "#" # Use a safe placeholder if no URL
-            image_url = hotel.get('image') # It's okay for the image to be None, frontend should handle it
+            # --- FINAL FIXES ARE HERE ---
+            # Using the correct keys based on the data you provided.
+            title = hotel.get('name') or "Title Not Available"
+            hotel_url = hotel.get('link') or "#"
+            image_url = hotel.get('thumbnail_url') # Correct key for the image
 
+            # This API doesn't provide rating/reviews, so these will correctly show "N/A"
             rating = hotel.get('rating') or "N/A"
             reviews = hotel.get('reviewsCount') or "0"
             snippet = f"Rating: {rating} | Reviews: {reviews}"
