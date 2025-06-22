@@ -33,7 +33,7 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         return _call_wikipedia_api(entity)
     elif intent == "EVENTS":
         logging.warning(f"--- Routing to TICKETMASTER API for entity: {entity} ---")
-        return _call_ticketmaster_api(entity)
+        return _call_ticketmaster_api(query, intent, entity)
     elif intent == "FINANCE":
         logging.warning(f"--- Routing to ALPHA VANTAGE API for entity: {entity} ---")
         return _call_alphavantage_api(entity)
