@@ -8,24 +8,11 @@ from datetime import datetime, timedelta
 
 # In web_context_agent.py, replace your get_routed_web_context function
 
-def get_routed_web_context(query: str, model: genai.GenerativeModel):
-    """
-    Acts as an Intent-Based Router. It analyzes the user's query, determines the best API to call,
-    fetches the data, and returns it in a standardized format.
-    """
-    
-    try:
-        intent, entity = _get_intent_from_query(query, model)
-        logging.warning(f"AGENT LOG: Intent recognized for query '{query}' -> INTENT: {intent}, ENTITY: {entity}")
-    except Exception as e:
-        logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
-        intent, entity = "FALLBACK_SEARCH", query
+# In web_context_agent.py
 
-  # Replace your router function with this new version
 def get_routed_web_context(query: str, model: genai.GenerativeModel):
     """
-    Acts as an Intent-Based Router.
-    [FINAL VERSION with Event Fallback]
+    [UPGRADED] A universal router that gives EVERY tool a fallback to intelligent search.
     """
     try:
         intent, entity = _get_intent_from_query(query, model)
@@ -34,80 +21,81 @@ def get_routed_web_context(query: str, model: genai.GenerativeModel):
         logging.error(f"Could not determine intent for query '{query}': {e}. Using fallback.")
         intent, entity = "FALLBACK_SEARCH", query
 
-    if intent == "EVENTS":
-        logging.warning(f"--- Routing to TICKETMASTER API for entity: {entity} ---")
-        event_results = _call_ticketmaster_api(entity)
-        # If the specific tool (Ticketmaster) returns results, use them.
-        if event_results:
-            return event_results
-        # Otherwise, use the intelligent fallback search.
-        else:
-            logging.warning(f"--- Ticketmaster had no results. Using intelligent fallback search for events in {entity}. ---")
-            return _perform_google_search(query, intent, entity)
+    results = []
+    # This variable will track if we are using a specific tool or the final fallback
+    is_fallback_search = True 
 
-    # --- The rest of the router logic remains the same ---
-    elif intent == "NEWS":
+    if intent == "NEWS":
         logging.warning(f"--- Routing to NEWS API for entity: {entity} ---")
-        return _call_news_api(entity)
+        results = _call_news_api(entity)
+        is_fallback_search = False
     elif intent == "VIDEO":
         logging.warning(f"--- Routing to YOUTUBE API for entity: {entity} ---")
-        return _call_youtube_api(entity)
+        results = _call_youtube_api(entity)
+        is_fallback_search = False
     elif intent == "KNOWLEDGE":
         logging.warning(f"--- Routing to WIKIPEDIA API for entity: {entity} ---")
-        return _call_wikipedia_api(entity)
+        results = _call_wikipedia_api(entity)
+        is_fallback_search = False
+    elif intent == "EVENTS":
+        logging.warning(f"--- Routing to TICKETMASTER API for entity: {entity} ---")
+        results = _call_ticketmaster_api(entity)
+        is_fallback_search = False
     elif intent == "FINANCE":
         logging.warning(f"--- Routing to ALPHA VANTAGE API for entity: {entity} ---")
-        return _call_alphavantage_api(entity)
-    elif intent == "RESTAURANTS":
-        logging.warning(f"--- Routing to RESTAURANTS (using intelligent fallback search) for entity: {entity} ---")
-        return _perform_google_search(query, intent, entity)
+        results = _call_alphavantage_api(entity)
+        is_fallback_search = False
     elif intent == "TRAVEL_HOTELS":
         logging.warning(f"--- Routing to HOTELS API for entity: {entity} ---")
-        return _call_hotels_api(entity)
-    elif intent == "SHOPPING":
-        logging.warning(f"--- Routing to SHOPPING (using intelligent fallback search) for entity: {entity} ---")
-        return _perform_google_search(query, "SHOPPING", entity)
-    else: 
-        logging.warning(f"--- No specific tool found. Routing to INTELLIGENT FALLBACK for query: {query} ---")
+        results = _call_hotels_api(entity)
+        is_fallback_search = False
+    
+    # --- UNIVERSAL FALLBACK LOGIC ---
+    # If a specific tool was used but it returned no results, we use the intelligent fallback.
+    if not is_fallback_search and not results:
+        logging.warning(f"--- Tool for intent '{intent}' had no results. Using intelligent fallback search. ---")
         return _perform_google_search(query, intent, entity)
-
+    # If the initial intent was already a fallback search, just run it.
+    elif is_fallback_search:
+        logging.warning(f"--- Routing to INTELLIGENT FALLBACK for query: {query} ---")
+        return _perform_google_search(query, intent, entity)
+    # Otherwise, return the successful results from the specific tool.
+    else:
+        return results
+    
 def _get_intent_from_query(query: str, model: genai.GenerativeModel):
     """
-    Uses the LLM to classify the user's query into a specific intent category
-    and extract the key entity for searching. [IMPROVED VERSION]
+    [UPGRADED] Uses the LLM to classify the query with higher precision
+    and extract a cleaner entity.
     """
     prompt = f"""
-    You are a precise query analysis engine. Your task is to analyze the user's search query and classify it into one of the STRICT predefined categories. You must also extract the core search entity.
+    You are a highly precise query analysis engine. Your task is to analyze the user's query and classify it into one of the STRICT predefined categories. You must also extract the primary search entity.
 
-    **Instructions:**
-    - Be very specific. If a query explicitly mentions 'hotels', 'stays', or 'accommodations', use 'TRAVEL_HOTELS'.
-    - If a query uses broader travel terms like 'tourism packages', 'tours', or 'things to do', it is a general search and you MUST use 'FALLBACK_SEARCH'.
-    - If using 'FALLBACK_SEARCH', the 'entity' should be the entire original query.
+    **CRITICAL INSTRUCTIONS:**
+    1.  The 'entity' should be the primary noun (e.g., a city, company, or concept). DO NOT include modifiers like "this weekend", "in my area", or descriptive adjectives unless they are part of a formal name.
+    2.  If a query contains a high level of specific detail beyond the main entity (e.g., a specific genre of music, a specific type of cuisine), it is often better to use 'FALLBACK_SEARCH' so a more detailed web search can be performed. The specialized tools may not support such detail.
+    3.  If a query is ambiguous, use 'FALLBACK_SEARCH'.
 
     **Available Categories:**
     - NEWS, VIDEO, KNOWLEDGE, EVENTS, FINANCE, RESTAURANTS, TRAVEL_HOTELS, SHOPPING, FALLBACK_SEARCH
 
-    **Analyze the following user query:** "{query}"
+    --- EXAMPLES ---
+    Query: "Events in Miami this weekend"
+    Output: {{"intent": "EVENTS", "entity": "Miami"}}
 
-    --- EXAMPLES OF NUANCE ---
-    Query: "Hyderabad tourism packages"
-    Output: {{"intent": "FALLBACK_SEARCH", "entity": "Hyderabad tourism packages"}}
+    Query: "Events featuring Latin American music in Miami"
+    Output: {{"intent": "FALLBACK_SEARCH", "entity": "Events featuring Latin American music in Miami"}}
 
-    Query: "best hotels in Hyderabad"
-    Output: {{"intent": "TRAVEL_HOTELS", "entity": "Hyderabad"}}
-
-    Query: "things to do in Paris this weekend"
-    Output: {{"intent": "FALLBACK_SEARCH", "entity": "things to do in Paris this weekend"}}
-
-    Query: "concerts in Paris this weekend"
-    Output: {{"intent": "EVENTS", "entity": "Paris this weekend"}}
+    Query: "best 5-star hotels in Goa"
+    Output: {{"intent": "TRAVEL_HOTELS", "entity": "Goa"}}
     ---
 
-    Return your response as a single, raw, minified JSON object with two keys: "intent" and "entity". Your response MUST be ONLY the JSON object and nothing else.
+    Analyze the following user query: "{query}"
+
+    Return your response as a single, raw, minified JSON object.
     """
     
     response = model.generate_content(prompt)
-    # Adding a defensive check in case the model still returns a non-JSON response
     try:
         analysis = json.loads(response.text.strip())
         return analysis.get("intent"), analysis.get("entity")
@@ -309,88 +297,68 @@ def _call_hotels_api(entity: str):
 
 def _perform_google_search(original_query: str, intent: str, entity: str):
     """
-    An intelligent fallback search function that first uses an LLM to generate an
-    optimized, precise Google Search query based on the user's intent, then executes it.
+    [UPGRADED] An intelligent fallback search function with a more precise
+    query optimization prompt.
     """
-    # --- 1. Generate the Optimized Query using AI ---
     try:
-        # This prompt turns the LLM into a Google Search expert
+        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         query_optimizer_prompt = f"""
-        You are a Google Search query optimization expert. Your task is to take a user's original query, their inferred 'intent', and the key 'entity', and generate a single, highly precise Google search query string that will yield the best possible results.
+        You are a Google Search query optimization expert. Your task is to take a user's original query, their inferred 'intent', and the key 'entity', and generate a single, highly precise Google search query string.
 
         **Instructions:**
-        - Use advanced search operators like "" for exact phrases, OR for alternatives, and site: for specific high-quality domains.
-        - Tailor the query to the intent. For KNOWLEDGE, prioritize encyclopedic sites. For technical topics, prioritize official documentation or tutorials.
-        - The goal is precision, not just keyword matching.
+        - To improve relevance, ensure the main 'entity' is a mandatory part of the search, often by using double quotes around it if it's a multi-word name.
+        - Use advanced operators like `OR` and `site:` to query high-quality domains relevant to the intent.
 
         **User's Original Query:** "{original_query}"
         **Inferred Intent:** "{intent}"
         **Key Entity:** "{entity}"
 
         --- EXAMPLES ---
-        1. Intent: KNOWLEDGE, Entity: "History of Delhi"
-           Optimized Query: "history of Delhi" OR "Delhi Sultanate timeline" site:en.wikipedia.org OR site:britannica.com
+        1. Intent: RESTAURANTS, Entity: "Goa"
+           Optimized Query: "best restaurants in "Goa"" site:zomato.com OR "top rated restaurants Goa" site:tripadvisor.com
 
-        2. Intent: SHOPPING, Entity: "Tesla Model 3"
-           Optimized Query: "buy Tesla Model 3" official price OR "Model 3 reviews 2025"
-
-        3. Intent: RESTAURANTS, Entity: "Hyderabad"
-           Optimized Query: "best restaurants in Hyderabad" site:zomato.com OR "top 10 places to eat Hyderabad"
+        2. Intent: KNOWLEDGE, Entity: "History of Delhi"
+           Optimized Query: "history of "New Delhi"" OR "Delhi Sultanate timeline" site:en.wikipedia.org OR site:britannica.com
+        ---
 
         Based on the user's request, what is the single best, optimized search query string?
         """
-        # Note: We are using the main 'genai' instance configured in app.py
-        model = genai.GenerativeModel('gemini-1.5-flash-latest')
         response = model.generate_content(query_optimizer_prompt)
         optimized_query = response.text.strip()
         logging.warning(f"--- Optimized Google Search query: '{optimized_query}' ---")
     except Exception as e:
-        logging.error(f"Failed to generate optimized query: {e}. Using original query as fallback.")
+        logging.error(f"Failed to generate optimized query: {e}. Using original query.")
         optimized_query = original_query
 
-    # --- 2. Execute the Search with the Optimized Query ---
+    # --- Execute the Search (with existing retry logic) ---
+    # ... (the rest of this function remains exactly the same as the previous version) ...
     api_key = os.getenv("GOOGLE_SEARCH_API_KEY")
     search_engine_id = os.getenv("SEARCH_ENGINE_ID")
-    
-    if not api_key or not search_engine_id:
-        logging.error("Google Search_API_KEY or SEARCH_ENGINE_ID are not set in the environment.")
-        return []
+    if not api_key or not search_engine_id: return []
 
     url = "https://www.googleapis.com/customsearch/v1"
-    params = {
-        'key': api_key,
-        'cx': search_engine_id,
-        'q': optimized_query, # Use the new, smarter query
-        'num': 8
-    }
+    params = {'key': api_key, 'cx': search_engine_id, 'q': optimized_query, 'num': 8}
     
     try:
         response = requests.get(url, params=params)
         response.raise_for_status()
         search_results = response.json().get('items', [])
-        # --- NEW: Retry Logic ---
-        # If the optimized query returned no results, try again with the simple query.
+
         if not search_results:
             logging.warning(f"--- Optimized query returned no results. Retrying with simple query: '{original_query}' ---")
-            params['q'] = original_query # Switch to the original query
+            params['q'] = original_query
             response = requests.get(url, params=params)
             response.raise_for_status()
             search_results = response.json().get('items', [])
 
-        # ... (The normalization part of the function remains the same)
         normalized_results = []
         for item in search_results:
             pagemap = item.get('pagemap', {})
             cse_image = pagemap.get('cse_image', [{}])
             image_url = cse_image[0].get('src') if cse_image and isinstance(cse_image, list) else None
-            normalized_results.append({
-                "type": "Web Link",
-                "title": item.get('title'),
-                "url": item.get('link'),
-                "snippet": item.get('snippet'),
-                "image": image_url
-            })
+            normalized_results.append({ "type": "Web Link", "title": item.get('title'), "url": item.get('link'), "snippet": item.get('snippet'), "image": image_url })
         return normalized_results
+        
     except Exception as e:
-        logging.error(f"An unexpected error occurred in  _perform_google_search: {e}")
+        logging.error(f"An unexpected error occurred in _perform_Google Search: {e}")
         return []
